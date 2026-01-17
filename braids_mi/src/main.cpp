@@ -1,6 +1,7 @@
 #include "daisy_patch_sm.h"
 
 #include "braids_variant.h"
+#include "voct_config.h"
 
 #include <algorithm>
 #include <cstring>
