@@ -43,7 +43,7 @@ BRAIDS_VARIANT ?= full
 # Examples:
 #  - 0V = C2: make ... VOCT_BASE_MIDI=36
 #  - 0V = C3: make ... VOCT_BASE_MIDI=48
-#  - Center trim: make ... VOCT_CENTER_NORM=0.497f
+#  - 0V trim (Patch SM bipolar CV is normalized to ~-1..+1): make ... VOCT_CENTER_NORM=-0.01f
 ifeq ($(origin VOCT_BASE_MIDI),command line)
 else
 VOCT_BASE_MIDI = 48
@@ -51,7 +51,7 @@ endif
 
 ifeq ($(origin VOCT_CENTER_NORM),command line)
 else
-VOCT_CENTER_NORM = 0.5f
+VOCT_CENTER_NORM = 0.0f
 endif
 
 # Auto-generate a config header so changes to VOCT_* force recompiles.

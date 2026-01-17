@@ -17,13 +17,14 @@ constexpr size_t kBraidsBlockSize = 24;
 
 // V/Oct calibration knobs.
 // - VOCT_BASE_MIDI: MIDI note at 0V. Common conventions: C2=36, C3=48, C4=60.
-// - VOCT_CENTER_NORM: normalized ADC value corresponding to 0V (typically ~0.5 for bipolar inputs).
+// - VOCT_CENTER_NORM: Patch SM bipolar CVs are normalized to approximately -1..+1,
+//   with 0V at ~0.0 (see AnalogControl::InitBipolarCv). Use this to trim the 0V point.
 #ifndef VOCT_BASE_MIDI
 #define VOCT_BASE_MIDI 48
 #endif
 
 #ifndef VOCT_CENTER_NORM
-#define VOCT_CENTER_NORM 0.5f
+#define VOCT_CENTER_NORM 0.0f
 #endif
 
 constexpr int32_t kBaseNoteQ7 = (static_cast<int32_t>(VOCT_BASE_MIDI) << 7);
@@ -34,6 +35,11 @@ constexpr int kModelBankCount = 4;
 inline float Clamp01(float v)
 {
     return std::max(0.0f, std::min(1.0f, v));
+}
+
+inline float Clamp11(float v)
+{
+    return std::max(-1.0f, std::min(1.0f, v));
 }
 
 inline int16_t Float01ToParamQ15(float v)
@@ -326,9 +332,10 @@ void ProcessControls()
         const float color_knob  = hw.GetAdcValue(CV_2);
         page_level              = Clamp01(hw.GetAdcValue(CV_3));
 
-        // Bipolar mod sources (Patch SM CV_5..CV_8 are centered at ~0.5)
-        const float timbre_mod = (hw.GetAdcValue(CV_6) - 0.5f) * 2.0f * 0.5f;
-        const float color_mod  = (hw.GetAdcValue(CV_7) - 0.5f) * 2.0f * 0.5f;
+        // Bipolar mod sources (Patch SM CV_1..CV_8 are normalized to ~-1..+1, with 0V at ~0.0).
+        // Apply a +/-0.5 depth so they behave like subtle modulation amounts.
+        const float timbre_mod = Clamp11(hw.GetAdcValue(CV_6)) * 0.5f;
+        const float color_mod  = Clamp11(hw.GetAdcValue(CV_7)) * 0.5f;
 
         osc.set_parameters(Float01ToParamQ15(timbre_knob + timbre_mod),
                            Float01ToParamQ15(color_knob + color_mod));
@@ -348,11 +355,11 @@ void ProcessControls()
     const float decay_ms  = 1.0f + (env_decay_norm * env_decay_norm) * kMaxDecayMs;
     amp_env.SetAttackDecayMs(attack_ms, decay_ms);
 
-    // Pitch: CV_5 as V/Oct (Patch SM bipolar CV is normalized to 0..1).
-    // Map -5..+5V to 0..1, with 0V at ~kVoctCenterNorm.
-    // Then map to ±60 semitones around 0V.
-    const float voct_cv        = Clamp01(hw.GetAdcValue(CV_5));
-    const float voct_semitones = (voct_cv - kVoctCenterNorm) * 120.0f;
+    // Pitch: CV_5 as V/Oct.
+    // Patch SM bipolar CV inputs are normalized to ~-1..+1, with 0V at ~0.0.
+    // CV range is nominally -5..+5V, so ±1.0 corresponds to ±5V -> ±60 semitones.
+    const float voct_cv        = Clamp11(hw.GetAdcValue(CV_5));
+    const float voct_semitones = (voct_cv - kVoctCenterNorm) * 60.0f;
 
     const int32_t pitch_q7 = kBaseNoteQ7 + static_cast<int32_t>(SemitonesToQ7(voct_semitones));
     osc.set_pitch(ClampI16(pitch_q7));
