@@ -1,0 +1,46 @@
+{
+	"folders": [
+		{
+			"name": "eurorack_libdaisy",
+			"path": "."
+		},
+		{
+			"name": "deps: libDaisy",
+			"path": "deps/daisy/libDaisy"
+		},
+		{
+			"name": "deps: DaisySP",
+			"path": "deps/daisy/DaisySP"
+		},
+		{
+			"name": "deps: Mutable Instruments",
+			"path": "deps/mutable/eurorack"
+		}
+	],
+	"settings": {
+		"files.exclude": {
+			"**/.DS_Store": true,
+			"**/build/**": true,
+			"**/.pio/**": true
+		},
+		"search.exclude": {
+			"**/build/**": true,
+			"**/.pio/**": true
+		},
+		"C_Cpp.default.includePath": [
+			"${workspaceFolder:eurorack_libdaisy}/**",
+			"${workspaceFolder:deps: libDaisy}",
+			"${workspaceFolder:deps: libDaisy}/src",
+			"${workspaceFolder:deps: libDaisy}/core",
+			"${workspaceFolder:deps: DaisySP}",
+			"${workspaceFolder:deps: DaisySP}/Source",
+			"${workspaceFolder:deps: Mutable Instruments}"
+		],
+		"C_Cpp.default.browse.path": [
+			"${workspaceFolder:eurorack_libdaisy}",
+			"${workspaceFolder:deps: libDaisy}",
+			"${workspaceFolder:deps: DaisySP}",
+			"${workspaceFolder:deps: Mutable Instruments}"
+		]
+	}
+}

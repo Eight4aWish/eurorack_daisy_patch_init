@@ -1,0 +1,9 @@
+[submodule "deps/daisy/libDaisy"]
+	path = deps/daisy/libDaisy
+	url = https://github.com/electro-smith/libDaisy.git
+[submodule "deps/mutable/eurorack"]
+	path = deps/mutable/eurorack
+	url = https://github.com/pichenettes/eurorack.git
+[submodule "deps/daisy/DaisySP"]
+	path = deps/daisy/DaisySP
+	url = https://github.com/electro-smith/DaisySP.git

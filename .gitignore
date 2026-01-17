@@ -1,0 +1,18 @@
+# macOS
+.DS_Store
+
+# Build output (generated)
+**/build/**
+
+# Common embedded outputs
+*.o
+*.a
+*.d
+*.lst
+*.map
+*.elf
+*.hex
+*.bin
+
+# PlatformIO
+.pio/
