@@ -62,7 +62,7 @@ Bank 4:
 The envelope is controlled by `GATE_IN_1`: attack on rising edge, sustain while held, decay on release. It is applied to the output level.
 
 ### CV Modulation
-- `CV_5`: V/Oct pitch (Patch SM bipolar input normalized 0..1; **0V ≈ 0.5**). Mapped to ±60 semitones around 0V. Default 0V base note is **C3 (MIDI 48)**.
+- `CV_5`: V/Oct pitch (Patch SM bipolar input normalized ~-1..+1; **0V ≈ 0.0**). Mapped to ±60 semitones around 0V. Default 0V base note is **C3 (MIDI 48)**.
 - `CV_6`: Timbre modulation
 - `CV_7`: Color modulation
 
@@ -74,7 +74,7 @@ If you want **0V = C2** (or any other reference), override at build time:
 
 If your hardware reads 0V slightly off-center (not ~0.5), you can trim the center:
 
-- `make ... VOCT_CENTER_NORM=0.497f`
+- `make ... VOCT_CENTER_NORM=-0.01f`
 
 ## Model list (lite / DFU build)
 
