@@ -1,0 +1,16 @@
+drumseq_mi
+
+License: GPL-3.0-or-later
+
+This project contains a portable port of the Mutable Instruments “Grids” drum pattern generator.
+The Grids-derived portions of this project are licensed under the GNU General Public License,
+version 3 or (at your option) any later version (GPL-3.0-or-later).
+
+SPDX-License-Identifier: GPL-3.0-or-later
+
+A copy of the GPL v3 is available at:
+  https://www.gnu.org/licenses/gpl-3.0.html
+
+Notes:
+- This repository also depends on third-party components under their own licenses.
+  See the vendored dependency directories under deps/ for those license texts.
