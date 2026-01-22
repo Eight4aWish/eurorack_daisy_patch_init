@@ -1,146 +1,142 @@
 # drumseq_mi
 
-A Daisy Patch SM drum module concept: **3 modeled drum voices + built-in sequencer** inspired by Mutable Instruments Grids.
+A Daisy Patch.Init drum module: **3 synthetic drum voices + Grids-style sequencer** inspired by Mutable Instruments Grids.
 
-This repo already vendors Mutable Instruments sources under `deps/mutable/eurorack/`. This project includes a small portable port of the Grids drum pattern generator (GPL), so downstream distribution must comply with GPL terms.
+This project includes a portable port of the Grids drum pattern generator (GPL-3.0), so downstream distribution must comply with GPL terms.
 
-## High-level behavior
+## Features
 
-### Modes
+- **3 synthetic drum voices**: Kick, Snare, Hi-Hat using DaisySP
+- **Grids pattern generator**: X/Y pattern morphing with density and chaos controls
+- **External clock input** with 4× multiplier (quarter notes → 16th notes)
+- **External reset input** for transport sync
+- **External trigger outputs** for driving other modules
+- **Per-drum pan/volume** with stereo output
+- **Edit modes** for sound design with 1 beat/sec auto-audition
 
-The firmware exposes 4 modes (selected by the Patch SM panel button `B7`):
-
-1. **Grids**: 3-lane trigger generator driving the internal drum kit (self-contained).
-2. **Kick**: kick voice focus page (auto-audition tick, no external trigger required).
-3. **Snare**: snare voice focus page (auto-audition tick).
-4. **Hat**: hat voice focus page (auto-audition tick).
-
-There are no external drum trigger inputs in this design, and we are not outputting triggers to other modules.
-
-### Voices (3 drum module)
-
-We implement three independent voices using DaisySP modeled drums:
-
-- **Kick**: `daisysp::AnalogBassDrum`
-- **Snare**: `daisysp::SyntheticSnareDrum`
-- **Hat**: `daisysp::HiHat<>` (template-based; can later expose alternate metallic noise flavors)
-
-### Model set switching (Shift)
-
-User preference: **Shift toggles between model sets**, not “extended Grids controls”.
-
-- **Shift OFF** (Analog set): `AnalogBassDrum` + `AnalogSnareDrum` + `HiHat<>`
-- **Shift ON** (Synthetic set): `SyntheticBassDrum` + `SyntheticSnareDrum` + `HiHat<>`
-
-Hat remains the same “family” (a templated model) in both sets.
-
-### Sequencer
-
-A Grids-like approach:
-
-- Generates triggers for 3 lanes (BD/SD/HH) with **X/Y pattern morph**, **density**, and **randomness/swing**.
-- External clock preferred (CV input used as clock); internal clock fallback can be added.
-
-Clock/reset I/O (final):
-
-- `gate_in_1` (B10): **external clock in**
-- `gate_in_2` (B9): **reset**
-
-Licensing note: the Grids generator port lives in `include/grids_port.h`, `src/grids_port.cpp`, and the extracted pattern tables `src/grids_nodes.cpp` and is GPL-3.0-or-later.
-
-## Hardware I/O (Daisy Patch SM)
-
-### Audio
-
-- Stereo audio out
-- Optional audio in passthrough / sidechain: not required for MVP
-
-### Trigger/Gate inputs
-
-- Two dedicated gate inputs available on Patch SM
-- Additional triggers can be derived from CV inputs via ADC thresholding, but MVP targets 3 drums (so 3 triggers max is sufficient)
-
-### Clock
-
-- External clock via `gate_in_1` rising edge (`Trig()`)
-- Reset via `gate_in_2` rising edge
+## Hardware I/O (Daisy Patch.Init)
 
 ### Controls
 
-- 4 knobs (CV_1..CV_4 used as pots)
-- Shift switch/button for model set selection
-- LED indicates current patch slot and/or edit state
+| Control | Function |
+|---------|----------|
+| **B7** (Momentary) | Cycle through modes (1-4 LED pulses indicate mode) |
+| **B8** (Toggle) | Internal synth (off) / External trigger outputs (on) |
+| **B10** (Gate In 1) | External clock input (expects quarter notes) |
+| **B9** (Gate In 2) | Reset input - returns to step 0, clears external clock mode |
 
-## Control mapping (Mode 1: DrumSeq)
+### Outputs
 
-`B8` (Shift) toggles the **drum kit** (analog vs synthetic).
+| Output | Function |
+|--------|----------|
+| **Audio L/R** | Stereo mix of all drums (internal mode) |
+| **B5** | Kick trigger out (external mode) |
+| **B6** | Snare trigger out (external mode) |
+| **CV_OUT_1** | Hi-Hat trigger out (external mode) |
+| **CV_OUT_2** | LED indicator (pulse count = mode) |
 
-Grids mode controls:
+## Modes
 
-- CV_1: X (pattern morph)
-- CV_2: Y (pattern morph)
-- CV_3: Density (macro)
-- CV_4: Chaos (randomness)
+### Mode 0: Pattern (1 LED pulse)
+Grids pattern generator - all 3 drums play sequenced patterns.
 
-Grids mode CV modulation (inputs may float when unpatched; we apply deadzone + hysteresis):
+| Knob | Parameter |
+|------|-----------|
+| CV_1 | X - pattern morph horizontal |
+| CV_2 | Y - pattern morph vertical |
+| CV_3 | Density - trigger density (0-100%) |
+| CV_4 | Chaos - pattern randomness |
 
-- CV_5: X mod
-- CV_6: Y mod
-- CV_7: Density mod
-- CV_8: Chaos mod
+### Mode 1: Edit Kick (2 LED pulses)
+Sound design for kick drum with 1 beat/sec auto-trigger.
 
-Override rule: if CV_5..CV_8 are detected as patched, they **override** the corresponding CV_1..CV_4 knob values for that parameter.
+| Knob | Parameter |
+|------|-----------|
+| CV_1 | Frequency (50-200 Hz) |
+| CV_2 | Decay (50-500ms) |
+| CV_3 | Pan (left-right) |
+| CV_4 | Volume |
 
-LED: the Patch SM user LED is driven via `DaisyPatchSM::SetLed()`; pulse count indicates mode (1..4).
+### Mode 2: Edit Snare (3 LED pulses)
+Sound design for snare drum with 1 beat/sec auto-trigger.
 
-For convenience, the firmware also mirrors this pulse to `CV_OUT_2` (0V/2V) in case you have an external LED wired there.
+| Knob | Parameter |
+|------|-----------|
+| CV_1 | Frequency |
+| CV_2 | Snappiness (noise/tone mix) |
+| CV_3 | Pan (left-right) |
+| CV_4 | Volume |
 
-## Control mapping (Kick/Snare/Hat modes)
+### Mode 3: Edit Hi-Hat (4 LED pulses)
+Sound design for hi-hat with 1 beat/sec auto-trigger.
 
-Single-voice edit pages auto-trigger internally so changes are audible with nothing patched.
+| Knob | Parameter |
+|------|-----------|
+| CV_1 | Frequency |
+| CV_2 | Decay |
+| CV_3 | Pan (left-right) |
+| CV_4 | Volume |
 
-- CV_1..CV_2: per-voice parameters (varies by voice)
-- CV_3: pan
-- CV_4: level
+## Clock Behavior
 
-## MVP acceptance criteria
+### Internal Clock (default)
+- Runs automatically on startup
+- ~120 BPM (8 ticks/sec for 16th notes)
 
-- Builds as a Patch SM firmware target.
-- Runs 3 drum voices with audible output.
-- External clock advances an internal step counter.
-- Sequencer produces 3 trigger streams and drives the drum voices.
-- Shift switches between analog/synthetic model sets.
-- LED shows patch slot; optionally indicates shift/model-set.
+### External Clock
+- Connect quarter-note clock to B10
+- First clock pulse latches into external mode
+- 4× clock multiplier converts quarter notes to 16th notes for Grids
+- Sequencer stops when external clock stops (no fallback)
+- Reset input (B9) returns to internal clock mode
 
-## Build + flash (smoke test)
+### Transport Control
+1. Power on → internal clock runs
+2. Connect external clock → switches to external, follows your clock
+3. Stop external clock → sequencer stops (stays quiet)
+4. Press reset (B9) → returns to internal clock mode
 
-The only meaningful “test” without hardware is: **does it compile and produce a .bin/.elf**.
+## Voices
 
-From this folder:
+Three synthetic voices using DaisySP:
 
-- Build: `make clean && make -j`
-- Output artifacts: `build/drumseq_mi.elf`, `build/drumseq_mi.bin`, `build/drumseq_mi.map`
+- **Kick**: `SyntheticBassDrum` - punchy bass drum with variable frequency and decay
+- **Snare**: `SyntheticSnareDrum` - snare with adjustable tone/noise balance
+- **Hi-Hat**: `HiHat<>` - metallic hi-hat with frequency and decay control
 
-To flash via DFU (Patch SM in DFU mode):
+## Build & Flash
 
-- Flash: `make flash`
+### Prerequisites
+- ARM GCC toolchain (`arm-none-eabi-gcc`)
+- `dfu-util` for flashing (`brew install dfu-util` on macOS)
+- libDaisy and DaisySP (in `deps/daisy/`)
 
-If you have more than one DFU-capable device connected (common on dev setups), dfu-util may refuse to flash unless you select the right device.
+### Build
+```bash
+make clean && make
+```
 
-- List DFU devices: `make dfu-list`
-- Flash with explicit serial: `make flash DFU_SERIAL=<serial>`
-- Flash with explicit VID:PID (defaults to STM32 DFU): `make flash DFU_VIDPID=0483:df11`
+Output: `build/drumseq_mi.elf`, `build/drumseq_mi.bin`
 
-Notes:
+### Flash
+Put Patch.Init in DFU mode (hold BOOT while pressing RESET), then:
+```bash
+make flash
+```
 
-- `make flash` uses `dfu-util` and writes to `0x08000000`.
-- Some `dfu-util` builds return exit code `74` when using `:leave`; the Makefile treats that case as success.
-- If you don’t have `dfu-util` installed on macOS: `brew install dfu-util`.
+Or with explicit device selection:
+```bash
+make dfu-list                           # List DFU devices
+make flash DFU_SERIAL=<serial>          # Flash specific device
+make flash DFU_VIDPID=0483:df11         # Flash by VID:PID
+```
 
-## Roadmap (post-MVP)
+## License
 
-- Add per-drum parameter pages (tone/decay/character) with LED feedback.
-- Add internal clock, reset, and swing.
-- Add optional 4th derived lane (accent/clap) using CV-as-gate.
-- Add per-lane density/chaos scaling options (currently density is shared across BD/SD/HH).
+- Grids pattern generator port (`grids_port.h`, `grids_port.cpp`, `grids_nodes.cpp`): **GPL-3.0-or-later**
+- Main firmware: **GPL-3.0-or-later** (due to Grids inclusion)
 
+## Acknowledgments
+
+- [Mutable Instruments](https://mutable-instruments.net/) - Original Grids module design
+- [Electrosmith](https://www.electro-smith.com/) - Daisy platform and DaisySP library
