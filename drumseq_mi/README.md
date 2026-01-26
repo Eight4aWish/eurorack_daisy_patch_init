@@ -8,6 +8,7 @@ This project includes a portable port of the Grids drum pattern generator (GPL-3
 
 - **3 synthetic drum voices**: Kick, Snare, Hi-Hat using DaisySP
 - **Grids pattern generator**: X/Y pattern morphing with density and chaos controls
+- **CV modulation inputs**: CV_5-CV_8 modulate pattern parameters (±50% depth)
 - **External clock input** with 4× multiplier (quarter notes → 16th notes)
 - **External reset input** for transport sync
 - **External trigger outputs** for driving other modules
@@ -46,6 +47,17 @@ Grids pattern generator - all 3 drums play sequenced patterns.
 | CV_2 | Y - pattern morph vertical |
 | CV_3 | Density - trigger density (0-100%) |
 | CV_4 | Chaos - pattern randomness |
+
+**CV Modulation Inputs** (Pattern mode only):
+
+| CV Input | Modulates | Range |
+|----------|-----------|-------|
+| CV_5 | X | ±50% |
+| CV_6 | Y | ±50% |
+| CV_7 | Density | ±50% |
+| CV_8 | Chaos | ±50% |
+
+CV inputs are bipolar (-5V to +5V). At 0V, no modulation is applied. Positive voltage increases the parameter, negative decreases it.
 
 ### Mode 1: Edit Kick (2 LED pulses)
 Sound design for kick drum with 1 beat/sec auto-trigger.

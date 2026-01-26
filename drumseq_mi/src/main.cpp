@@ -235,11 +235,19 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
     float t = static_cast<float>(g_led_ctr) / patch.AudioSampleRate();
     SetPanelLed(LedPulseState(static_cast<uint8_t>(g_sub_mode + 1), t));
 
-    // Read knobs - map bipolar (-1..+1) to unipolar (0..1)
-    float k1 = Clamp01f(0.5f * (Clamp11f(patch.GetAdcValue(CV_1)) + 1.0f));
-    float k2 = Clamp01f(0.5f * (Clamp11f(patch.GetAdcValue(CV_2)) + 1.0f));
-    float k3 = Clamp01f(0.5f * (Clamp11f(patch.GetAdcValue(CV_3)) + 1.0f));
-    float k4 = Clamp01f(0.5f * (Clamp11f(patch.GetAdcValue(CV_4)) + 1.0f));
+    // Read knobs - CV_1..CV_4 pots return approximately 0..1 when nothing is patched
+    // (The bipolar -1..+1 range only applies when external CV is connected)
+    float k1 = Clamp01f(patch.GetAdcValue(CV_1));
+    float k2 = Clamp01f(patch.GetAdcValue(CV_2));
+    float k3 = Clamp01f(patch.GetAdcValue(CV_3));
+    float k4 = Clamp01f(patch.GetAdcValue(CV_4));
+
+    // Read CV inputs CV_5..CV_8 as bipolar modulation sources (-1..+1)
+    // These are CV-only jacks (no pots) for external modulation in Pattern mode
+    const float cv5_mod = Clamp11f(patch.GetAdcValue(CV_5)) * 0.5f;  // X mod (±50%)
+    const float cv6_mod = Clamp11f(patch.GetAdcValue(CV_6)) * 0.5f;  // Y mod (±50%)
+    const float cv7_mod = Clamp11f(patch.GetAdcValue(CV_7)) * 0.5f;  // Density mod (±50%)
+    const float cv8_mod = Clamp11f(patch.GetAdcValue(CV_8)) * 0.5f;  // Chaos mod (±50%)
 
     const float sr = patch.AudioSampleRate();
 
@@ -346,11 +354,17 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
 
         if(tick)
         {
-            // Grids parameters from all 4 knobs
-            const uint8_t x    = static_cast<uint8_t>(k1 * 255.0f);
-            const uint8_t y    = static_cast<uint8_t>(k2 * 255.0f);
-            const uint8_t dens = static_cast<uint8_t>(k3 * 255.0f);
-            const uint8_t rnd  = static_cast<uint8_t>(k4 * 255.0f);
+            // Grids parameters from pots + CV modulation
+            // CV_5-CV_8 add ±50% modulation to the pot values
+            const float x_val    = Clamp01f(k1 + cv5_mod);
+            const float y_val    = Clamp01f(k2 + cv6_mod);
+            const float dens_val = Clamp01f(k3 + cv7_mod);
+            const float rnd_val  = Clamp01f(k4 + cv8_mod);
+
+            const uint8_t x    = static_cast<uint8_t>(x_val * 255.0f);
+            const uint8_t y    = static_cast<uint8_t>(y_val * 255.0f);
+            const uint8_t dens = static_cast<uint8_t>(dens_val * 255.0f);
+            const uint8_t rnd  = static_cast<uint8_t>(rnd_val * 255.0f);
 
             // Get triggers from Grids pattern generator
             const auto step = grids.Tick(x, y, dens, dens, dens, rnd);
