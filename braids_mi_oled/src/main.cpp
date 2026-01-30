@@ -419,8 +419,8 @@ void UpdateDisplay()
         display.DrawHLine(0, 9, 64);
         
         // CV function reminders
-        display.DrawString(0, 14, "1:Tim 2:Col", false);
-        display.DrawString(0, 24, "3:Atk 4:Dcy", false);
+        display.DrawString(0, 14, "TIMB  COLR", false);
+        display.DrawString(0, 24, "ATK   DCY", false);
     }
     
     display.Update();

@@ -8,10 +8,10 @@ Connect your I2C OLED to the **12-pin expansion header** on the Patch.Init:
 
 | OLED Pin | Expansion Header | Patch SM Pin | GPIO |
 |----------|------------------|--------------|------|
-| VCC | Pin 1 (3V3) | A10 | - |
-| GND | Pin 4 (GND) | A4 | - |
-| SDA | Pin 9 (RX) | A2 | PORTA, 1 |
-| SCL | Pin 10 (TX) | A3 | PORTA, 0 |
+| VCC | Pin 1 (3V3) |  | - | YELLOW
+| GND | Pin 12 (GND) |  | - | ORANGE
+| SDA | Pin 9 (RX) |  | PORTA, 1 | GREEN
+| SCL | Pin 10 (TX) |  | PORTA, 0 | BLUE
 
 **Note:** This uses software I2C (bit-banging) since the hardware I2C peripheral cannot be remapped to these pins.
 

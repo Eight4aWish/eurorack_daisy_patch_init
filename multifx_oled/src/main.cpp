@@ -16,7 +16,7 @@
  *   B7 Long Press:  Enter/exit effect selection menu
  *   
  *   CV_1..CV_4: Effect-specific parameters (shown on display)
- *   CV_5: External clock input (for delay sync)
+ *   B10: External clock/gate input (for delay sync)
  *   
  *   Audio In L/R -> Processing -> Audio Out L/R
  */
@@ -161,20 +161,18 @@ void UpdateDisplay()
     } else {
         // EFFECT MODE: Effect name on top, CV functions below
         
-        // Top line: FX:NAME
-        char title[16];
-        snprintf(title, sizeof(title), "FX:%s", kEffects[current_effect].name);
-        display.DrawStringCentered(0, title, false);
+        // Top line: effect name
+        display.DrawStringCentered(0, kEffects[current_effect].name, false);
         
         // Divider
         display.DrawHLine(0, 9, 64);
         
         // CV function reminders (effect-specific)
         char line1[16], line2[16];
-        snprintf(line1, sizeof(line1), "1:%-4s 2:%-4s", 
+        snprintf(line1, sizeof(line1), "%-5s %-5s", 
                  kEffects[current_effect].param1,
                  kEffects[current_effect].param2);
-        snprintf(line2, sizeof(line2), "3:%-4s 4:%-4s",
+        snprintf(line2, sizeof(line2), "%-5s %-5s",
                  kEffects[current_effect].param3,
                  kEffects[current_effect].param4);
         display.DrawString(0, 14, line1, false);
@@ -253,13 +251,11 @@ void AudioCallback(AudioHandle::InputBuffer  in,
     float k2 = patch.GetAdcValue(CV_2);
     float k3 = patch.GetAdcValue(CV_3);
     float k4 = patch.GetAdcValue(CV_4);
-    float kclk = patch.GetAdcValue(CV_5);
     
-    // Clock detection for delay sync
-    const float hi_thr = 0.65f;
-    const float lo_thr = 0.35f;
+    // Clock detection for delay sync (B10 gate input)
+    bool clk_in = patch.gate_in_1.State();
     uint32_t now_ticks = System::GetNow();
-    if(!g_clk_gate && kclk >= hi_thr)
+    if(!g_clk_gate && clk_in)
     {
         g_clk_gate = true;
         if(g_clk_last_ticks != 0)
@@ -271,7 +267,7 @@ void AudioCallback(AudioHandle::InputBuffer  in,
         }
         g_clk_last_ticks = now_ticks;
     }
-    else if(g_clk_gate && kclk <= lo_thr)
+    else if(g_clk_gate && !clk_in)
     {
         g_clk_gate = false;
     }
