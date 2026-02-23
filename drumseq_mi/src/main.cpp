@@ -101,11 +101,11 @@ static constexpr float kLedVoltsOn = 5.0f;
 // Manual edge detection with state tracking for reliability
 // Clock multiplier: external clock is assumed to be quarter notes (1 ppqn)
 // We multiply by 4 to get 16th notes for Grids
-// Once external clock is detected, internal clock is disabled until reset
+// Once external clock is detected, it stays latched (reset only resets position)
 // -----------------------------------------------------------------------------
 static bool g_ext_clk_state = false;  // Current clock state
 static bool g_ext_rst_state = false;  // Current reset state
-static bool g_use_ext_clock = false;  // True if external clock mode (latches on)
+static bool g_use_ext_clock = false;  // True if external clock mode (latches on first edge)
 
 // Clock multiplier state (4× to convert quarter notes to 16th notes)
 static constexpr uint8_t kClockMultiplier = 4;
@@ -251,54 +251,53 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
 
     const float sr = patch.AudioSampleRate();
 
+    // Update global sample counter
+    g_sample_counter += size;
+
     // Reset pattern on rising edge of reset input
+    // Reset only resets the pattern position and clock multiplier phase;
+    // it does NOT clear external clock mode, so clock source is preserved
+    // across resets (common eurorack use case: periodic resets with ext clock).
     if(ext_rst_rising)
     {
         grids.Reset();
         g_ext_clk_mult_phase = 0;
+        g_ext_clk_counter = 0;
+        g_internal_clk_samples = 0;  // Align internal clock phase on reset too
     }
 
-    // Update global sample counter
-    g_sample_counter += size;
-
     // Track external clock presence and period
-    // Once external clock is detected, stay in external mode (no fallback to internal)
-    // Use reset input to return to internal clock mode
+    // Once external clock is detected, it stays latched permanently.
+    // Tick is generated immediately on every clock edge (including the first).
     if(ext_clk_rising)
     {
-        // Calculate period since last clock edge
+        // Calculate period since last clock edge (unsigned subtraction
+        // handles g_sample_counter wrap correctly).
         uint32_t now = g_sample_counter;
-        if(g_ext_clk_last_edge > 0 && now > g_ext_clk_last_edge)
+        if(g_ext_clk_last_edge > 0)
         {
             g_ext_clk_period = now - g_ext_clk_last_edge;
         }
         g_ext_clk_last_edge = now;
         g_ext_clk_counter = 0;
         g_ext_clk_mult_phase = 0;
-        
+
         g_use_ext_clock = true;
-    }
-    
-    // Reset input also clears external clock mode (returns to internal clock)
-    if(ext_rst_rising)
-    {
-        g_use_ext_clock = false;
-        g_ext_clk_period = 0;
-        g_ext_clk_last_edge = 0;
     }
 
     // Generate multiplied clock ticks (4× for 16th notes from quarter notes)
     bool ext_tick = false;
-    if(g_use_ext_clock && g_ext_clk_period > 0)
+    if(g_use_ext_clock)
     {
-        // First tick happens immediately on clock edge
+        // Always generate a tick on the clock edge itself (sub-tick 0 of 4).
+        // This works even on the very first edge before period is known.
         if(ext_clk_rising)
         {
             ext_tick = true;
         }
-        else
+        else if(g_ext_clk_period > 0)
         {
-            // Generate interpolated ticks at 1/4, 2/4, 3/4 of the period
+            // Generate interpolated sub-ticks at 1/4, 2/4, 3/4 of the period
             g_ext_clk_counter += size;
             uint32_t tick_interval = g_ext_clk_period / kClockMultiplier;
             if(tick_interval > 0 && g_ext_clk_mult_phase < (kClockMultiplier - 1))
