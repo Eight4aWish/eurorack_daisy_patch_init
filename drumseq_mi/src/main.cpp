@@ -100,19 +100,21 @@ static constexpr float kLedVoltsOn = 5.0f;
 // External Clock & Reset (B10, B9)
 // Manual edge detection with state tracking for reliability
 // Clock multiplier: external clock is assumed to be quarter notes (1 ppqn)
-// We multiply by 4 to get 16th notes for Grids
+// We multiply by 8 to get 8 steps per quarter note (32 steps per bar for Grids)
 // Once external clock is detected, it stays latched (reset only resets position)
 // -----------------------------------------------------------------------------
 static bool g_ext_clk_state = false;  // Current clock state
 static bool g_ext_rst_state = false;  // Current reset state
 static bool g_use_ext_clock = false;  // True if external clock mode (latches on first edge)
+static bool g_awaiting_first_clock = false; // After reset, suppress sub-ticks until next clock edge
 
-// Clock multiplier state (4× to convert quarter notes to 16th notes)
-static constexpr uint8_t kClockMultiplier = 4;
+// Clock multiplier state (8× to convert quarter notes to 32nd-note Grids steps)
+// Grids has 32 steps per bar = 8 steps per quarter note, so 1 ppqn × 8 = 32 steps/bar
+static constexpr uint8_t kClockMultiplier = 8;
 static uint32_t g_ext_clk_period = 0;     // Samples between last two clock edges
 static uint32_t g_ext_clk_last_edge = 0;  // Sample count at last clock edge
 static uint32_t g_ext_clk_counter = 0;    // Counter for generating multiplied ticks
-static uint8_t  g_ext_clk_mult_phase = 0; // Which of the 4 sub-ticks we're on
+static uint8_t  g_ext_clk_mult_phase = 0; // Which of the 8 sub-ticks we're on
 static uint32_t g_sample_counter = 0;     // Global sample counter
 
 // -----------------------------------------------------------------------------
@@ -258,12 +260,24 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
     // Reset only resets the pattern position and clock multiplier phase;
     // it does NOT clear external clock mode, so clock source is preserved
     // across resets (common eurorack use case: periodic resets with ext clock).
+    // After reset, we suppress interpolated sub-ticks until the next real
+    // clock edge arrives. This matches original Grids: reset positions the
+    // step pointer and the clock drives playback. In typical eurorack setups
+    // the clock edge follows reset within a few ms, so this is imperceptible.
     if(ext_rst_rising)
     {
         grids.Reset();
         g_ext_clk_mult_phase = 0;
         g_ext_clk_counter = 0;
         g_internal_clk_samples = 0;  // Align internal clock phase on reset too
+        g_awaiting_first_clock = true;
+
+        // Clear last-edge timestamp so the first clock after reset does NOT
+        // recompute g_ext_clk_period from the stale pre-reset timestamp.
+        // The old period value (from the previous two clock edges at the
+        // correct tempo) is preserved and used for sub-tick interpolation,
+        // keeping the first quarter note properly subdivided.
+        g_ext_clk_last_edge = 0;
     }
 
     // Track external clock presence and period
@@ -283,21 +297,24 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
         g_ext_clk_mult_phase = 0;
 
         g_use_ext_clock = true;
+        g_awaiting_first_clock = false;  // Clock arrived, resume normal operation
     }
 
-    // Generate multiplied clock ticks (4× for 16th notes from quarter notes)
+    // Generate multiplied clock ticks (8× for Grids steps from quarter notes)
     bool ext_tick = false;
     if(g_use_ext_clock)
     {
-        // Always generate a tick on the clock edge itself (sub-tick 0 of 4).
+        // Always generate a tick on the clock edge itself (sub-tick 0 of 8).
         // This works even on the very first edge before period is known.
         if(ext_clk_rising)
         {
             ext_tick = true;
         }
-        else if(g_ext_clk_period > 0)
+        else if(g_ext_clk_period > 0 && !g_awaiting_first_clock)
         {
-            // Generate interpolated sub-ticks at 1/4, 2/4, 3/4 of the period
+            // Generate interpolated sub-ticks at 1/8, 2/8, ..., 7/8 of the period.
+            // Suppressed after reset until the next real clock edge arrives,
+            // so stale-period sub-ticks don't consume steps before the clock.
             g_ext_clk_counter += size;
             uint32_t tick_interval = g_ext_clk_period / kClockMultiplier;
             if(tick_interval > 0 && g_ext_clk_mult_phase < (kClockMultiplier - 1))
