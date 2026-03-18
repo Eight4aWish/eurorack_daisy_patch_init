@@ -1,4 +1,4 @@
-# drumseq_mi
+# daisy_grids
 
 A Daisy Patch.Init drum module: **3 synthetic drum voices + Grids-style sequencer** inspired by Mutable Instruments Grids.
 
@@ -128,7 +128,7 @@ Three synthetic voices using DaisySP:
 make clean && make
 ```
 
-Output: `build/drumseq_mi.elf`, `build/drumseq_mi.bin`
+Output: `build/daisy_grids.elf`, `build/daisy_grids.bin`
 
 ### Flash
 Put Patch.Init in DFU mode (hold BOOT while pressing RESET), then:

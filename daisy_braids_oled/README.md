@@ -1,10 +1,10 @@
-# Braids MI OLED
+# Daisy Braids OLED
 
 Mutable Instruments Braids macro oscillator port for Daisy Patch.Init with OLED display for intuitive patch navigation.
 
 ## Overview
 
-This is a variant of braids_mi that adds a 64x48 OLED display for visual feedback and two-level menu navigation. The control scheme has been redesigned to use all four knobs for sound parameters, with patch selection handled via the B7 button.
+This is a variant of daisy_braids that adds a 64x48 OLED display for visual feedback and two-level menu navigation. The control scheme has been redesigned to use all four knobs for sound parameters, with patch selection handled via the B7 button.
 
 ## Hardware Requirements
 
@@ -172,7 +172,7 @@ The 64×48 pixel OLED shows:
 ## Building
 
 ```bash
-cd braids_mi_oled
+cd daisy_braids_oled
 make
 ```
 
@@ -195,9 +195,9 @@ V/Oct calibration can be adjusted by defining these values before `#include`:
 #define VOCT_CENTER_NORM 0.0f // ADC value at 0V (trim offset)
 ```
 
-## Changes from braids_mi
+## Changes from daisy_braids
 
-| Feature | braids_mi | braids_mi_oled |
+| Feature | daisy_braids | daisy_braids_oled |
 |---------|-----------|----------------|
 | Display | None (LED only) | 64x48 OLED |
 | Bank select | B7 button cycles | B7 long-press enters bank mode |

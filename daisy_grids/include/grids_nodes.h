@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace drumseq_mi::grids_port {
+namespace daisy_grids::grids_port {
 
 // Grids drum-map lookup nodes. Each node is 3 instruments * 32 steps = 96 bytes.
 extern const uint8_t node_0[96];
@@ -31,4 +31,4 @@ extern const uint8_t node_22[96];
 extern const uint8_t node_23[96];
 extern const uint8_t node_24[96];
 
-} // namespace drumseq_mi::grids_port
+} // namespace daisy_grids::grids_port

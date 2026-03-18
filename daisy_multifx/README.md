@@ -1,4 +1,4 @@
-# multifx
+# daisy_multifx
 
 A multi-effect processor for Daisy Patch.Init with 4 stereo effects: **Reverb**, **Resonator**, **Delay→Reverb**, and **Granular Pitch Shifter**.
 
@@ -158,7 +158,7 @@ Total SDRAM usage: ~480KB
 ## Building
 
 ```bash
-cd multifx
+cd daisy_multifx
 make clean && make -j4
 ```
 

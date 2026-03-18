@@ -1,7 +1,7 @@
 # Minimal Makefile for Daisy Patch SM firmware
 # Adjust DAISY_PATH in config.mk if not detected
 
-TARGET = multifx
+TARGET = daisy_multifx
 
 # Include user config if present
 -include config.mk

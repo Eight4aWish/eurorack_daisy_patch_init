@@ -1,5 +1,5 @@
-# DrumSeq MI - Daisy Patch SM firmware
-TARGET = drumseq_mi
+# Daisy Grids - Daisy Patch SM firmware
+TARGET = daisy_grids
 
 PROJECT_MAKEFILE := $(abspath $(lastword $(MAKEFILE_LIST)))
 _P_DIR := $(patsubst %/,%,$(dir $(PROJECT_MAKEFILE)))

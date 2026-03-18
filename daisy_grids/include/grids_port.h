@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace drumseq_mi::grids_port {
+namespace daisy_grids::grids_port {
 
 // Minimal, portable port of Mutable Instruments Grids drum pattern generator.
 // Source reference: deps/mutable/eurorack/grids/pattern_generator.{h,cc}
@@ -51,4 +51,4 @@ class GridsDrumGenerator
     static uint8_t ReadDrumMap(uint8_t step, uint8_t instrument, uint8_t x, uint8_t y);
 };
 
-} // namespace drumseq_mi::grids_port
+} // namespace daisy_grids::grids_port

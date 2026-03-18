@@ -1,4 +1,4 @@
-# braids_mi
+# daisy_braids
 
 A "genuine" Braids-style oscillator app for Daisy Patch SM, built from the original Mutable Instruments Braids macro-oscillator DSP (`braids/macro_oscillator.*` + dependencies) in the shared `deps/mutable/eurorack` tree.
 
@@ -193,7 +193,7 @@ Bank 4:
 
 ## Build
 
-From `eurorack_libdaisy/braids_mi`:
+From `eurorack_daisy_patch_init/daisy_braids`:
 
 - `make`
 
@@ -222,7 +222,7 @@ To build the full variant for the bootloader:
 
 - `make clean && make BRAIDS_VARIANT=full APP_TYPE=BOOT_QSPI`
 
-Then copy `build/braids_mi.bin` to the SD card root and reboot once to flash QSPI.
+Then copy `build/daisy_braids.bin` to the SD card root and reboot once to flash QSPI.
 
 ### Format the SD card on macOS
 
@@ -265,7 +265,7 @@ Then from this project directory, with the device in DFU mode:
 
 - `make clean && make APP_TYPE=BOOT_QSPI`
 
-Then copy `build/braids_mi.bin` to the **root** of the SD card.
+Then copy `build/daisy_braids.bin` to the **root** of the SD card.
 
 Notes:
 - Keep the SD card root free of other `.bin` files; the bootloader stops at the first `.bin` it finds.

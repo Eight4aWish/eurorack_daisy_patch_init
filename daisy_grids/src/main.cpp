@@ -30,7 +30,7 @@ namespace
 {
 
 DaisyPatchSM patch;
-drumseq_mi::grids_port::GridsDrumGenerator grids;
+daisy_grids::grids_port::GridsDrumGenerator grids;
 
 // -----------------------------------------------------------------------------
 // Drum Voices - Synthetic kit for internal mode

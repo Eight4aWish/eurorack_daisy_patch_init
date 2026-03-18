@@ -1,5 +1,5 @@
 # Project Name
-TARGET = multifx_oled
+TARGET = daisy_multifx_oled
 
 # Library Locations
 PROJECT_MAKEFILE := $(abspath $(lastword $(MAKEFILE_LIST)))

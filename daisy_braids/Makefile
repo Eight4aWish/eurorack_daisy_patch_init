@@ -1,5 +1,5 @@
 # Project Name
-TARGET = braids_mi
+TARGET = daisy_braids
 
 # Library Locations
 PROJECT_MAKEFILE := $(abspath $(lastword $(MAKEFILE_LIST)))

@@ -6,7 +6,7 @@
 
 #include "grids_nodes.h"
 
-namespace drumseq_mi::grids_port {
+namespace daisy_grids::grids_port {
 
 const uint8_t node_0[96] = {
     255, 0, 0, 0, 0, 0, 145, 0, 0, 0, 0, 0, 218, 0, 0, 0,
@@ -233,4 +233,4 @@ const uint8_t node_24[96] = {
     95, 0, 0, 0, 0, 63, 0, 0, 127, 0, 0, 0, 0, 31, 0, 0,
 };
 
-} // namespace drumseq_mi::grids_port
+} // namespace daisy_grids::grids_port

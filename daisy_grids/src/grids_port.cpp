@@ -2,7 +2,7 @@
 
 #include "grids_nodes.h"
 
-namespace drumseq_mi::grids_port {
+namespace daisy_grids::grids_port {
 
 namespace {
 // This mapping matches the upstream Grids drum_map[][] pointer table.
@@ -125,4 +125,4 @@ GridsStep GridsDrumGenerator::Tick(uint8_t x,
     return s;
 }
 
-} // namespace drumseq_mi::grids_port
+} // namespace daisy_grids::grids_port

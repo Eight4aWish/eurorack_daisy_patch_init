@@ -8,10 +8,10 @@ non-AVR-friendly representation of the drum map tables.
 Input:
   deps/mutable/eurorack/grids/resources.cc
 Output:
-  drumseq_mi/src/grids_nodes.cpp
+  daisy_grids/src/grids_nodes.cpp
 
 Run from repo root:
-  python3 drumseq_mi/tools/extract_grids_nodes.py
+  python3 daisy_grids/tools/extract_grids_nodes.py
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ import re
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 SRC = REPO_ROOT / "deps/mutable/eurorack/grids/resources.cc"
-OUT_CPP = REPO_ROOT / "drumseq_mi/src/grids_nodes.cpp"
+OUT_CPP = REPO_ROOT / "daisy_grids/src/grids_nodes.cpp"
 
 NODE_RE = re.compile(
     r"const\s+prog_uint8_t\s+node_(\d+)\[\]\s+PROGMEM\s*=\s*\{(.*?)\n\};",
@@ -55,7 +55,7 @@ def main() -> None:
     lines.append("")
     lines.append('#include "grids_nodes.h"')
     lines.append("")
-    lines.append("namespace drumseq_mi::grids_port {")
+    lines.append("namespace daisy_grids::grids_port {")
     lines.append("")
 
     for i in range(25):
@@ -67,7 +67,7 @@ def main() -> None:
         lines.append("};")
         lines.append("")
 
-    lines.append("} // namespace drumseq_mi::grids_port")
+    lines.append("} // namespace daisy_grids::grids_port")
     lines.append("")
 
     OUT_CPP.parent.mkdir(parents=True, exist_ok=True)
