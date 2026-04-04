@@ -86,13 +86,14 @@ static constexpr uint8_t kNumSubModes = 4;
 static bool     g_external_output = false;  // false=internal synth, true=external triggers
 static uint32_t g_led_ctr     = 0;
 
-// Per-drum mix parameters (pan: 0=left, 0.5=center, 1=right; vol: 0-1)
+// Per-drum pan parameters (pan: 0=left, 0.5=center, 1=right)
+// Equal-power gains precomputed at control rate: L = sqrt(1-pan), R = sqrt(pan)
 static float g_kick_pan  = 0.5f;
-static float g_kick_vol  = 0.8f;
+static float g_kick_gl   = 0.707f, g_kick_gr   = 0.707f;
 static float g_snare_pan = 0.5f;
-static float g_snare_vol = 0.7f;
+static float g_snare_gl  = 0.707f, g_snare_gr  = 0.707f;
 static float g_hat_pan   = 0.5f;
-static float g_hat_vol   = 0.6f;
+static float g_hat_gl    = 0.707f, g_hat_gr    = 0.707f;
 
 static constexpr float kLedVoltsOn = 5.0f;
 
@@ -340,19 +341,22 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
             kick.SetFreq(30.0f + k1 * 120.0f);      // 30-150 Hz
             kick.SetDecay(0.05f + k2 * 0.50f);      // 0.05-0.55
             g_kick_pan = k3;
-            g_kick_vol = k4;
+            g_kick_gl  = sqrtf(1.0f - g_kick_pan);
+            g_kick_gr  = sqrtf(g_kick_pan);
             break;
         case 2: // Edit Snare
             snare.SetFreq(100.0f + k1 * 300.0f);    // 100-400 Hz
             snare.SetSnappy(k2);                    // 0-1
             g_snare_pan = k3;
-            g_snare_vol = k4;
+            g_snare_gl  = sqrtf(1.0f - g_snare_pan);
+            g_snare_gr  = sqrtf(g_snare_pan);
             break;
         case 3: // Edit HiHat
             hat.SetFreq(4000.0f + k1 * 12000.0f);   // 4k-16k Hz
             hat.SetDecay(0.02f + k2 * 0.80f);       // 0.02-0.82
             g_hat_pan = k3;
-            g_hat_vol = k4;
+            g_hat_gl  = sqrtf(1.0f - g_hat_pan);
+            g_hat_gr  = sqrtf(g_hat_pan);
             break;
         default: // Mode 0: Pattern mode - all 4 knobs for Grids
             break;
@@ -466,19 +470,19 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
             const float snare_out = snare.Process(false);
             const float hat_out   = hat.Process(false);
 
-            // Per-drum pan/volume: pan 0=left, 0.5=center, 1=right
-            const float kick_l  = kick_out  * g_kick_vol  * (1.0f - g_kick_pan);
-            const float kick_r  = kick_out  * g_kick_vol  * g_kick_pan;
-            const float snare_l = snare_out * g_snare_vol * (1.0f - g_snare_pan);
-            const float snare_r = snare_out * g_snare_vol * g_snare_pan;
-            const float hat_l   = hat_out   * g_hat_vol   * (1.0f - g_hat_pan);
-            const float hat_r   = hat_out   * g_hat_vol   * g_hat_pan;
+            // Equal-power pan (gains precomputed at control rate)
+            const float kick_l  = kick_out  * g_kick_gl;
+            const float kick_r  = kick_out  * g_kick_gr;
+            const float snare_l = snare_out * g_snare_gl;
+            const float snare_r = snare_out * g_snare_gr;
+            const float hat_l   = hat_out   * g_hat_gl;
+            const float hat_r   = hat_out   * g_hat_gr;
 
             // Mix and saturate
             float mix_l = 0.95f * kick_l + 0.70f * snare_l + 1.35f * hat_l;
             float mix_r = 0.95f * kick_r + 0.70f * snare_r + 1.35f * hat_r;
-            out[0][i] = FastSaturate(mix_l * 0.5f);
-            out[1][i] = FastSaturate(mix_r * 0.5f);
+            out[0][i] = FastSaturate(mix_l);
+            out[1][i] = FastSaturate(mix_r);
         }
     }
     else
