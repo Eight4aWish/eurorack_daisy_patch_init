@@ -125,6 +125,18 @@ static constexpr float kCatchEps = 0.03f;
 static uint32_t g_rand_flash = 0;
 static constexpr uint32_t kFlashSamples = 8000;  // ~0.17s at 48kHz
 
+// B7 press lockout: after a mode change, ignore further press edges for a
+// short window so contact bounce / electrical noise can't advance the mode
+// more than once per physical press. ~200ms is well above any bounce but
+// still allows brisk deliberate presses.
+static uint32_t g_btn_lockout = 0;
+static constexpr uint32_t kBtnLockoutSamples = 9600;  // ~0.20s at 48kHz
+
+// Output drive into the soft saturator. The saturator (x/(1+|x|)) otherwise
+// pulls a single hit down ~7dB; driving it harder restores level and adds
+// punch while still limiting peaks below full scale.
+static constexpr float kOutputDrive = 3.5f;
+
 // Lightweight xorshift RNG for kit randomization.
 static uint32_t g_rng = 0x1234567u;
 static inline float RandF01()
@@ -362,12 +374,17 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
     s_output_sw.Debounce();
 
     // B7 momentary button: press cycles sub-modes (pattern + 3 edit modes).
-    // Fire on the press edge for the snappiest, most reliable response.
-    if(s_mode_btn.RisingEdge())
+    // A lockout after each accepted press rejects contact bounce/noise so one
+    // physical press advances the mode exactly once.
+    if(g_btn_lockout > 0)
+        g_btn_lockout = (g_btn_lockout > size) ? g_btn_lockout - size : 0;
+
+    if(s_mode_btn.RisingEdge() && g_btn_lockout == 0)
     {
         g_sub_mode = (g_sub_mode + 1) % kNumSubModes;
         g_tk_caught[0] = g_tk_caught[1] = g_tk_caught[2] = false;
         g_tk_init      = true;
+        g_btn_lockout  = kBtnLockoutSamples;
     }
 
     // B8 toggle switch selects internal synth vs external triggers.
@@ -651,11 +668,11 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
             const float hat_l   = hat_out   * g_hat_gl;
             const float hat_r   = hat_out   * g_hat_gr;
 
-            // Mix and saturate
+            // Mix, drive, and saturate (drive lifts level and adds punch)
             float mix_l = 0.95f * kick_l + 0.70f * snare_l + 1.35f * hat_l;
             float mix_r = 0.95f * kick_r + 0.70f * snare_r + 1.35f * hat_r;
-            out[0][i] = FastSaturate(mix_l);
-            out[1][i] = FastSaturate(mix_r);
+            out[0][i] = FastSaturate(mix_l * kOutputDrive);
+            out[1][i] = FastSaturate(mix_r * kOutputDrive);
         }
     }
     else
