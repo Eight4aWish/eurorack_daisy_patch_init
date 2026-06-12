@@ -15,15 +15,21 @@ using namespace patch_sm;
 // 
 // B8 Toggle Switch: Internal synth drums (off) / External triggers (on)
 //   External triggers: B5=Kick, B6=Snare, CV_OUT_1=HiHat
+//   Flipping External -> Internal rolls a fresh randomized kit.
 //
 // B10 (Gate In 1): External clock input - rising edge advances step
 // B9  (Gate In 2): Reset input - rising edge resets pattern to step 0
 //
-// B7 Momentary Button: Cycle through sub-modes
-//   Mode 0 (1 pulse):  Pattern - CV1=X, CV2=Y, CV3=Density, CV4=Randomness
-//   Mode 1 (2 pulses): Edit Kick  - CV1=Freq, CV2=Decay, CV3=Pan, CV4=Volume
-//   Mode 2 (3 pulses): Edit Snare - CV1=Freq, CV2=Snappy, CV3=Pan, CV4=Volume
-//   Mode 3 (4 pulses): Edit HiHat - CV1=Freq, CV2=Decay, CV3=Pan, CV4=Volume
+// B7 Momentary Button: press cycles sub-modes
+//   (LED flashes = mode index; Pattern = no flash)
+//     Mode 0 (no flash): Pattern - CV1=X, CV2=Y, CV3=Density, CV4=Randomness
+//     Mode 1 (1 pulse):  Edit Kick  - CV1=Freq, CV2=Decay, CV3=Pan
+//     Mode 2 (2 pulses): Edit Snare - CV1=Freq, CV2=Snappy, CV3=Pan
+//     Mode 3 (3 pulses): Edit HiHat - CV1=Freq, CV2=Decay, CV3=Pan
+//   Edit knobs use soft-takeover: a knob only grabs its parameter once it
+//   crosses the stored value, so entering a mode never makes params jump.
+//
+// A fresh kit is also rolled at power-up. The LED blips to confirm each roll.
 // =============================================================================
 
 namespace
@@ -95,6 +101,40 @@ static float g_snare_gl  = 0.707f, g_snare_gr  = 0.707f;
 static float g_hat_pan   = 0.5f;
 static float g_hat_gl    = 0.707f, g_hat_gr    = 0.707f;
 
+// -----------------------------------------------------------------------------
+// Editable macro parameters (normalized 0..1) per drum.
+// p1/p2 map to the two knob-controlled params; pan reuses the g_*_pan globals.
+// Defaults match the engine Init() values below so boot sound is unchanged.
+//   Kick:  p1=freq(30..150Hz),  p2=decay(0.05..0.55)
+//   Snare: p1=freq(100..400Hz), p2=snappy(0..1)
+//   Hat:   p1=freq(4k..16kHz),  p2=decay(0.02..0.82)
+// -----------------------------------------------------------------------------
+static float g_kick_p1  = 0.208f, g_kick_p2  = 0.34f;
+static float g_snare_p1 = 0.283f, g_snare_p2 = 0.75f;
+static float g_hat_p1   = 0.333f, g_hat_p2   = 0.6625f;
+
+// Soft-takeover state: a knob only grabs its parameter once it crosses the
+// stored value, so entering an edit mode (or rolling a new kit) doesn't make
+// params jump to the knob's current physical position. Indices: 0=k1,1=k2,2=k3.
+static bool  g_tk_caught[3] = {false, false, false};
+static float g_tk_prev[3]   = {0.0f, 0.0f, 0.0f};
+static bool  g_tk_init      = true;   // reset prev[] on next edit-mode callback
+static constexpr float kCatchEps = 0.03f;
+
+// Brief LED confirmation flash after a randomize gesture.
+static uint32_t g_rand_flash = 0;
+static constexpr uint32_t kFlashSamples = 8000;  // ~0.17s at 48kHz
+
+// Lightweight xorshift RNG for kit randomization.
+static uint32_t g_rng = 0x1234567u;
+static inline float RandF01()
+{
+    g_rng ^= g_rng << 13;
+    g_rng ^= g_rng >> 17;
+    g_rng ^= g_rng << 5;
+    return static_cast<float>(g_rng & 0xFFFFFFu) / static_cast<float>(0x1000000);
+}
+
 static constexpr float kLedVoltsOn = 5.0f;
 
 // -----------------------------------------------------------------------------
@@ -153,6 +193,102 @@ static inline bool LedPulseState(uint8_t count, float t)
             return true;
     }
     return false;
+}
+
+// -----------------------------------------------------------------------------
+// Macro application - map normalized p1/p2 to each engine's parameters.
+// -----------------------------------------------------------------------------
+static inline void ApplyKick()
+{
+    kick.SetFreq(30.0f + g_kick_p1 * 120.0f);
+    kick.SetDecay(0.05f + g_kick_p2 * 0.50f);
+}
+static inline void ApplySnare()
+{
+    snare.SetFreq(100.0f + g_snare_p1 * 300.0f);
+    snare.SetSnappy(g_snare_p2);
+}
+static inline void ApplyHat()
+{
+    hat.SetFreq(4000.0f + g_hat_p1 * 12000.0f);
+    hat.SetDecay(0.02f + g_hat_p2 * 0.80f);
+}
+
+// Soft-takeover: update `stored` from `knob` only after the knob has caught up
+// (crossed the stored value, or landed within kCatchEps). `prev` is the knob's
+// value from the previous callback, used for crossing detection.
+static inline void SoftTakeover(float& stored, float knob, bool& caught, float& prev)
+{
+    if(!caught)
+    {
+        const bool crossed = (prev - stored) * (knob - stored) <= 0.0f;
+        if(crossed || fabsf(knob - stored) < kCatchEps)
+            caught = true;
+    }
+    if(caught)
+        stored = knob;
+    prev = knob;
+}
+
+// -----------------------------------------------------------------------------
+// Kit randomization - roll fresh, range-bounded macros so it always lands
+// somewhere musical. Each randomize also reaches the "hidden" engine params
+// that have no knob, then applies the result immediately.
+// -----------------------------------------------------------------------------
+static inline void RandomizeKick()
+{
+    g_kick_p1  = 0.05f + RandF01() * 0.45f;
+    g_kick_p2  = 0.25f + RandF01() * 0.65f;
+    g_kick_pan = 0.25f + RandF01() * 0.50f;
+    kick.SetTone(0.10f + RandF01() * 0.50f);
+    kick.SetDirtiness(RandF01() * 0.40f);
+    kick.SetFmEnvelopeAmount(RandF01() * 0.50f);
+    kick.SetFmEnvelopeDecay(0.05f + RandF01() * 0.35f);
+    ApplyKick();
+    g_kick_gl = sqrtf(1.0f - g_kick_pan);
+    g_kick_gr = sqrtf(g_kick_pan);
+}
+static inline void RandomizeSnare()
+{
+    g_snare_p1  = 0.10f + RandF01() * 0.60f;
+    g_snare_p2  = 0.30f + RandF01() * 0.65f;
+    g_snare_pan = 0.25f + RandF01() * 0.50f;
+    snare.SetFmAmount(RandF01() * 0.60f);
+    snare.SetDecay(0.04f + RandF01() * 0.16f);
+    ApplySnare();
+    g_snare_gl = sqrtf(1.0f - g_snare_pan);
+    g_snare_gr = sqrtf(g_snare_pan);
+}
+static inline void RandomizeHat()
+{
+    g_hat_p1  = 0.20f + RandF01() * 0.70f;
+    g_hat_p2  = 0.20f + RandF01() * 0.65f;
+    g_hat_pan = 0.25f + RandF01() * 0.50f;
+    hat.SetTone(0.40f + RandF01() * 0.50f);
+    hat.SetNoisiness(0.70f + RandF01() * 0.30f);
+    ApplyHat();
+    g_hat_gl = sqrtf(1.0f - g_hat_pan);
+    g_hat_gr = sqrtf(g_hat_pan);
+}
+
+// Context-aware: in an edit mode reroll just that drum; in Pattern mode (0)
+// reroll the whole kit. Resets soft-takeover so knobs must re-catch the new kit.
+static inline void RandomizeContext(uint8_t mode)
+{
+    switch(mode)
+    {
+        case 1: RandomizeKick();  break;
+        case 2: RandomizeSnare(); break;
+        case 3: RandomizeHat();   break;
+        default:
+            RandomizeKick();
+            RandomizeSnare();
+            RandomizeHat();
+            break;
+    }
+    g_tk_caught[0] = g_tk_caught[1] = g_tk_caught[2] = false;
+    g_tk_init      = true;
+    g_rand_flash   = kFlashSamples;
 }
 
 // -----------------------------------------------------------------------------
@@ -225,18 +361,42 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
     s_mode_btn.Debounce();
     s_output_sw.Debounce();
 
-    // B7 momentary button cycles through sub-modes (pattern + 3 edit modes)
+    // B7 momentary button: press cycles sub-modes (pattern + 3 edit modes).
+    // Fire on the press edge for the snappiest, most reliable response.
     if(s_mode_btn.RisingEdge())
     {
         g_sub_mode = (g_sub_mode + 1) % kNumSubModes;
+        g_tk_caught[0] = g_tk_caught[1] = g_tk_caught[2] = false;
+        g_tk_init      = true;
     }
-    // B8 toggle switch selects internal synth vs external triggers
-    g_external_output = s_output_sw.Pressed();
 
-    // Update LED - pulse count indicates sub-mode (1-4 pulses)
+    // B8 toggle switch selects internal synth vs external triggers.
+    // Flipping the toggle INTO internal mode (external -> internal) rolls a
+    // fresh kit. In external mode the internal voices are silent, so this is
+    // a natural "give me a new kit" gesture without overloading B7.
+    const bool ext_now = s_output_sw.Pressed();
+    if(g_external_output && !ext_now)  // external -> internal transition
+    {
+        RandomizeContext(0);  // reroll all three drums
+    }
+    g_external_output = ext_now;
+
+    // Update LED - pulse count indicates sub-mode.
+    // Default/drum mode (sub_mode 0) shows no flash; edit modes flash 1-3 times.
+    // A randomize gesture briefly lights the LED solid as confirmation.
     g_led_ctr += size;
     float t = static_cast<float>(g_led_ctr) / patch.AudioSampleRate();
-    SetPanelLed(LedPulseState(static_cast<uint8_t>(g_sub_mode + 1), t));
+    bool  led_on;
+    if(g_rand_flash > 0)
+    {
+        led_on       = true;
+        g_rand_flash = (g_rand_flash > size) ? g_rand_flash - size : 0;
+    }
+    else
+    {
+        led_on = LedPulseState(static_cast<uint8_t>(g_sub_mode), t);
+    }
+    SetPanelLed(led_on);
 
     // Read knobs - CV_1..CV_4 pots return approximately 0..1 when nothing is patched
     // (The bipolar -1..+1 range only applies when external CV is connected)
@@ -335,28 +495,41 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
     // Mode 0: Pattern (Grids X/Y/Density/Randomness)
     // Mode 1-3: Drum edit (CV1=Freq, CV2=param, CV3=Pan, CV4=Volume)
     // -----------------------------------------------------------------
+    // On entering an edit mode (or after a randomize) seed the takeover
+    // baseline so crossing detection has a valid previous knob value.
+    if(g_tk_init && g_sub_mode != 0)
+    {
+        g_tk_prev[0] = k1;
+        g_tk_prev[1] = k2;
+        g_tk_prev[2] = k3;
+        g_tk_init    = false;
+    }
+
     switch(g_sub_mode)
     {
-        case 1: // Edit Kick
-            kick.SetFreq(30.0f + k1 * 120.0f);      // 30-150 Hz
-            kick.SetDecay(0.05f + k2 * 0.50f);      // 0.05-0.55
-            g_kick_pan = k3;
-            g_kick_gl  = sqrtf(1.0f - g_kick_pan);
-            g_kick_gr  = sqrtf(g_kick_pan);
+        case 1: // Edit Kick - CV1=Freq, CV2=Decay, CV3=Pan (soft-takeover)
+            SoftTakeover(g_kick_p1,  k1, g_tk_caught[0], g_tk_prev[0]);
+            SoftTakeover(g_kick_p2,  k2, g_tk_caught[1], g_tk_prev[1]);
+            SoftTakeover(g_kick_pan, k3, g_tk_caught[2], g_tk_prev[2]);
+            ApplyKick();
+            g_kick_gl = sqrtf(1.0f - g_kick_pan);
+            g_kick_gr = sqrtf(g_kick_pan);
             break;
-        case 2: // Edit Snare
-            snare.SetFreq(100.0f + k1 * 300.0f);    // 100-400 Hz
-            snare.SetSnappy(k2);                    // 0-1
-            g_snare_pan = k3;
-            g_snare_gl  = sqrtf(1.0f - g_snare_pan);
-            g_snare_gr  = sqrtf(g_snare_pan);
+        case 2: // Edit Snare - CV1=Freq, CV2=Snappy, CV3=Pan (soft-takeover)
+            SoftTakeover(g_snare_p1,  k1, g_tk_caught[0], g_tk_prev[0]);
+            SoftTakeover(g_snare_p2,  k2, g_tk_caught[1], g_tk_prev[1]);
+            SoftTakeover(g_snare_pan, k3, g_tk_caught[2], g_tk_prev[2]);
+            ApplySnare();
+            g_snare_gl = sqrtf(1.0f - g_snare_pan);
+            g_snare_gr = sqrtf(g_snare_pan);
             break;
-        case 3: // Edit HiHat
-            hat.SetFreq(4000.0f + k1 * 12000.0f);   // 4k-16k Hz
-            hat.SetDecay(0.02f + k2 * 0.80f);       // 0.02-0.82
-            g_hat_pan = k3;
-            g_hat_gl  = sqrtf(1.0f - g_hat_pan);
-            g_hat_gr  = sqrtf(g_hat_pan);
+        case 3: // Edit HiHat - CV1=Freq, CV2=Decay, CV3=Pan (soft-takeover)
+            SoftTakeover(g_hat_p1,  k1, g_tk_caught[0], g_tk_prev[0]);
+            SoftTakeover(g_hat_p2,  k2, g_tk_caught[1], g_tk_prev[1]);
+            SoftTakeover(g_hat_pan, k3, g_tk_caught[2], g_tk_prev[2]);
+            ApplyHat();
+            g_hat_gl = sqrtf(1.0f - g_hat_pan);
+            g_hat_gr = sqrtf(g_hat_pan);
             break;
         default: // Mode 0: Pattern mode - all 4 knobs for Grids
             break;
@@ -518,6 +691,9 @@ int main(void)
     // Initialize Grids pattern generator
     grids.Init(static_cast<uint16_t>(System::GetNow() & 0xFFFFu));
 
+    // Seed the kit-randomization RNG (avoid a zero state).
+    g_rng = System::GetNow() | 1u;
+
     // Initialize synthetic drum voices with tamed defaults
     kick.Init(sr);
     kick.SetFreq(55.0f);
@@ -538,6 +714,11 @@ int main(void)
     hat.SetDecay(0.55f);
     hat.SetTone(0.70f);
     hat.SetNoisiness(0.95f);
+
+    // Boot with a fresh randomized kit (overrides the tuned defaults above).
+    RandomizeKick();
+    RandomizeSnare();
+    RandomizeHat();
 
     // Initialize UI switches
     s_mode_btn.Init(patch.B7, sr, Switch::TYPE_MOMENTARY, Switch::POLARITY_INVERTED);  // Cycles sub-modes
