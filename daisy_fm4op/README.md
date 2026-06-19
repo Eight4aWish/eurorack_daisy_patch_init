@@ -1,4 +1,4 @@
-# FM40p (4-Operator FM Synth) — Daisy Patch SM
+# daisy_fm4op (4-Operator FM Synth) — Daisy Patch SM
 
 A compact 4-operator FM synthesizer for the Daisy Patch SM, implemented in `fm4op.cpp`. It provides multiple FM algorithms (parallel, serial, and feedback), pitch via knob and 1V/oct CV, and simple LED feedback.
 
@@ -36,7 +36,7 @@ make -C "$DAISY_ROOT/libDaisy"
 make -C "$DAISY_ROOT/DaisySP"
 
 # Build firmware
-cd FM40p
+cd daisy_fm4op
 make clean && make VERBOSE=1 DAISY_ROOT="$DAISY_ROOT"
 ```
 
@@ -44,7 +44,7 @@ make clean && make VERBOSE=1 DAISY_ROOT="$DAISY_ROOT"
 Put the Patch SM into DFU mode (hold BOOT, tap RESET, release BOOT), then:
 
 ```zsh
-cd FM40p
+cd daisy_fm4op
 make flash DAISY_ROOT="$DAISY_ROOT"
 ```
 

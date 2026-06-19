@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(make)",
+      "Bash(make dfu-list *)",
+      "Bash(make flash *)"
+    ]
+  }
+}

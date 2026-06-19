@@ -1,5 +1,5 @@
 # 4-Operator FM Synth Example for Daisy Patch SM
-TARGET = fm4op
+TARGET = daisy_fm4op
 
 # Library locations (override via environment or command line)
 PROJECT_MAKEFILE := $(abspath $(lastword $(MAKEFILE_LIST)))

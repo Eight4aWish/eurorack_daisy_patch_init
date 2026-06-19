@@ -34,7 +34,7 @@ make -C deps/daisy/DaisySP
 Most projects default to using repo-local deps. Typical usage:
 
 ```sh
-cd FM40p
+cd daisy_fm4op
 make
 ```
 
@@ -51,6 +51,4 @@ make DAISY_ROOT=/path/to/daisy
 - `daisy_braids_oled/` – Braids macro oscillator port with 64x48 OLED display and menu navigation (see project README for BOOT_QSPI notes)
 - `daisy_grids/` – 3-drum sequencer with Grids-style pattern generator (GPL-3.0)
 - `daisy_multifx_oled/` – Multi-effect processor (Reverb, Resonator, Delay→Reverb, Granular) with OLED display
-- `FM40p/` – 4-op FM synth example for Daisy Patch SM
-- `interval_osc/` – Dual oscillator with interval offset
-- `torus_mi/` – Torus string synth port using Mutable `stmlib` sources
+- `daisy_fm4op/` – 4-op FM synth example for Daisy Patch SM
