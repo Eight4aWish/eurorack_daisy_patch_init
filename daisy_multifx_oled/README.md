@@ -1,15 +1,22 @@
 # daisy_multifx_oled
 
-Multi-effect processor for Daisy Patch.Init with 64x48 OLED display. Visual feedback and menu navigation are provided via a small SSD1306 OLED.
+Multi-effect processor for Daisy Patch.Init with a 64x48 OLED display. Built on the
+shared, hardware-agnostic [`multifx_core`](../common/multifx_core/) DSP/UI library:
+16 effects in a 4×4 grid (four banks of four), with a global dry/wet mix, output
+voicing, and click-free patch changes.
 
 ## Features
 
-- **4 stereo effects** with OLED parameter display
-- **2x2 grid menu** for effect selection (long-press B7)
-- **Short-press B7** to cycle effects sequentially
-- **Per-effect parameter labels** shown on screen
-- **External clock sync** for delay time (Effect 2)
-- **SDRAM delay buffers** for up to 2 seconds delay
+- **4 banks × 4 patches** with a two-level Bank → Patch menu
+- **Bank A REVERB** — Classic / Plate / Tank / Shimmer (voiced `ReverbSc`)
+- **Bank B DELAY** — Ping / Tape / MultiTap / EchoVerb (low-passed feedback, smoothed times)
+- **Bank C TONE** — Ladder / SVF morph / Comb / Wavefolder+Chorus
+- **Bank D MISC** — Resonator / Pitch shifter / Drive / Crush
+- **CV4 = global dry/wet mix** on every patch
+- **CV-modulatable knobs** — each pot is summed with a CV input jack
+- **Output voicing** (DC-block → ~14.5 kHz LPF → soft clamp) for a warmer, clip-safe output
+- **Click-free patch changes** (wet fades in on switch; effect state is reset)
+- **External clock sync** for delay time (Bank B: Ping / EchoVerb)
 
 ## Hardware Requirements
 
@@ -25,72 +32,116 @@ Multi-effect processor for Daisy Patch.Init with 64x48 OLED display. Visual feed
 
 ### Navigation (B7 Button)
 
-- **Short Press:** Cycle to next effect
-- **Long Press (500ms):** Toggle 2x2 effect selection menu
+Two-level navigation (`mfx::NavModel`):
 
-### Knobs
+- **Patch view** — short press: next patch in the current bank; long press (500 ms): open the bank menu.
+- **Bank menu** — short press: cycle the highlighted bank; long press: confirm it (jumps to patch 0).
 
-Parameters vary per effect — labels are shown on the OLED display.
+A patch or bank change resets the effect and fades the wet signal back in (no pop).
 
-| Knob | Effect 0: REVERB | Effect 1: RESONATR | Effect 2: DLY+REV | Effect 3: GRANULAR |
-|------|-------------------|---------------------|--------------------|--------------------|
-| CV_1 | Time (decay) | Freq (base) | DTim (delay time) | Ptch (pitch shift) |
-| CV_2 | Damp (LP filter) | Damp (brightness) | Fdbk (feedback) | Size (grain size) |
-| CV_3 | InLv (input level) | InLv (input level) | InLv (input level) | InLv (input level) |
-| CV_4 | Send (reverb send) | Mix (wet/dry) | Mix (wet/dry) | Mix (wet/dry) |
+### Knobs and CV
 
-### CV/Gate
+Each knob value is the corresponding pot **summed** with a CV input jack (Eurorack
+attenuverter-style), clamped to 0–1:
+
+| Knob | Pot | CV input | Role |
+|------|-----|----------|------|
+| CV_1 | Knob 1 | CV_5 | Param 1 |
+| CV_2 | Knob 2 | CV_6 | Param 2 |
+| CV_3 | Knob 3 | CV_7 | Param 3 (all patches except Reverb · Classic) |
+| CV_4 | Knob 4 | CV_8 | **Global dry/wet mix** |
+
+## Banks & Patches
+
+CV_4 is the global dry/wet mix on every patch. CV_1–CV_3 are the three effect
+params; Reverb · Classic is the only patch that leaves CV_3 unused.
+
+### Bank A — REVERB
+| Patch | CV_1 | CV_2 | CV_3 |
+|-------|------|------|------|
+| CLASSIC | Fbk – feedback/decay | Tone – LP frequency | — (unused) |
+| PLATE | Pre – predelay | Tone – LP frequency | Size – reverb feedback |
+| TANK | Pre – predelay | Damp – damping | Size – reverb feedback |
+| SHIMMER | Fbk – feedback | Tone – LP frequency | Shim – shimmer amount (+12) |
+
+### Bank B — DELAY
+| Patch | CV_1 | CV_2 | CV_3 |
+|-------|------|------|------|
+| PING | Time\* | Fbk – feedback | Damp – feedback tone |
+| TAPE | Time | Fbk – feedback | Wow – wow/flutter depth |
+| MULTITAP | Time | Pan – tap spread | Fbk – feedback |
+| ECHOVERB | Time\* | Fbk – feedback | RvMx – reverb blend |
+
+\* PING and ECHOVERB lock their delay time to an external clock on **B10** while a
+pulse has arrived within the last 2 s; otherwise CV_1 sets the time.
+
+### Bank C — TONE
+| Patch | CV_1 | CV_2 | CV_3 |
+|-------|------|------|------|
+| LADDER | Cut – cutoff | Res – resonance | Drv – input drive |
+| SVF MRF | Cut – cutoff | Res – resonance | Typ – LP→BP→HP→Notch |
+| COMB | Frq – pitch | Fbk – feedback | Brt – brightness |
+| WF+CHR | Fld – fold amount | Rate – chorus rate | Dpt – chorus depth |
+
+### Bank D — MISC
+| Patch | CV_1 | CV_2 | CV_3 |
+|-------|------|------|------|
+| RESONATR | Freq – base pitch | Damp – damping/bright | InLv – input level |
+| PITCH | Semi – shift (−12..+12) | Size – buffer size | Fun – tape flutter |
+| DRIVE | Drv – drive amount | Tone – post low-pass | Lvl – output level |
+| CRUSH | Bits – bit depth | Rate – sample-rate reduce | Tone – post low-pass |
+
+## CV/Gate & Audio
 
 | Jack | Function |
 |------|----------|
-| **B10** (Gate In 1) | External clock input (delay sync, Effect 2) |
-| **CV_OUT_2** | LED driver (blinks on effect change) |
-
-### Audio
-
-| Jack | Function |
-|------|----------|
+| **B10** (Gate In 1) | External clock input (Bank B delay sync) |
+| **CV_OUT_2** | LED driver (blinks on patch/bank change) |
 | **Audio In L/R** | Stereo input |
 | **Audio Out L/R** | Stereo output (processed) |
 
 ## Display Layout
 
-### Effect Mode (default)
+### Patch view (default)
 
 ```
 ┌────────────────┐
-│    REVERB      │  ← Effect name (centered)
+│    CLASSIC     │  ← patch name (centered)
 │────────────────│
-│  Time  Damp    │  ← CV_1, CV_2 labels
-│  InLv  Send    │  ← CV_3, CV_4 labels
+│  Fbk  Tone     │  ← CV_1, CV_2 labels
+│       Mix      │  ← CV_3 (blank here), CV_4
 └────────────────┘
 ```
 
-### Menu Mode (long-press B7)
+### Bank menu (long-press B7)
 
 ```
 ┌───────┬────────┐
-│  REV  │  RESO  │
+│  RVB  │  DLY   │
 ├───────┼────────┤
-│  D+R  │  GRAN  │
+│  TON  │  MSC   │
 └───────┴────────┘
 ```
 
-Current effect is highlighted (inverted). Short-press B7 in menu mode cycles through effects.
+The previewed bank is highlighted (inverted). Short-press cycles the preview;
+long-press confirms it.
 
-## Effects
+## Signal path (shared core)
 
-### Effect 0: REVERB
-Stereo reverb using DaisySP's `ReverbSc`. Send-based topology — dry signal passes through, reverb is added on top.
+Every patch computes a fully-wet stereo signal, then the shared
+[`multifx_core`](../common/multifx_core/) stage handles the rest uniformly:
 
-### Effect 1: RESONATR
-Rings-inspired modal resonator using bandpass filters (fundamental + 5th partial at 1.5×). License-safe implementation (no Mutable Instruments code).
+1. **Global mix** — CV_4 crossfades dry ↔ wet.
+2. **Output voicing** — DC-block → soft clamp at ±1.2 (`OutputStage`), which protects the hot patches (Ladder, Comb, Wavefolder) from clipping. The Seed's ~14.5 kHz LPF is **disabled** here (the Patch SM output is clean), so the full top end is preserved.
+3. **Patch-change crossfade** — a patch/bank change fades the whole output out (~5 ms), runs the buffer-clearing bank `Reset()` while fully muted (off the audio interrupt), then fades back in (~30 ms). This avoids both cutting the previous reverb tail and any audible glitch from the SDRAM buffer clears (the pitch shifter alone zeros ~128 kB).
 
-### Effect 2: DLY+REV
-Delay line feeding into reverb. Supports external clock sync on B10 — delay time locks to clock interval when a signal is present within the last 2 seconds.
+## Architecture
 
-### Effect 3: GRANULAR
-Granular pitch shifter with Hann-windowed grains. Pitch range ±12 semitones, grain size 25ms–150ms.
+The DSP and navigation live in [`common/multifx_core/`](../common/multifx_core/) so
+they can be shared with other Daisy boards; this project is a thin shell that wires
+the core to the Patch SM hardware and the OLED. The banks (`ReverbBank`, `DelayBank`,
+`ToneBank`, `MiscBank`) own `ReverbSc`/`DelayLine`/`PitchShifter` buffers and are
+placed in SDRAM via `DSY_SDRAM_BSS`.
 
 ## Building
 

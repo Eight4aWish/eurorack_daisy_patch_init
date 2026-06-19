@@ -1,19 +1,19 @@
 /**
- * MultiFX OLED — 8 patches
+ * MultiFX OLED — 4 banks (unified multifx-core)
  *
  * Hardware: Daisy Patch SM, 64x48 SSD1306 OLED on soft I2C (A2=SDA, A3=SCL)
- * Navigation: B7 short press = cycle patch, long press = 4x2 menu grid
- * Clock sync: gate_in_1 (B10) syncs delay time in patch 2
+ * Navigation (B7): short press = next patch in bank, long press = bank menu.
+ * Clock sync: gate_in_1 (B10) sets delay time in Bank B (Ping/EchoVerb).
  *
- * Patches:
- *   0  REVERB    – ReverbSc send topology
- *   1  RESONATR  – 2-partial SVF modal resonator
- *   2  DLY+REV   – Delay into reverb (clock-syncable)
- *   3  GRANULAR  – Dual-grain overlap-add pitch shifter
- *   4  LADDER    – Moog 4-pole ladder filter (LP24)
- *   5  SVF MRF   – SVF LP→BP→HP→Notch morph
- *   6  COMB      – Comb filter / Karplus-Strong
- *   7  WF+CHR    – Wavefolder into stereo chorus
+ * Banks (mfx::NavModel, 4 banks):
+ *   A REVERB  – Classic / Plate / Tank / Shimmer        (mfx::ReverbBank)
+ *   B DELAY   – Ping / Tape / MultiTap / EchoVerb        (mfx::DelayBank)
+ *   C TONE    – Ladder / SVF morph / Comb / WF+Chorus    (mfx::ToneBank)
+ *   D MISC    – Resonator / Pitch / Drive / Crush         (mfx::MiscBank)
+ *
+ * Every patch produces a fully-wet stereo signal; the shared final stage applies
+ * the global CV4 dry/wet mix and the output voicing. Patch changes fade the whole
+ * output out, run the buffer-clearing bank Reset() while muted, then fade in.
  */
 
 #include "daisy_patch_sm.h"
@@ -22,104 +22,121 @@
 #include "oled_soft_i2c.h"
 #include <cmath>
 
+// Shared, hardware-agnostic MultiFX core (DaisySP-only).
+#include "multifx_core/voicing.h"       // OutputStage: DC-block -> LPF -> soft clamp
+#include "multifx_core/ui_model.h"      // NavModel: two-level Bank/Patch navigation
+#include "multifx_core/reverb_bank.h"   // Bank A
+#include "multifx_core/delay_bank.h"    // Bank B
+#include "multifx_core/tone_bank.h"     // Bank C
+#include "multifx_core/misc_bank.h"     // Bank D
+
 using namespace daisy;
 using namespace daisysp;
 using namespace patch_sm;
 
 // ================================================================
-// Constants
+// Patch catalogue (names + per-knob labels for the OLED)
 // ================================================================
-static constexpr int    kNumPatches      = 8;
-static constexpr size_t kMaxDelaySamples = 96000; // 2.0 s @ 48 k
-static constexpr size_t kGrainBufSize    = 24000; // ~0.5 s @ 48 k
-static constexpr float  kTwoPi           = 6.2831853f;
-
-// ================================================================
-// Effect metadata (name shown in effect view, 2-char label for menu)
-// ================================================================
-struct EffectDef {
-    const char* name;
-    const char* menu_label; // 2 chars — fits 16 px cell (5x7 font)
-    const char* p1; const char* p2; const char* p3; const char* p4;
+struct PatchDef {
+    const char* name;       // shown on the patch view
+    const char* l1;         // CV1 label
+    const char* l2;         // CV2 label
+    const char* l3;         // CV3 label ("" when the patch only uses 2 params)
 };
 
-static const EffectDef kEffects[kNumPatches] = {
-    {"REVERB",   "RV", "Time", "Damp", "InLv", "Send"},
-    {"RESONATR", "RS", "Freq", "Damp", "InLv", "Mix "},
-    {"DLY+REV",  "DR", "DTim", "Fdbk", "DWet", "RWet"},
-    {"PITCH",    "PT", "Semi", "Size", "Fun ", "Mix "},
-    {"LADDER",   "LD", "Cut ", "Res ", "Drv ", "Mix "},
-    {"SVF MRF",  "SF", "Cut ", "Res ", "Typ ", "Mix "},
-    {"COMB",     "CB", "Freq", "Fdbk", "Brt ", "Mix "},
-    {"WF+CHR",   "WF", "Fold", "Rate", "Dpt ", "Mix "},
+struct BankDef {
+    const char*     name;   // shown on the patch view / bank menu
+    const char*     tag;    // 3-char menu label
+    int             count;
+    const PatchDef* patches;
 };
+
+static const PatchDef kReverbPatches[4] = {
+    {"CLASSIC",  "Fbk", "Tone", ""},
+    {"PLATE",    "Pre", "Tone", "Size"},
+    {"TANK",     "Pre", "Damp", "Size"},
+    {"SHIMMER",  "Fbk", "Tone", "Shim"},
+};
+static const PatchDef kDelayPatches[4] = {
+    {"PING",     "Time", "Fbk", "Damp"},
+    {"TAPE",     "Time", "Fbk", "Wow"},
+    {"MULTITAP", "Time", "Pan", "Fbk"},
+    {"ECHOVERB", "Time", "Fbk", "RvMx"},
+};
+static const PatchDef kTonePatches[4] = {
+    {"LADDER",   "Cut", "Res",  "Drv"},
+    {"SVF MRF",  "Cut", "Res",  "Typ"},
+    {"COMB",     "Frq", "Fbk",  "Brt"},
+    {"WF+CHR",   "Fld", "Rate", "Dpt"},
+};
+static const PatchDef kMiscPatches[4] = {
+    {"RESONATR", "Freq", "Damp", "InLv"},
+    {"PITCH",    "Semi", "Size", "Fun"},
+    {"DRIVE",    "Drv",  "Tone", "Lvl"},
+    {"CRUSH",    "Bits", "Rate", "Tone"},
+};
+
+static const BankDef kBanks[] = {
+    {"REVERB", "RVB", 4, kReverbPatches},
+    {"DELAY",  "DLY", 4, kDelayPatches},
+    {"TONE",   "TON", 4, kTonePatches},
+    {"MISC",   "MSC", 4, kMiscPatches},
+};
+static constexpr int kNumBanks = 4;
 
 // ================================================================
 // Hardware
 // ================================================================
 DaisyPatchSM patch;
 Switch       nav_btn; // B7 only — B8 removed for OLED
+oled::SSD1306 display;
 
 // ================================================================
-// Shared FX
+// Shared MultiFX core
 // ================================================================
-ReverbSc reverb;
-using daisysp::DelayLine;
-using daisysp::Svf;
-DSY_SDRAM_BSS static DelayLine<float, kMaxDelaySamples> delayL;
-DSY_SDRAM_BSS static DelayLine<float, kMaxDelaySamples> delayR;
+static mfx::OutputStage  g_out;    // DC-block -> soft clamp (LPF disabled here)
+static mfx::NavModel     g_nav;    // two-level Bank/Patch navigation
 
-// Patch 1 – Resonator
-static Svf   bp1L, bp2L, bp1R, bp2R;
-static float excite_envL = 0.0f, excite_envR = 0.0f;
+// Patch-change crossfade. An effect change fades the whole output out, runs the
+// (heavy, buffer-clearing) bank Reset() while fully muted, then fades back in —
+// so no reverb tail is cut and no buffer-clear race is audible.
+enum class Xf { Run, FadeOut, WaitReset, FadeIn };
+static Xf    xf_state        = Xf::Run;
+static float xf_gain         = 1.0f;
+static bool  xf_pending_long = false; // press type committed at the fade-out floor
+static constexpr float kXfOutInc = 1.0f / 240.0f;  // ~5 ms fade-out @ 48 k
+static constexpr float kXfInInc  = 1.0f / 1440.0f; // ~30 ms fade-in  @ 48 k
 
-// Patch 2 – Delay+Reverb (file-scope to avoid static-in-switch)
-static float fb_lp_l2  = 0.0f, fb_lp_r2  = 0.0f;
-static float d2_target = 24000.0f, d2_smooth = 24000.0f;
+// Reverb/Delay/Misc hold large ReverbSc + DelayLine + pitch buffers and are
+// trivially constructible, so they live in SDRAM. ToneBank stays in SRAM: its
+// buffers are small, and LadderFilter's constructor writes to its members, which
+// would fault if it ran (pre-main) before SDRAM is initialized.
+DSY_SDRAM_BSS static mfx::ReverbBank g_reverb; // Bank A
+DSY_SDRAM_BSS static mfx::DelayBank  g_delay;  // Bank B
+static mfx::ToneBank                 g_tone;   // Bank C (SRAM)
+DSY_SDRAM_BSS static mfx::MiscBank   g_misc;   // Bank D
 
-// Patch 3 – Pitch shifter (time-domain OLA, two crossfading delay lines)
-// Large internal buffers placed in SDRAM to avoid exhausting SRAM
-DSY_SDRAM_BSS static PitchShifter pitch_l, pitch_r;
-
-// Patch 4 – Moog ladder filter
-static LadderFilter ladder_l, ladder_r;
-
-// Patch 5 – SVF multi-mode morph
-static Svf svf_l, svf_r;
-
-// Patch 6 – Comb filter (reuses delayL/R)
-static float comb_lp_l = 0.0f, comb_lp_r = 0.0f;
-
-// Patch 7 – Wavefolder + stereo Chorus
-static Wavefolder wfold_l, wfold_r;
-static Chorus     chorus;
-
-// Clock detection (gate_in_1 = B10 jack)
+// Clock detection (gate_in_1 = B10 jack) — feeds the Delay bank's tap input.
 static bool     g_clk_gate       = false;
 static uint32_t g_clk_last_ticks = 0;
 static float    g_clk_interval_s = 0.0f;
 
 // ================================================================
-// OLED
+// Navigation / display state
 // ================================================================
-oled::SSD1306 display;
-
-// ================================================================
-// Navigation state
-// ================================================================
-enum class NavMode { Effect, Menu };
-static NavMode  nav_mode        = NavMode::Effect;
-static int      current_patch   = 0;
 static bool     display_dirty   = true;
 static uint32_t btn_press_start = 0;
 static bool     btn_held        = false;
 static size_t   ctrl_ticks      = 0;
+// Set in the audio ISR on a patch change; the heavy bank Reset() (which can zero
+// >100 kB of SDRAM for the pitch shifter) runs from the main loop, not the ISR.
+static volatile bool g_reset_pending = false;
 static constexpr size_t   kDisplayUpdateInterval = 16;
 static constexpr uint32_t kLongPressMs           = 500;
 
 // LED (panel LED via CV_OUT_2)
-static bool   led_on           = false;
-static size_t led_off_ticks    = 0;
+static bool   led_on        = false;
+static size_t led_off_ticks = 0;
 static constexpr float kLedVolts = 2.0f;
 
 static inline void SetLed(bool on)
@@ -134,6 +151,20 @@ static inline void BlinkLed()
     led_off_ticks = 10;
 }
 
+// Re-init the active bank's effect on patch/bank change so it does not inherit
+// the previous patch's tail/buffer state.
+static void ResetActiveBank()
+{
+    switch(g_nav.bank)
+    {
+        case 0: g_reverb.Reset((mfx::ReverbMode)g_nav.patch); break;
+        case 1: g_delay.Reset((mfx::DelayMode)g_nav.patch);   break;
+        case 2: g_tone.Reset((mfx::ToneMode)g_nav.patch);     break;
+        case 3: g_misc.Reset((mfx::MiscMode)g_nav.patch);     break;
+        default: break;
+    }
+}
+
 // ================================================================
 // Display rendering
 // ================================================================
@@ -142,37 +173,36 @@ static void UpdateDisplay()
     if(!display_dirty) return;
     display.Clear();
 
-    if(nav_mode == NavMode::Menu)
+    if(g_nav.level == mfx::NavLevel::Bank)
     {
-        // 4x2 grid: 16 px wide × 24 px tall per cell
-        for(int row = 0; row < 2; row++)
+        // Bank menu: 2x2 grid of bank tags, previewed bank highlighted.
+        for(int idx = 0; idx < g_nav.num_banks; idx++)
         {
-            for(int col = 0; col < 4; col++)
-            {
-                int     idx = row * 4 + col;
-                uint8_t x   = (uint8_t)(col * 16);
-                uint8_t y   = (uint8_t)(row * 24);
-                bool    sel = (idx == current_patch);
-                if(sel)
-                    display.FillRect(x, y, 16, 24);
-                else
-                    display.DrawRect(x, y, 16, 24);
-                display.DrawString(x + 2, y + 8, kEffects[idx].menu_label, sel);
-            }
+            int     row = idx / 2, col = idx % 2;
+            uint8_t x   = (uint8_t)(col * 32);
+            uint8_t y   = (uint8_t)(row * 24);
+            bool    sel = (idx == g_nav.preview_bank);
+            if(sel)
+                display.FillRect(x, y, 32, 24);
+            else
+                display.DrawRect(x, y, 32, 24);
+            display.DrawString(x + 7, y + 8, kBanks[idx].tag, sel);
         }
     }
     else
     {
-        // Effect view: name, divider, param grid
-        display.DrawStringCentered(0, kEffects[current_patch].name, false);
+        const BankDef&  b = kBanks[g_nav.bank];
+        const PatchDef& p = b.patches[g_nav.patch];
+
+        display.DrawStringCentered(0, p.name, false);
         display.DrawHLine(0, 9, 64);
+
+        // 2x2 label grid: CV1 CV2 / CV3 Mix
         char row1[14], row2[14];
-        snprintf(row1, sizeof(row1), "%-5s%-5s",
-                 kEffects[current_patch].p1, kEffects[current_patch].p2);
-        snprintf(row2, sizeof(row2), "%-5s%-5s",
-                 kEffects[current_patch].p3, kEffects[current_patch].p4);
-        display.DrawString(0, 14, row1, false);
-        display.DrawString(0, 24, row2, false);
+        snprintf(row1, sizeof(row1), "%-5s%-5s", p.l1, p.l2);
+        snprintf(row2, sizeof(row2), "%-5s%-5s", p.l3[0] ? p.l3 : "", "Mix");
+        display.DrawString(0, 13, row1, false);
+        display.DrawString(0, 23, row2, false);
     }
 
     display.Update();
@@ -198,25 +228,30 @@ static void ProcessNav()
     else if(btn_held)
     {
         uint32_t dur = now - btn_press_start;
-        if(dur >= kLongPressMs)
-        {
-            nav_mode = (nav_mode == NavMode::Effect) ? NavMode::Menu : NavMode::Effect;
-            display_dirty = true;
-        }
-        else if(nav_mode == NavMode::Menu)
-        {
-            // Short press in menu: select highlighted patch and exit
-            nav_mode = NavMode::Effect;
-            display_dirty = true;
-        }
-        else
-        {
-            // Short press in effect view: cycle to next patch
-            current_patch = (current_patch + 1) % kNumPatches;
-            display_dirty = true;
-        }
-        BlinkLed();
         btn_held = false;
+
+        // Ignore presses while a crossfade is already in flight.
+        if(xf_state == Xf::Run)
+        {
+            bool is_long = (dur >= kLongPressMs);
+            // Does this press change the playing effect, or is it just menu nav?
+            bool audio_change =
+                (g_nav.level == mfx::NavLevel::Patch && !is_long) ||
+                (g_nav.level == mfx::NavLevel::Bank  &&  is_long);
+            if(audio_change)
+            {
+                // Defer the nav commit + bank reset to the fade-out floor.
+                xf_pending_long = is_long;
+                xf_state        = Xf::FadeOut;
+            }
+            else
+            {
+                // Menu navigation (no audio change): apply immediately.
+                if(is_long) g_nav.OnLongPress(); else g_nav.OnShortPress();
+                display_dirty = true;
+            }
+            BlinkLed();
+        }
     }
 
     // LED timeout
@@ -230,6 +265,54 @@ static void ProcessNav()
     }
 }
 
+// Advances the crossfade state machine once per output sample and returns the
+// whole-output gain. At the fade-out floor it commits the deferred patch change
+// and requests the (muted) bank reset; it holds mute until the reset completes.
+static inline float NextXfGain()
+{
+    switch(xf_state)
+    {
+        case Xf::FadeOut:
+            xf_gain -= kXfOutInc;
+            if(xf_gain <= 0.0f)
+            {
+                xf_gain = 0.0f;
+                if(xf_pending_long) g_nav.OnLongPress(); else g_nav.OnShortPress();
+                g_reset_pending = true;
+                display_dirty   = true;
+                xf_state        = Xf::WaitReset;
+            }
+            break;
+        case Xf::WaitReset:
+            xf_gain = 0.0f;
+            if(!g_reset_pending) xf_state = Xf::FadeIn; // main loop finished Reset()
+            break;
+        case Xf::FadeIn:
+            xf_gain += kXfInInc;
+            if(xf_gain >= 1.0f) { xf_gain = 1.0f; xf_state = Xf::Run; }
+            break;
+        case Xf::Run:
+        default:
+            break;
+    }
+    return xf_gain;
+}
+
+// ================================================================
+// Shared final stage for every patch:
+//   global dry/wet (CV4) -> output voicing -> patch-change crossfade
+// ================================================================
+static inline void MixOut(float dryL, float dryR, float wetL, float wetR,
+                          float mix, float& outL, float& outR)
+{
+    float oL = (1.0f - mix) * dryL + mix * wetL;
+    float oR = (1.0f - mix) * dryR + mix * wetR;
+    g_out.Process(oL, oR);
+    float g = NextXfGain();
+    outL = oL * g;
+    outR = oR * g;
+}
+
 // ================================================================
 // Audio callback
 // ================================================================
@@ -240,13 +323,14 @@ void AudioCallback(AudioHandle::InputBuffer  in,
     patch.ProcessAllControls();
     ProcessNav();
 
-    // Pot + CV jack summed and clamped — standard Eurorack attenuverter behaviour
-    float k1 = fclamp(patch.GetAdcValue(CV_1) + patch.GetAdcValue(CV_5), 0.f, 1.f);
-    float k2 = fclamp(patch.GetAdcValue(CV_2) + patch.GetAdcValue(CV_6), 0.f, 1.f);
-    float k3 = fclamp(patch.GetAdcValue(CV_3) + patch.GetAdcValue(CV_7), 0.f, 1.f);
-    float k4 = fclamp(patch.GetAdcValue(CV_4) + patch.GetAdcValue(CV_8), 0.f, 1.f);
+    // Pot + CV jack summed and clamped — standard Eurorack attenuverter behaviour.
+    // CV1..CV3 are the effect parameters; CV4 is the global dry/wet mix.
+    float k1  = fclamp(patch.GetAdcValue(CV_1) + patch.GetAdcValue(CV_5), 0.f, 1.f);
+    float k2  = fclamp(patch.GetAdcValue(CV_2) + patch.GetAdcValue(CV_6), 0.f, 1.f);
+    float k3  = fclamp(patch.GetAdcValue(CV_3) + patch.GetAdcValue(CV_7), 0.f, 1.f);
+    float mix = fclamp(patch.GetAdcValue(CV_4) + patch.GetAdcValue(CV_8), 0.f, 1.f);
 
-    // Clock detection via dedicated gate jack (B10)
+    // Clock detection via dedicated gate jack (B10) — drives the Delay bank tap.
     bool     clk_in    = patch.gate_in_1.State();
     uint32_t now_ticks = System::GetNow();
     if(!g_clk_gate && clk_in)
@@ -265,238 +349,57 @@ void AudioCallback(AudioHandle::InputBuffer  in,
         g_clk_gate = false;
     }
 
-    switch(current_patch)
+    bool  tap_active = (g_clk_interval_s > 0.0f)
+                    && (now_ticks - g_clk_last_ticks < 2000u);
+    float tap_samps  = tap_active ? g_clk_interval_s * patch.AudioSampleRate() : 0.f;
+
+    switch(g_nav.bank)
     {
-        // ============================================================
-        case 0: // REVERB – CV1=decay CV2=damp CV3=dry CV4=send
-        // ============================================================
+        case 0: // Bank A — Reverb (k1,k2,k3 = effect params)
         {
-            reverb.SetFeedback(fmap(k1, 0.3f, 0.99f));
-            reverb.SetLpFreq(fmap(k2, 1000.f, 19000.f, Mapping::LOG));
-            float in_level   = k3;
-            float send_level = k4;
+            mfx::ReverbMode m = (mfx::ReverbMode)g_nav.patch;
             for(size_t i = 0; i < size; i++)
             {
-                float wetl, wetr;
-                reverb.Process(IN_L[i] * send_level, IN_R[i] * send_level,
-                               &wetl, &wetr);
-                OUT_L[i] = IN_L[i] * in_level + wetl;
-                OUT_R[i] = IN_R[i] * in_level + wetr;
+                float wl, wr;
+                g_reverb.Process(m, IN_L[i], IN_R[i], k1, k2, k3, wl, wr);
+                MixOut(IN_L[i], IN_R[i], wl, wr, mix, OUT_L[i], OUT_R[i]);
             }
         }
         break;
 
-        // ============================================================
-        case 1: // RESONATOR – CV1=freq CV2=damp+bright CV3=in CV4=wet
-        // ============================================================
+        case 1: // Bank B — Delay (k1=time k2=fdbk k3=mode param; gate-in clock sync via tap)
         {
-            float base_freq = fmap(k1, 60.0f, 1200.0f, Mapping::LOG);
-            float damping   = fmap(k2, 0.2f, 0.95f);
-            float brighten  = fmap(k2, 0.2f, 1.0f);
-            float in_level  = k3;
-            float wet_mix   = k4;
-            const float w1  = 0.6f * (1.0f - 0.7f * brighten);
-            const float w2  = 0.6f * (0.3f + 0.7f * brighten);
-
-            bp1L.SetFreq(base_freq);        bp1L.SetRes(damping);
-            bp1R.SetFreq(base_freq);        bp1R.SetRes(damping);
-            bp2L.SetFreq(base_freq * 1.5f); bp2L.SetRes(damping * 0.9f);
-            bp2R.SetFreq(base_freq * 1.5f); bp2R.SetRes(damping * 0.9f);
-
-            const float att = 0.002f, rel = 0.0008f;
+            mfx::DelayMode m = (mfx::DelayMode)g_nav.patch;
             for(size_t i = 0; i < size; i++)
             {
-                float inl  = IN_L[i] * in_level;
-                float inr  = IN_R[i] * in_level;
-                float magL = fabsf(inl), magR = fabsf(inr);
-                excite_envL += (magL - excite_envL) * (magL > excite_envL ? att : rel);
-                excite_envR += (magR - excite_envR) * (magR > excite_envR ? att : rel);
-                bp1L.Process(inl * (1.0f + excite_envL));
-                bp2L.Process(inl * (1.0f + excite_envL));
-                bp1R.Process(inr * (1.0f + excite_envR));
-                bp2R.Process(inr * (1.0f + excite_envR));
-                float wetL = bp1L.Band() * w1 + bp2L.Band() * w2;
-                float wetR = bp1R.Band() * w1 + bp2R.Band() * w2;
-                OUT_L[i] = inl * (1.0f - wet_mix) + wetL * wet_mix;
-                OUT_R[i] = inr * (1.0f - wet_mix) + wetR * wet_mix;
+                float wl, wr;
+                g_delay.Process(m, IN_L[i], IN_R[i], k1, k2, k3,
+                                tap_active, tap_samps, wl, wr);
+                MixOut(IN_L[i], IN_R[i], wl, wr, mix, OUT_L[i], OUT_R[i]);
             }
         }
         break;
 
-        // ============================================================
-        case 2: // DLY+REV – CV1=time CV2=fdbk CV3=delay wet CV4=reverb wet
-        //        Delay and reverb independently mixable. Dry always passes.
-        //        gate_in_1 syncs delay time when clock present < 2 s.
-        // ============================================================
+        case 2: // Bank C — Tone (k1,k2,k3 = effect params)
         {
-            bool  have_clk   = (g_clk_interval_s > 0.0f)
-                            && (now_ticks - g_clk_last_ticks < 2000u);
-            float d_time_sec = have_clk
-                ? g_clk_interval_s
-                : fmap(k1, 0.02f, 2.0f);
-            float d_feedback = fmap(k2, 0.0f, 0.85f);
-            float delay_wet  = k3; // how much delay repeat you hear
-            float reverb_wet = k4; // how much reverb on top
-            float sr         = patch.AudioSampleRate();
-
-            d2_target  = fminf(d_time_sec * sr, (float)kMaxDelaySamples - 1.0f);
-            d2_smooth += 0.0015f * (d2_target - d2_smooth);
-            delayL.SetDelay(d2_smooth);
-            delayR.SetDelay(d2_smooth);
-            reverb.SetFeedback(0.72f);
-            reverb.SetLpFreq(6000.0f);
-
-            const float fb_alpha = 0.55f;
+            mfx::ToneMode m = (mfx::ToneMode)g_nav.patch;
             for(size_t i = 0; i < size; i++)
             {
-                float dl = delayL.Read();
-                float dr = delayR.Read();
-                fb_lp_l2 += fb_alpha * (dl - fb_lp_l2);
-                fb_lp_r2 += fb_alpha * (dr - fb_lp_r2);
-                delayL.Write(IN_L[i] + fb_lp_l2 * d_feedback);
-                delayR.Write(IN_R[i] + fb_lp_r2 * d_feedback);
-                // Feed dry + delay into reverb so both contribute to the tail
-                float rev_inl = IN_L[i] + dl * delay_wet;
-                float rev_inr = IN_R[i] + dr * delay_wet;
-                float wetl, wetr;
-                reverb.Process(rev_inl * reverb_wet, rev_inr * reverb_wet,
-                               &wetl, &wetr);
-                OUT_L[i] = IN_L[i] + dl * delay_wet + wetl;
-                OUT_R[i] = IN_R[i] + dr * delay_wet + wetr;
+                float wl, wr;
+                g_tone.Process(m, IN_L[i], IN_R[i], k1, k2, k3, wl, wr);
+                MixOut(IN_L[i], IN_R[i], wl, wr, mix, OUT_L[i], OUT_R[i]);
             }
         }
         break;
 
-        // ============================================================
-        case 3: // PITCH – CV1=semitones CV2=buf size CV3=flutter CV4=wet
-        //        DaisySP time-domain OLA pitch shifter (two crossfading delay lines)
-        // ============================================================
+        case 3: // Bank D — Misc (k1,k2,k3 = effect params)
         {
-            // Quantise to integer semitones (-12..+12)
-            float semitones = floorf(fmap(k1, -12.0f, 13.0f));
-            // Buffer size: larger = smoother shift, more latency (1024..16384)
-            uint32_t buf_sz = (uint32_t)fmap(k2, 1024.0f, 16384.0f);
-            float    fun    = k3; // tape-flutter randomness 0..1
-            float    wet    = k4;
-            pitch_l.SetTransposition(semitones);
-            pitch_r.SetTransposition(semitones);
-            pitch_l.SetDelSize(buf_sz);
-            pitch_r.SetDelSize(buf_sz);
-            pitch_l.SetFun(fun);
-            pitch_r.SetFun(fun);
+            mfx::MiscMode m = (mfx::MiscMode)g_nav.patch;
             for(size_t i = 0; i < size; i++)
             {
-                float inl = IN_L[i], inr = IN_R[i];
-                float pl  = pitch_l.Process(inl);
-                float pr  = pitch_r.Process(inr);
-                OUT_L[i]  = inl * (1.0f - wet) + pl * wet;
-                OUT_R[i]  = inr * (1.0f - wet) + pr * wet;
-            }
-        }
-        break;
-
-        // ============================================================
-        case 4: // LADDER – CV1=cut CV2=res CV3=drive CV4=wet
-        //        Huovilainen 4-pole LP24, 4x oversampled, self-oscillates
-        // ============================================================
-        {
-            float cutoff = fmap(k1, 20.0f, 18000.0f, Mapping::LOG);
-            float res    = fmap(k2, 0.0f, 1.8f);
-            float drive  = fmap(k3, 0.0f, 4.0f);
-            float wet    = k4;
-            ladder_l.SetFreq(cutoff); ladder_l.SetRes(res); ladder_l.SetInputDrive(drive);
-            ladder_r.SetFreq(cutoff); ladder_r.SetRes(res); ladder_r.SetInputDrive(drive);
-            for(size_t i = 0; i < size; i++)
-            {
-                OUT_L[i] = IN_L[i] * (1.0f - wet) + ladder_l.Process(IN_L[i]) * wet;
-                OUT_R[i] = IN_R[i] * (1.0f - wet) + ladder_r.Process(IN_R[i]) * wet;
-            }
-        }
-        break;
-
-        // ============================================================
-        case 5: // SVF MORPH – CV1=cut CV2=res CV3=LP→BP→HP→Notch CV4=wet
-        // ============================================================
-        {
-            float cutoff = fmap(k1, 20.0f, 16000.0f, Mapping::LOG);
-            float res    = fmap(k2, 0.0f, 1.0f);
-            float morph  = k3;
-            float wet    = k4;
-            svf_l.SetFreq(cutoff); svf_l.SetRes(res);
-            svf_r.SetFreq(cutoff); svf_r.SetRes(res);
-            for(size_t i = 0; i < size; i++)
-            {
-                svf_l.Process(IN_L[i]);
-                svf_r.Process(IN_R[i]);
-                float fl, fr;
-                if(morph < 0.333f)
-                {
-                    float t = morph / 0.333f;
-                    fl = svf_l.Low()  * (1.0f - t) + svf_l.Band()  * t;
-                    fr = svf_r.Low()  * (1.0f - t) + svf_r.Band()  * t;
-                }
-                else if(morph < 0.667f)
-                {
-                    float t = (morph - 0.333f) / 0.334f;
-                    fl = svf_l.Band() * (1.0f - t) + svf_l.High()  * t;
-                    fr = svf_r.Band() * (1.0f - t) + svf_r.High()  * t;
-                }
-                else
-                {
-                    float t = (morph - 0.667f) / 0.333f;
-                    fl = svf_l.High() * (1.0f - t) + svf_l.Notch() * t;
-                    fr = svf_r.High() * (1.0f - t) + svf_r.Notch() * t;
-                }
-                OUT_L[i] = IN_L[i] * (1.0f - wet) + fl * wet;
-                OUT_R[i] = IN_R[i] * (1.0f - wet) + fr * wet;
-            }
-        }
-        break;
-
-        // ============================================================
-        case 6: // COMB – CV1=freq CV2=feedback CV3=brightness CV4=wet
-        // ============================================================
-        {
-            float freq     = fmap(k1, 40.0f, 1200.0f, Mapping::LOG);
-            float feedback = fmap(k2, 0.0f, 0.99f);
-            float bright   = k3;
-            float wet      = k4;
-            float delay_s  = fminf(patch.AudioSampleRate() / freq,
-                                   (float)kMaxDelaySamples - 1.0f);
-            delayL.SetDelay(delay_s);
-            delayR.SetDelay(delay_s);
-            float lp_alpha = fmap(bright, 0.08f, 0.92f);
-            for(size_t i = 0; i < size; i++)
-            {
-                float dl = delayL.Read();
-                float dr = delayR.Read();
-                comb_lp_l += lp_alpha * (dl - comb_lp_l);
-                comb_lp_r += lp_alpha * (dr - comb_lp_r);
-                delayL.Write(IN_L[i] + comb_lp_l * feedback);
-                delayR.Write(IN_R[i] + comb_lp_r * feedback);
-                OUT_L[i] = IN_L[i] * (1.0f - wet) + dl * wet;
-                OUT_R[i] = IN_R[i] * (1.0f - wet) + dr * wet;
-            }
-        }
-        break;
-
-        // ============================================================
-        case 7: // WF+CHR – CV1=fold CV2=chorus rate CV3=depth CV4=wet
-        // ============================================================
-        {
-            float fold  = fmap(k1, 1.0f, 8.0f);
-            float wet   = k4;
-            wfold_l.SetGain(fold);
-            wfold_r.SetGain(fold);
-            chorus.SetLfoFreq(fmap(k2, 0.1f, 5.0f));
-            chorus.SetLfoDepth(k3);
-            for(size_t i = 0; i < size; i++)
-            {
-                float fl = wfold_l.Process(IN_L[i]);
-                float fr = wfold_r.Process(IN_R[i]);
-                chorus.Process((fl + fr) * 0.5f);
-                OUT_L[i] = IN_L[i] * (1.0f - wet) + chorus.GetLeft()  * wet;
-                OUT_R[i] = IN_R[i] * (1.0f - wet) + chorus.GetRight() * wet;
+                float wl, wr;
+                g_misc.Process(m, IN_L[i], IN_R[i], k1, k2, k3, wl, wr);
+                MixOut(IN_L[i], IN_R[i], wl, wr, mix, OUT_L[i], OUT_R[i]);
             }
         }
         break;
@@ -505,8 +408,10 @@ void AudioCallback(AudioHandle::InputBuffer  in,
         {
             for(size_t i = 0; i < size; i++)
             {
-                OUT_L[i] = IN_L[i];
-                OUT_R[i] = IN_R[i];
+                float oL = IN_L[i], oR = IN_R[i];
+                g_out.Process(oL, oR);
+                OUT_L[i] = oL;
+                OUT_R[i] = oR;
             }
         }
         break;
@@ -532,25 +437,26 @@ int main(void)
 
     patch.StartDac();
 
-    // Effects
-    reverb.Init(sr);
-    delayL.Init();
-    delayR.Init();
-    bp1L.Init(sr); bp2L.Init(sr);
-    bp1R.Init(sr); bp2R.Init(sr);
-    pitch_l.Init(sr);  pitch_r.Init(sr);
-    ladder_l.Init(sr); ladder_r.Init(sr);
-    svf_l.Init(sr);    svf_r.Init(sr);
-    wfold_l.Init();    wfold_r.Init();
-    chorus.Init(sr);
-    chorus.SetDelay(0.4f);
-    chorus.SetFeedback(0.1f);
+    // Shared core + banks. LPF disabled (Patch SM has a clean output) — the
+    // output stage keeps only the DC blocker and the soft clamp.
+    g_out.Init(sr, 0.f);
+    g_reverb.Init(sr);
+    g_delay.Init(sr);
+    g_tone.Init(sr);
+    g_misc.Init(sr);
 
-    // OLED
+    // Navigation layout: 4 banks, Misc holds only 2 patches.
+    g_nav.num_banks  = kNumBanks;
+    g_nav.patches[0] = kBanks[0].count;
+    g_nav.patches[1] = kBanks[1].count;
+    g_nav.patches[2] = kBanks[2].count;
+    g_nav.patches[3] = kBanks[3].count;
+
+    // OLED splash
     display.Init(patch.A2, patch.A3);
     display.Clear();
     display.DrawStringCentered(0,  "MULTIFX", false);
-    display.DrawStringCentered(16, "8 PATCH", false);
+    display.DrawStringCentered(16, "4 BANKS", false);
     display.Update();
     System::Delay(800);
 
@@ -559,5 +465,15 @@ int main(void)
 
     patch.StartAdc();
     patch.StartAudio(AudioCallback);
-    while(1) { System::Delay(1); }
+    while(1)
+    {
+        // Run the heavy bank Reset() here, off the audio ISR. Clear the flag
+        // only after it completes so the crossfade holds mute over the memset.
+        if(g_reset_pending)
+        {
+            ResetActiveBank();
+            g_reset_pending = false;
+        }
+        System::Delay(1);
+    }
 }
