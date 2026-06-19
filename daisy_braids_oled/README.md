@@ -4,7 +4,7 @@ Mutable Instruments Braids macro oscillator port for Daisy Patch.Init with OLED 
 
 ## Overview
 
-This is a variant of daisy_braids that adds a 64x48 OLED display for visual feedback and two-level menu navigation. The control scheme has been redesigned to use all four knobs for sound parameters, with patch selection handled via the B7 button.
+A Braids macro oscillator port for Daisy Patch.Init with a 64x48 OLED display for visual feedback and two-level menu navigation. The control scheme uses all four knobs for sound parameters, with patch selection handled via the B7 button.
 
 ## Hardware Requirements
 
@@ -194,17 +194,6 @@ V/Oct calibration can be adjusted by defining these values before `#include`:
 #define VOCT_BASE_MIDI 48     // MIDI note at 0V (default: C3)
 #define VOCT_CENTER_NORM 0.0f // ADC value at 0V (trim offset)
 ```
-
-## Changes from daisy_braids
-
-| Feature | daisy_braids | daisy_braids_oled |
-|---------|-----------|----------------|
-| Display | None (LED only) | 64x48 OLED |
-| Bank select | B7 button cycles | B7 long-press enters bank mode |
-| Patch select | CV_4 knob | B7 short-press cycles |
-| Page toggle | B8 toggle switch | N/A (removed for display) |
-| Level control | CV_3 knob (or shift) | Fixed level |
-| Attack/Decay | CV_1/CV_2 (shifted) | CV_3/CV_4 (always visible) |
 
 ## License
 

@@ -1,6 +1,6 @@
 # daisy_multifx_oled
 
-Multi-effect processor for Daisy Patch.Init with 64x48 OLED display. This is a variant of [daisy_multifx](../daisy_multifx/) that adds visual feedback and menu navigation via a small SSD1306 OLED.
+Multi-effect processor for Daisy Patch.Init with 64x48 OLED display. Visual feedback and menu navigation are provided via a small SSD1306 OLED.
 
 ## Features
 
@@ -91,15 +91,6 @@ Delay line feeding into reverb. Supports external clock sync on B10 — delay ti
 
 ### Effect 3: GRANULAR
 Granular pitch shifter with Hann-windowed grains. Pitch range ±12 semitones, grain size 25ms–150ms.
-
-## Changes from daisy_multifx
-
-| Feature | daisy_multifx | daisy_multifx_oled |
-|---------|---------------|--------------------|
-| Display | None (LED only) | 64x48 OLED |
-| Effect select | B7 cycles + LED pulse count | B7 short/long press + OLED menu |
-| Parameter page (B8) | Toggle for DLY+REV params | Not used (display shows labels) |
-| Parameter feedback | None (blind knob twisting) | Labels shown on screen |
 
 ## Building
 

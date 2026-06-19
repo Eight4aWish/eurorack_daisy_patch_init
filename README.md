@@ -48,33 +48,9 @@ make DAISY_ROOT=/path/to/daisy
 
 ## Projects
 
-- `daisy_braids/` – Braids macro oscillator port (see project README for BOOT_QSPI notes)
-- `daisy_braids_oled/` – Braids port with 64x48 OLED display and menu navigation
+- `daisy_braids_oled/` – Braids macro oscillator port with 64x48 OLED display and menu navigation (see project README for BOOT_QSPI notes)
 - `daisy_grids/` – 3-drum sequencer with Grids-style pattern generator (GPL-3.0)
-- `daisy_multifx/` – Multi-effect processor (Reverb, Resonator, Delay→Reverb, Granular)
-- `daisy_multifx_oled/` – Multi-effect processor with OLED display
+- `daisy_multifx_oled/` – Multi-effect processor (Reverb, Resonator, Delay→Reverb, Granular) with OLED display
 - `FM40p/` – 4-op FM synth example for Daisy Patch SM
 - `interval_osc/` – Dual oscillator with interval offset
 - `torus_mi/` – Torus string synth port using Mutable `stmlib` sources
-
-### daisy_braids V/Oct tuning overrides
-
-`daisy_braids` supports make-time overrides for the V/Oct calibration defaults:
-
-- `VOCT_BASE_MIDI` – MIDI note at 0V (common conventions: C2=36, C3=48, C4=60)
-- `VOCT_CENTER_NORM` – normalized ADC value corresponding to 0V (typically ~0.5 for bipolar inputs)
-
-Examples:
-
-```sh
-cd daisy_braids
-
-# 0V = C2
-make VOCT_BASE_MIDI=36
-
-# Center trim (example)
-make VOCT_CENTER_NORM=0.497f
-
-# Both
-make VOCT_BASE_MIDI=48 VOCT_CENTER_NORM=0.5f
-```
