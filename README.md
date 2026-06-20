@@ -51,9 +51,10 @@ make DAISY_ROOT=/path/to/daisy
 - `daisy_braids_oled/` – Braids macro oscillator port with 64x48 OLED display and menu navigation (see project README for BOOT_QSPI notes)
 - `daisy_grids/` – 3-drum sequencer with Grids-style pattern generator (GPL-3.0)
 - `daisy_multifx_oled/` – Multi-effect processor with 64x48 OLED: 16 effects in a 4×4 grid (Reverb / Delay / Tone / Misc banks), built on the shared `multifx_core` library
+- `daisy_multifx_seed/` – The same `multifx_core` multi-FX on a bare **Daisy Seed** (homebrew Eurorack front end): 128x64 OLED, 3 pots + 2 CV + button, 2-knob control mapping
 - `daisy_fm4op/` – 4-op FM synth example for Daisy Patch SM
 
 ## Shared code
 
-- `common/multifx_core/` – portable, DaisySP-only MultiFX DSP/UI core (reverb, delay, tone and misc effect banks, output voicing, and a Bank/Patch navigation model) shared by `daisy_multifx_oled` and intended for reuse on other Daisy boards. See its [README](common/multifx_core/README.md).
+- `common/multifx_core/` – portable, DaisySP-only MultiFX DSP/UI core (reverb, delay, tone and misc effect banks, output voicing, and a Bank/Patch navigation model) shared by `daisy_multifx_oled` and `daisy_multifx_seed`, and intended for reuse on other Daisy boards. See its [README](common/multifx_core/README.md).
 - `common/` also holds the shared `oled_soft_i2c` SSD1306 driver used by the OLED projects.
