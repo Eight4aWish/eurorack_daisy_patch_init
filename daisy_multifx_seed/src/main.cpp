@@ -318,11 +318,13 @@ static inline void MixOut(float dryL, float dryR, float wetL, float wetR,
 // ================================================================
 // Audio
 // ================================================================
-// NOTE: A faint block-rate comb (harmonics at the audio block rate) remains. It was
-// bisected to our DSP path — NOT the codec output (forced silence was clean) and NOT
-// the audio input (dry passthrough was clean). The next step was to confirm it's the
-// per-block control update (held constant across each block) and, if so, smooth the
-// controls per sample. Left for a follow-up.
+// NOTE: A faint block-rate comb (harmonics at the audio block rate) was chased here
+// and turned out NOT to be a firmware bug — per-sample control smoothing made no
+// difference, the same DSP on Patch.Init is clean to -92 dB, and the comb scaled
+// with each effect's signal gain (Ladder worst, Crush best). Root cause was hardware:
+// the Daisy's bursty per-block digital current on the *shared* +5 V rail modulated
+// the codec's voltage reference (multiplicative -> gain-scaled). Fixed on the board by
+// a dedicated buck supply for the Daisy +5 V (-66 -> -90 dB). Full bisection in NOISE.md.
 void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, size_t size) {
     ProcessControls();
     ProcessNav();
