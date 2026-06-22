@@ -52,8 +52,44 @@ make DAISY_ROOT=/path/to/daisy
 - `daisy_grids/` – 3-drum sequencer with Grids-style pattern generator (GPL-3.0)
 - `daisy_multifx_oled/` – Multi-effect processor with 64x48 OLED: 16 effects in a 4×4 grid (Reverb / Delay / Tone / Misc banks), built on the shared `multifx_core` library (also runs on a bare Daisy Seed with a homebrew front end — see `daisy_multifx_seed/`)
 - `daisy_fm4op/` – 4-op FM synth example for Daisy Patch SM
+- `daisy_torus/` – Mutable Instruments Rings port ("Torus") for the Daisy Patch
+- `daisy_interval_osc/` – dual oscillator with quantized interval offset
 
 ## Shared code
 
 - `common/multifx_core/` – portable, DaisySP-only MultiFX DSP/UI core (reverb, delay, tone and misc effect banks, output voicing, and a Bank/Patch navigation model) shared by `daisy_multifx_oled` (and its homebrew Daisy Seed variant), and intended for reuse on other Daisy boards. See its [README](common/multifx_core/README.md).
 - `common/` also holds the shared `oled_soft_i2c` SSD1306 driver used by the OLED projects.
+
+## Credits & Licenses
+
+This repository combines original code with several third-party ports. Original
+code and integration work is MIT-licensed (see [`LICENSE`](LICENSE)). Vendored
+and submoduled sources retain their own licenses and copyright headers, which
+are kept intact. Names below are trademarks/marks of their respective owners;
+the ports here are community works and are not official or endorsed.
+
+| Component | Author / upstream | License |
+| --- | --- | --- |
+| libDaisy, DaisySP | Electrosmith | MIT |
+| DaisySP-LGPL (linked by `daisy_interval_osc`) | Electrosmith + upstreams | LGPL-2.1 |
+| `daisy_torus` – Rings DSP | Émilie Gillet (Mutable Instruments, [`eurorack`](https://github.com/pichenettes/eurorack)) | MIT |
+| `daisy_torus` – Daisy port ("Torus") | Ben Sergentanis (Electrosmith [DaisyExamples](https://github.com/electro-smith/DaisyExamples)) | MIT |
+| `daisy_interval_osc` – IntervalOsc | Nick Donaldson ([ndonald2/DaisyPatches](https://github.com/ndonald2/DaisyPatches)) | MIT |
+| `daisy_grids` | Mutable Instruments (Grids) derivative | GPL-3.0 |
+| `daisy_braids_oled`, `daisy_multifx_*`, `daisy_fm4op`, integration | David Baghurst | MIT |
+
+Notes:
+
+- **Modifications.** Ported sources have been modified for this hardware (for
+  example, replacing the panel toggle switch with an OLED screen and on-screen
+  control legends). Modifications are noted in the relevant file headers
+  alongside the original copyright notices; the original notices are never
+  removed.
+- **LGPL.** `daisy_interval_osc` links Electrosmith's `DaisySP-LGPL`. Because
+  full source is published here, LGPL relinking obligations are satisfied. If
+  you distribute prebuilt binaries (e.g. attaching `.bin` files to a release),
+  include a pointer to this source so the LGPL portions can be relinked.
+- **Trademarks vs. copyright.** The MIT licenses above grant rights to the
+  *code*, not to product names ("Rings", "Mutable Instruments", "Daisy"). The
+  port is named "Torus" (the established community name) and does not imply
+  endorsement.
