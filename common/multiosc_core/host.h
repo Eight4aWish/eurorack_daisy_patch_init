@@ -50,6 +50,13 @@ class Host {
     volatile bool short_press_pending_ = false;
     bool          hold_handled_        = false; // long-press consumed this hold
     static constexpr uint32_t kLongPressMs = 600;
+
+    // Redraw the OLED only when the legend changes, so soft-I2C isn't bit-banged
+    // continuously (that switching couples into the codec as audible noise).
+    const Engine* drawn_engine_ = nullptr;
+    const char*   drawn_sel_    = nullptr;
+    bool          drawn_edit_   = false;
+    bool          drawn_valid_  = false;
 };
 
 } // namespace multiosc

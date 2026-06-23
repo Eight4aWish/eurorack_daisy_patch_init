@@ -48,7 +48,6 @@ class FmFourOp : public Engine {
     float          sample_rate_ = 48000.f;
     float          master_gain_ = 0.6f;
     uint8_t        algo_        = 0; // 0 Parallel, 1 Serial, 2 Feedback
-    bool           gate_seen_   = false;
 
     // Edit-page params (normalised 0..1) with soft-takeover.
     float        a_norm_ = 0.02f, r_norm_ = 0.32f, v_norm_ = 0.5f;

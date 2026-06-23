@@ -45,8 +45,7 @@ void FmFourOp::Init(DaisyPatchSM& hw, float sample_rate)
     env_.SetTime(ADSR_SEG_RELEASE, 0.4f);
     env_.SetSustainLevel(0.7f);
 
-    algo_      = 0;
-    gate_seen_ = false;
+    algo_ = 0;
 
     st_a_.Set(a_norm_);
     st_r_.Set(r_norm_);
@@ -55,7 +54,7 @@ void FmFourOp::Init(DaisyPatchSM& hw, float sample_rate)
 
 const char* FmFourOp::ModLabel(int idx, bool edit) const
 {
-    static const char* kEdit[3] = {"Atk", "Rel", "Vol"};
+    static const char* kEdit[3] = {"Vol", "Atk", "Rel"};
     static const char* kPlay[3][3] = {
         {"Low", "Mid", "Hi"},     // Parallel: depth of 2x/3x/4x modulators
         {"Rat1", "Rat2", "Rat3"}, // Serial:   ratios of the three operators
@@ -97,19 +96,28 @@ void FmFourOp::Process(DaisyPatchSM&             hw,
         st_v_.Reset(v_norm_);
     }
 
-    if(hw.gate_in_1.Trig())
-        env_.Retrigger(true);
+    // Read the gate once per block: level OR latched edge, so sub-block
+    // triggers still register. Drive the ADSR through Process(gate) alone — a
+    // hard Retrigger() would zero the level and click on overlapping notes.
+    // No "play before first gate" drone: the voice is silent until gated.
+    const bool gate = hw.gate_in_1.State() || hw.gate_in_1.Trig();
 
-    // Pitch: knob = 0..6 octaves, CV = ±5 V (1 V/oct).
-    const float exponent  = (k_tune * 6.0f) + ((cv_pitch * 10.0f) - 5.0f);
-    const float base_freq = 50.0f * powf(2.0f, exponent);
+    // Pitch: knob = 0..6 octaves, CV = ±5 V (1 V/oct). Clamp to the audible
+    // range so extreme settings can't produce sub-audio DC rumble.
+    const float exponent = (k_tune * 6.0f) + ((cv_pitch * 10.0f) - 5.0f);
+    float       base_freq = 50.0f * powf(2.0f, exponent);
+    if(base_freq < 20.0f)
+        base_freq = 20.0f;
+    if(base_freq > 8000.0f)
+        base_freq = 8000.0f;
 
     if(ctx.edit_page)
     {
-        // Edit page: Attack / Release / Volume (FM controls frozen).
-        a_norm_ = st_a_.Process(k1);
-        r_norm_ = st_r_.Process(k2);
-        v_norm_ = st_v_.Process(k3);
+        // Edit page (FM controls frozen). Grid: MOD1=Vol, MOD2=Atk, MOD3=Rel
+        // so Atk/Rel sit together on the bottom row.
+        v_norm_ = st_v_.Process(k1);
+        a_norm_ = st_a_.Process(k2);
+        r_norm_ = st_r_.Process(k3);
         env_.SetTime(ADSR_SEG_ATTACK, 0.001f + a_norm_ * 0.5f);
         env_.SetTime(ADSR_SEG_RELEASE, 0.02f + r_norm_ * 1.2f);
         master_gain_ = 0.2f + v_norm_ * 0.8f;
@@ -160,10 +168,7 @@ void FmFourOp::Process(DaisyPatchSM&             hw,
 
     for(size_t i = 0; i < size; i++)
     {
-        const bool gate = hw.gate_in_1.State();
-        if(gate)
-            gate_seen_ = true;
-        const float env_amp = gate_seen_ ? env_.Process(gate) : 1.0f;
+        const float env_amp = env_.Process(gate);
 
         float mod = 0.0f;
         if(algo_ == 0)

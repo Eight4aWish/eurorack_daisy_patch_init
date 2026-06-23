@@ -30,11 +30,20 @@ class SineEngine : public Engine {
         (void)ctx;
         const float tune = hw.GetAdcValue(KNOB_TUNE);
         const float cv   = hw.GetAdcValue(CV_VOCT);
-        const float freq = 55.0f * powf(2.0f, tune * 5.0f + (cv * 10.0f - 5.0f));
+        float freq = 55.0f * powf(2.0f, tune * 5.0f + (cv * 10.0f - 5.0f));
+        if(freq < 20.0f)
+            freq = 20.0f; // no sub-audio rumble
+        if(freq > 8000.0f)
+            freq = 8000.0f;
         osc_.SetFreq(freq);
+
+        // Gated: silent at rest, slewed amplitude so note on/off never clicks.
+        const bool  gate   = hw.gate_in_1.State() || hw.gate_in_1.Trig();
+        const float target = gate ? 0.5f : 0.0f;
         for(size_t i = 0; i < size; i++)
         {
-            const float s = osc_.Process();
+            amp_ += (target - amp_) * 0.004f; // ~5 ms slew
+            const float s = osc_.Process() * amp_;
             out[0][i]     = s;
             out[1][i]     = s;
         }
@@ -47,6 +56,7 @@ class SineEngine : public Engine {
 
   private:
     daisysp::Oscillator osc_;
+    float               amp_ = 0.0f;
 };
 
 } // namespace multiosc

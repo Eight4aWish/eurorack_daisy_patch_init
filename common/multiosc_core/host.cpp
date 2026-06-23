@@ -46,12 +46,15 @@ void Host::InitHardware()
 
 void Host::DrawMenu(int sel)
 {
+    char line[24];
     display_.Clear();
     display_.DrawStringCentered(0, "SELECT", false);
     for(int i = 0; i < engine_count_; i++)
     {
         const uint8_t y = 12 + i * 9;
-        display_.DrawString(2, y, engines_[i]->Name(), i == sel);
+        std::snprintf(line, sizeof(line), "%s %s", i == sel ? ">" : " ",
+                      engines_[i]->Name());
+        display_.DrawString(2, y, line, false);
     }
     display_.Update();
 }
@@ -132,7 +135,18 @@ void Host::DrawLegend()
     //     Tune   <MOD1>
     //     <MOD2> <MOD3>
     const bool  edit = ctx_.edit_page;
-    const char* tag  = edit ? "EDIT" : active_->Selection();
+    const char* sel  = active_->Selection();
+
+    // Skip the (slow, noisy) soft-I2C redraw when nothing on screen changed.
+    if(drawn_valid_ && active_ == drawn_engine_ && edit == drawn_edit_
+       && sel == drawn_sel_)
+        return;
+    drawn_engine_ = active_;
+    drawn_edit_   = edit;
+    drawn_sel_    = sel;
+    drawn_valid_  = true;
+
+    const char* tag = edit ? "EDIT" : sel;
     char        title[24], row1[16], row2[16];
 
     if(tag && tag[0])
