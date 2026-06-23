@@ -6,7 +6,8 @@ conforms to the roles below, and the OLED prints the exact per-app meaning of
 the variable controls.
 
 This targets the "occasional-use" firmware family selectable at boot:
-`daisy_torus` (Rings), `daisy_fm4op`, `daisy_interval_osc`. New synth-voice
+`daisy_fm4op` (FM), `daisy_interval_osc` (dual osc), `daisy_scanned` (scanned
+synthesis). New synth-voice
 firmwares are expected to follow the same contract.
 
 ## Hardware surface (from `patch_init_schematic.pdf`)
@@ -65,9 +66,8 @@ implement `pitch = TUNE_knob + V/OCT_cv`.
 | Short press | Primary cycle (model / algorithm / waveform) — stays instant |
 | Long press (~1 s) | Toggle **Play ↔ Edit** page (replaces the old B8 shift) |
 
-Only two gestures. Deep/rare functions (e.g. Torus 1 V/oct calibration) are not
-on a per-app gesture — they live in a deep menu (a final Edit-page item) or are
-hard-coded with sane defaults until the calibration story is worked out.
+Only two gestures. Deep/rare functions are not on a per-app gesture — they live
+in a deep menu (a final Edit-page item) or are hard-coded with sane defaults.
 
 There is no held "shift": the **Edit page is the shift layer**. On the Edit page
 the three MOD knobs address each firmware's secondary parameters. Because a knob
@@ -89,31 +89,29 @@ Implementation note: combined, these firmwares exceed the 128 KB internal flash,
 so the unified image must build `BOOT_QSPI` (8 MB QSPI), like
 `daisy_braids_oled`/`daisy_multifx_oled`. Switching apps re-initialises the audio
 engine (sample rate / block size / buffers) per firmware so each keeps its native
-DSP config; large buffers (e.g. Torus reverb) belong in SDRAM.
+DSP config; large buffers belong in SDRAM.
 
 ## Per-firmware maps
 
 `TUNE` = pitch (+V/OCT) in all apps. `MOD n` CV jacks modulate the matching MOD
 knob's parameter.
 
-### Torus (Mutable Instruments Rings port)
+### SCAN (scanned synthesis)
 
 | Slot | Play page | Edit page |
 | --- | --- | --- |
-| TUNE | Frequency | — |
-| MOD 1 | Structure | **Damping** |
-| MOD 2 | Brightness | **Polyphony** (1 / 2 / 4) |
-| MOD 3 | Position | — (free) |
-| Short press | cycle Resonator Model | — |
+| TUNE | Pitch (scan rate) | — |
+| MOD 1 | Tension | **Centering** |
+| MOD 2 | Damping | — |
+| MOD 3 | Hammer | — |
+| Short press | cycle excitation shape (Pulse / Bump / Two / Noise) | — |
 
-- `TRIG` (Gate In 1) = strum. `IN` (Audio In L) = exciter. `OUT L / OUT R` =
-  main / aux voicings.
-- Strum/note/exciter normalisation is auto-detected from patched jacks (no UI).
-- Frequency promoted to TUNE; Damping moved to Edit (sits at a sweet spot most
-  of the time).
-- The Rings FM / string-synth "easter egg" is **not** a hidden mode here — it
-  ships as its own firmware entry (e.g. `Torus String`) in the boot menu.
-- 1 V/oct calibration: hard-coded defaults for now; deep menu later.
+- `GATE` (Gate In 1) plucks/excites the spring-mass string. `OUT L / OUT R` =
+  mono (same signal).
+- Env **off** (default) = continuous self-excitation → evolving drone; env
+  **on** = gated pluck that rings out per Damping.
+- The scan rate (pitch) is decoupled from the spring dynamics, so a held note
+  morphs organically. Spring constants are first-pass / tunable.
 
 ### fm4op (4-operator FM)
 

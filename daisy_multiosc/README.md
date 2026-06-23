@@ -36,6 +36,8 @@ Or drag `build/daisy_multiosc.bin` onto the SD card root and power-cycle. See
 
 ## Status
 
-Scaffold: framework + boot menu + fm4op engine + sine test engine, building for
-BOOT_QSPI. Not yet hardware-verified. Next: fold in interval_osc and torus;
-convert the standalone `fm4op.cpp` to share `fm4op_voice` (currently duplicated).
+Hardware-verified on the Daisy Patch Init. Engines: **FM4OP**, **INTVL**, **SCAN**,
+plus a SINE test voice. Possible follow-ups: tune SCAN's spring constants to
+taste; retire the SINE test voice; converge the standalone `fm4op.cpp` /
+`IntervalOsc.cpp` onto their `*_voice` modules (currently duplicated). Future
+"different" engines: see [../docs/ROADMAP.md](../docs/ROADMAP.md).
