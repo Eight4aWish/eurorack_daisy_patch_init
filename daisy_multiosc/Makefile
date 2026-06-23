@@ -21,18 +21,23 @@ LIBDAISY_DIR ?= $(DAISY_ROOT)/libDaisy
 # Board selection
 USE_DAISY_PATCH_SM = 1
 
+# interval_osc's BlOsc lives in DaisySP-LGPL.
+USE_DAISYSP_LGPL = 1
+
 BUILD_DIR ?= build
 
 # Sources: app + shared host + OLED driver + engines (each in its own folder)
 CPP_SOURCES = main.cpp \
               $(_P_UP1)/common/multiosc_core/host.cpp \
               $(_P_UP1)/common/oled_soft_i2c.cpp \
-              $(_P_UP1)/daisy_fm4op/fm4op_voice.cpp
+              $(_P_UP1)/daisy_fm4op/fm4op_voice.cpp \
+              $(_P_UP1)/daisy_interval_osc/intervalosc_voice.cpp
 
 C_INCLUDES += \
 -I. \
 -I$(_P_UP1)/common \
 -I$(_P_UP1)/daisy_fm4op \
+-I$(_P_UP1)/daisy_interval_osc \
 -I$(LIBDAISY_DIR)/src \
 -I$(DAISYSP_DIR)/Source
 
@@ -54,8 +59,9 @@ endif
 include $(SYSTEM_FILES_DIR)/Makefile
 
 # Ensure required static libraries exist (fresh-clone convenience)
-LIBDAISY_LIB ?= $(LIBDAISY_DIR)/build/libdaisy.a
-DAISYSP_LIB  ?= $(DAISYSP_DIR)/build/libdaisysp.a
+LIBDAISY_LIB     ?= $(LIBDAISY_DIR)/build/libdaisy.a
+DAISYSP_LIB      ?= $(DAISYSP_DIR)/build/libdaisysp.a
+DAISYSP_LGPL_LIB ?= $(DAISYSP_DIR)/DaisySP-LGPL/build/libdaisysp-lgpl.a
 
 $(LIBDAISY_LIB):
 	$(MAKE) -C $(LIBDAISY_DIR)
@@ -63,7 +69,10 @@ $(LIBDAISY_LIB):
 $(DAISYSP_LIB):
 	$(MAKE) -C $(DAISYSP_DIR)
 
-$(BUILD_DIR)/$(TARGET).elf: $(LIBDAISY_LIB) $(DAISYSP_LIB)
+$(DAISYSP_LGPL_LIB):
+	$(MAKE) -C $(DAISYSP_DIR)/DaisySP-LGPL
+
+$(BUILD_DIR)/$(TARGET).elf: $(LIBDAISY_LIB) $(DAISYSP_LIB) $(DAISYSP_LGPL_LIB)
 
 #######################################
 # SD-card flashing (macOS-safe)

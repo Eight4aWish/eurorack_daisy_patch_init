@@ -49,13 +49,17 @@ class Host {
     EngineContext ctx_;
     volatile bool short_press_pending_ = false;
     bool          hold_handled_        = false; // long-press consumed this hold
+    bool          env_on_              = true;  // amplitude envelope enabled
     static constexpr uint32_t kLongPressMs = 600;
 
     // Redraw the OLED only when the legend changes, so soft-I2C isn't bit-banged
     // continuously (that switching couples into the codec as audible noise).
+    // Tracks everything shown so engine-internal state changes refresh too.
     const Engine* drawn_engine_ = nullptr;
     const char*   drawn_sel_    = nullptr;
+    const char*   drawn_l_[3]   = {nullptr, nullptr, nullptr};
     bool          drawn_edit_   = false;
+    bool          drawn_env_    = true;
     bool          drawn_valid_  = false;
 };
 

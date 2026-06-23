@@ -119,8 +119,13 @@ void Host::ProcessAudio(AudioHandle::InputBuffer  in,
     hw_.ProcessAllControls();
     UpdateButton();
 
-    EngineContext ctx = ctx_;
-    ctx.short_press     = short_press_pending_;
+    // On the Edit page the TUNE knob toggles the amplitude envelope on/off.
+    if(ctx_.edit_page)
+        env_on_ = hw_.GetAdcValue(KNOB_TUNE) >= 0.5f;
+
+    EngineContext ctx  = ctx_;
+    ctx.short_press      = short_press_pending_;
+    ctx.env_on           = env_on_;
     short_press_pending_ = false;
 
     if(active_)
@@ -136,14 +141,22 @@ void Host::DrawLegend()
     //     <MOD2> <MOD3>
     const bool  edit = ctx_.edit_page;
     const char* sel  = active_->Selection();
+    const char* l0   = active_->ModLabel(0, edit);
+    const char* l1   = active_->ModLabel(1, edit);
+    const char* l2   = active_->ModLabel(2, edit);
 
     // Skip the (slow, noisy) soft-I2C redraw when nothing on screen changed.
     if(drawn_valid_ && active_ == drawn_engine_ && edit == drawn_edit_
-       && sel == drawn_sel_)
+       && env_on_ == drawn_env_ && sel == drawn_sel_ && l0 == drawn_l_[0]
+       && l1 == drawn_l_[1] && l2 == drawn_l_[2])
         return;
     drawn_engine_ = active_;
     drawn_edit_   = edit;
+    drawn_env_    = env_on_;
     drawn_sel_    = sel;
+    drawn_l_[0]   = l0;
+    drawn_l_[1]   = l1;
+    drawn_l_[2]   = l2;
     drawn_valid_  = true;
 
     const char* tag = edit ? "EDIT" : sel;
@@ -154,10 +167,10 @@ void Host::DrawLegend()
     else
         std::snprintf(title, sizeof(title), "%s", active_->Name());
 
-    std::snprintf(row1, sizeof(row1), "%-6s%s", "Tune",
-                  active_->ModLabel(0, edit));
-    std::snprintf(row2, sizeof(row2), "%-6s%s", active_->ModLabel(1, edit),
-                  active_->ModLabel(2, edit));
+    // Top-left cell is the pitch knob in Play, the envelope on/off in Edit.
+    const char* tl = edit ? (env_on_ ? "EnvOn" : "EnvOf") : "Tune";
+    std::snprintf(row1, sizeof(row1), "%-6s%s", tl, l0);
+    std::snprintf(row2, sizeof(row2), "%-6s%s", l1, l2);
 
     display_.Clear();
     display_.DrawStringCentered(0, title, false);
@@ -174,6 +187,7 @@ void Host::Run()
 
     const int sel = RunBootMenu();
     active_        = engines_[sel];
+    env_on_        = active_->DefaultEnvOn();
 
     hw_.SetAudioBlockSize(active_->BlockSize());
     active_->Init(hw_, hw_.AudioSampleRate());

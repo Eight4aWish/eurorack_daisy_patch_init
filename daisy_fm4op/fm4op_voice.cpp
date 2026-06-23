@@ -102,14 +102,19 @@ void FmFourOp::Process(DaisyPatchSM&             hw,
     // No "play before first gate" drone: the voice is silent until gated.
     const bool gate = hw.gate_in_1.State() || hw.gate_in_1.Trig();
 
-    // Pitch: knob = 0..6 octaves, CV = ±5 V (1 V/oct). Clamp to the audible
-    // range so extreme settings can't produce sub-audio DC rumble.
-    const float exponent = (k_tune * 6.0f) + ((cv_pitch * 10.0f) - 5.0f);
-    float       base_freq = 50.0f * powf(2.0f, exponent);
-    if(base_freq < 20.0f)
-        base_freq = 20.0f;
-    if(base_freq > 8000.0f)
-        base_freq = 8000.0f;
+    // Pitch (frozen on the Edit page, where TUNE is the env on/off control):
+    // knob = 0..6 octaves, CV = ±5 V (1 V/oct), clamped to the audible range.
+    if(!ctx.edit_page)
+    {
+        const float exponent = (k_tune * 6.0f) + ((cv_pitch * 10.0f) - 5.0f);
+        float       bf       = 50.0f * powf(2.0f, exponent);
+        if(bf < 20.0f)
+            bf = 20.0f;
+        if(bf > 8000.0f)
+            bf = 8000.0f;
+        base_freq_ = bf;
+    }
+    const float base_freq = base_freq_;
 
     if(ctx.edit_page)
     {
@@ -168,7 +173,7 @@ void FmFourOp::Process(DaisyPatchSM&             hw,
 
     for(size_t i = 0; i < size; i++)
     {
-        const float env_amp = env_.Process(gate);
+        const float env_amp = ctx.env_on ? env_.Process(gate) : 1.0f;
 
         float mod = 0.0f;
         if(algo_ == 0)

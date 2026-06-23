@@ -27,7 +27,6 @@ class SineEngine : public Engine {
                  size_t                    size) override
     {
         (void)in;
-        (void)ctx;
         const float tune = hw.GetAdcValue(KNOB_TUNE);
         const float cv   = hw.GetAdcValue(CV_VOCT);
         float freq = 55.0f * powf(2.0f, tune * 5.0f + (cv * 10.0f - 5.0f));
@@ -37,9 +36,10 @@ class SineEngine : public Engine {
             freq = 8000.0f;
         osc_.SetFreq(freq);
 
-        // Gated: silent at rest, slewed amplitude so note on/off never clicks.
+        // env on: gated (silent at rest); env off: continuous drone.
+        // Slewed amplitude so note on/off never clicks.
         const bool  gate   = hw.gate_in_1.State() || hw.gate_in_1.Trig();
-        const float target = gate ? 0.5f : 0.0f;
+        const float target = ctx.env_on ? (gate ? 0.5f : 0.0f) : 0.5f;
         for(size_t i = 0; i < size; i++)
         {
             amp_ += (target - amp_) * 0.004f; // ~5 ms slew

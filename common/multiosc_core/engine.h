@@ -32,9 +32,10 @@ enum AdcChan {
 
 // Per-block state the host hands to the active engine.
 struct EngineContext {
-    bool edit_page   = false; // false = Play page, true = Edit page
-    bool short_press = false; // one-shot: B7 short press fired this block
+    bool edit_page    = false; // false = Play page, true = Edit page
+    bool short_press  = false; // one-shot: B7 short press fired this block
     bool page_changed = false; // one-shot: Play<->Edit toggled this block
+    bool env_on       = true;  // amplitude envelope enabled (else drone)
 };
 
 // A selectable voice. Engines read the universal controls from `hw` themselves
@@ -65,6 +66,11 @@ class Engine {
 
     // Native audio block size for this engine.
     virtual int BlockSize() const { return 48; }
+
+    // Whether the amplitude envelope is on by default for this engine
+    // (voices: true; free-running oscillators/drones: false). Toggled live by
+    // the Edit-page TUNE knob.
+    virtual bool DefaultEnvOn() const { return true; }
 };
 
 // Soft-takeover for a knob that changes meaning between pages: after Reset() the
