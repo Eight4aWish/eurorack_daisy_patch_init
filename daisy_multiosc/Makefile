@@ -31,13 +31,15 @@ CPP_SOURCES = main.cpp \
               $(_P_UP1)/common/multiosc_core/host.cpp \
               $(_P_UP1)/common/oled_soft_i2c.cpp \
               $(_P_UP1)/daisy_fm4op/fm4op_voice.cpp \
-              $(_P_UP1)/daisy_interval_osc/intervalosc_voice.cpp
+              $(_P_UP1)/daisy_interval_osc/intervalosc_voice.cpp \
+              $(_P_UP1)/daisy_scanned/scanned_voice.cpp
 
 C_INCLUDES += \
 -I. \
 -I$(_P_UP1)/common \
 -I$(_P_UP1)/daisy_fm4op \
 -I$(_P_UP1)/daisy_interval_osc \
+-I$(_P_UP1)/daisy_scanned \
 -I$(LIBDAISY_DIR)/src \
 -I$(DAISYSP_DIR)/Source
 
