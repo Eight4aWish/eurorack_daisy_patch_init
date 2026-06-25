@@ -42,7 +42,7 @@ single-engine DFU testing; `daisy_scanned/` is engine-only.
 ### Future engines — go *different*
 
 The owner's rack already covers the mainstream palette in hardware, so new
-engines should be off-the-beaten-path. **Dropped as redundant:** Torus/Rings &
+engines should be off-the-beaten-path. **Dropped as redundant:** Rings &
 Elements (own hardware), additive / Harmoniqs (Plaits covers additive — and
 Harmoniqs is unlicensed + needs a modified DaisySP), wavefolder / West-Coast
 (Befaco folder + Behringer Waves), granular (Typhoon = Clouds).
