@@ -48,7 +48,7 @@ constexpr size_t kBraidsBlockSize = 24;
 #endif
 
 #ifndef VOCT_CENTER_NORM
-#define VOCT_CENTER_NORM 0.0f
+#define VOCT_CENTER_NORM 0.007074f   // measured cal: nulls intercept (0.002133f left C1-C4 +30c; +0.30 st / 0.30/60.73)
 #endif
 
 constexpr int32_t kBaseNoteQ7 = (static_cast<int32_t>(VOCT_BASE_MIDI) << 7);
@@ -538,7 +538,7 @@ void ProcessControls()
     
     // V/Oct pitch from CV_5
     const float voct_cv = Clamp11(hw.GetAdcValue(CV_5));
-    const float voct_semitones = (voct_cv - kVoctCenterNorm) * 60.0f;
+    const float voct_semitones = (voct_cv - kVoctCenterNorm) * 60.73f;   // measured cal: -14.4c/oct slope (was 60.0f)
     const int32_t pitch_q7 = kBaseNoteQ7 + static_cast<int32_t>(SemitonesToQ7(voct_semitones));
     osc.set_pitch(ClampI16(pitch_q7));
     
