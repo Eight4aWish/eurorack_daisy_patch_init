@@ -101,8 +101,8 @@ void AudioCallback(...) {
 
 **Phase 4 — shared niceties.**
 9. `SmoothedParam` for the bank-C params (removes their zipper noise).
-10. CV-takeover + tap-tempo-from-gate ports (from Seed `loop()`); the gate jack
-    `gate_in_1`/B10 already exists on Patch SM.
+10. CV handling (pot + CV summing) + tap-tempo-from-gate ports (from Seed
+    `loop()`); the gate jack `gate_in_1`/B10 already exists on Patch SM.
 11. Preset save/recall: a `PatchState` struct (bank, patch, params) persisted to
     QSPI. Persistence is platform-specific, so it lives in each shell, not here.
 
@@ -113,5 +113,8 @@ void AudioCallback(...) {
   self-contained banks are cleaner; the audible result is identical.
 - Tap tempo is passed in (`tap_active`, `tap_samps`) instead of read inside the
   effect, so the gate/CV source is a shell decision.
-- The global Mix and CV-takeover stay in the shell (they depend on the control
-  hardware), matching how v1 kept `P1`/takeover outside the DSP.
+- The global Mix and CV handling stay in the shell (they depend on the control
+  hardware), matching how v1 kept `P1` and the CV mapping outside the DSP. Both
+  shells now sum pot + CV; the Seed's original takeover scheme is gone.
+- `ToneMode::Dual` is the one patch that is deliberately **not** stereo-linked:
+  `p1` filters the left input, `p2` the right, `p3` is a shared resonance.

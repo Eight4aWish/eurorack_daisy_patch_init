@@ -10,7 +10,7 @@ voicing, and click-free patch changes.
 - **4 banks × 4 patches** with a two-level Bank → Patch menu
 - **Bank A REVERB** — Classic / Plate / Tank / Shimmer (voiced `ReverbSc`)
 - **Bank B DELAY** — Ping / Tape / MultiTap / EchoVerb (low-passed feedback, smoothed times)
-- **Bank C TONE** — Ladder / SVF morph / Comb / Wavefolder+Chorus
+- **Bank C TONE** — Ladder / SVF morph / Comb / Dual LP (two independent mono ladders)
 - **Bank D MISC** — Resonator / Pitch shifter / Drive / Crush
 - **CV4 = global dry/wet mix** on every patch
 - **CV-modulatable knobs** — each pot is summed with a CV input jack
@@ -81,7 +81,11 @@ pulse has arrived within the last 2 s; otherwise CV_1 sets the time.
 | LADDER | Cut – cutoff | Res – resonance | Drv – input drive |
 | SVF MRF | Cut – cutoff | Res – resonance | Typ – LP→BP→HP→Notch |
 | COMB | Frq – pitch | Fbk – feedback | Brt – brightness |
-| WF+CHR | Fld – fold amount | Rate – chorus rate | Dpt – chorus depth |
+| DUAL LP | CutL – cutoff, IN L | CutR – cutoff, IN R | Res – shared resonance |
+
+**DUAL LP** is two *independent* mono ladder lowpass filters — IN L filtered by CutL,
+IN R by CutR, sharing one resonance. Unlike every other patch it is deliberately **not**
+stereo-linked; feed it two mono sources. Input drive is pinned (CV_3 is resonance).
 
 ### Bank D — MISC
 | Patch | CV_1 | CV_2 | CV_3 |
@@ -132,7 +136,7 @@ Every patch computes a fully-wet stereo signal, then the shared
 [`multifx_core`](../common/multifx_core/) stage handles the rest uniformly:
 
 1. **Global mix** — CV_4 crossfades dry ↔ wet.
-2. **Output voicing** — DC-block → soft clamp at ±1.2 (`OutputStage`), which protects the hot patches (Ladder, Comb, Wavefolder) from clipping. The Seed's ~14.5 kHz LPF is **disabled** here (the Patch SM output is clean), so the full top end is preserved.
+2. **Output voicing** — DC-block → soft clamp at ±1.2 (`OutputStage`), which protects the hot patches (Ladder, Comb, Dual) from clipping. The Seed's ~14.5 kHz LPF is **disabled** here (the Patch SM output is clean), so the full top end is preserved.
 3. **Patch-change crossfade** — a patch/bank change fades the whole output out (~5 ms), runs the buffer-clearing bank `Reset()` while fully muted (off the audio interrupt), then fades back in (~30 ms). This avoids both cutting the previous reverb tail and any audible glitch from the SDRAM buffer clears (the pitch shifter alone zeros ~128 kB).
 
 ## Architecture
