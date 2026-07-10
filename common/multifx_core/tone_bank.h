@@ -7,7 +7,9 @@
 //   Ladder   – Moog 4-pole ladder LP24 (self-oscillates, input drive)
 //   Svf      – state-variable filter morphing LP -> BP -> HP -> Notch
 //   Comb     – tuned comb / Karplus-Strong with damped feedback
-//   WaveChr  – wavefolder into a stereo chorus
+//   Dual     – two *independent* mono ladder LPs: p1 = cutoff L, p2 = cutoff R,
+//              p3 = shared resonance. Breaks the usual stereo-linked model on
+//              purpose, to filter two mono sources separately.
 //
 // Each effect takes three 0..1 params (p1,p2,p3) and returns a fully-wet stereo
 // pair; the shell applies the global Mix and output voicing afterwards.
@@ -16,7 +18,7 @@
 // DSY_SDRAM_BSS in the shell:
 //     DSY_SDRAM_BSS static mfx::ToneBank g_tone;
 //
-// Dependency: DaisySP only (LadderFilter, Svf, Wavefolder, Chorus, DelayLine).
+// Dependency: DaisySP only (LadderFilter, Svf, DelayLine).
 
 #pragma once
 #include "daisysp.h"
@@ -24,7 +26,7 @@
 
 namespace mfx {
 
-enum class ToneMode { Ladder, Svf, Comb, WaveChr };
+enum class ToneMode { Ladder, Svf, Comb, Dual };
 
 class ToneBank {
  public:
@@ -33,10 +35,6 @@ class ToneBank {
     ladderL_.Init(sr_); ladderR_.Init(sr_);
     svfL_.Init(sr_);    svfR_.Init(sr_);
     combL_.Init();      combR_.Init();
-    wfoldL_.Init();     wfoldR_.Init();
-    chorus_.Init(sr_);
-    chorus_.SetDelay(0.4f);
-    chorus_.SetFeedback(0.1f);
     Reset(ToneMode::Ladder);
   }
 
@@ -101,17 +99,17 @@ class ToneBank {
         wetL = dl; wetR = dr;
       } break;
 
-      case ToneMode::WaveChr: {
-        float fold = fmap(p1, 1.f, 8.f);
-        wfoldL_.SetGain(fold);
-        wfoldR_.SetGain(fold);
-        chorus_.SetLfoFreq(fmap(p2, 0.1f, 5.f));
-        chorus_.SetLfoDepth(clampf(p3, 0.f, 1.f));
-        float fl = wfoldL_.Process(dryL);
-        float fr = wfoldR_.Process(dryR);
-        chorus_.Process((fl + fr) * 0.5f);
-        wetL = chorus_.GetLeft();
-        wetR = chorus_.GetRight();
+      case ToneMode::Dual: {
+        // Two independent mono ladder LPs. Deliberately *not* stereo-linked:
+        // p1 filters the left input, p2 the right, p3 sets a shared resonance.
+        // Input drive is pinned, since p3 is spoken for by resonance.
+        float cutL = fmap(p1, 20.f, 18000.f, Mapping::LOG);
+        float cutR = fmap(p2, 20.f, 18000.f, Mapping::LOG);
+        float res  = fmap(p3, 0.f, 1.8f);
+        ladderL_.SetFreq(cutL); ladderL_.SetRes(res); ladderL_.SetInputDrive(kDualDrive);
+        ladderR_.SetFreq(cutR); ladderR_.SetRes(res); ladderR_.SetInputDrive(kDualDrive);
+        wetL = ladderL_.Process(dryL);
+        wetR = ladderR_.Process(dryR);
       } break;
     }
   }
@@ -125,13 +123,13 @@ class ToneBank {
   static constexpr float  kCombMinHz = 40.f;
   static constexpr size_t kCombLen   = 4096;
   static constexpr float  kCombMax   = (float)kCombLen;
+  // Dual mode has no free param for drive; keep it just above unity for warmth.
+  static constexpr float  kDualDrive = 1.f;
 
   float sr_;
   daisysp::LadderFilter ladderL_, ladderR_;
   daisysp::Svf          svfL_, svfR_;
   daisysp::DelayLine<float, kCombLen> combL_, combR_;
-  daisysp::Wavefolder   wfoldL_, wfoldR_;
-  daisysp::Chorus       chorus_;
   float comb_lpL_, comb_lpR_;
 };
 

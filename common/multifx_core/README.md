@@ -35,7 +35,7 @@ DaisyDuino, Adafruit, or Wire. That is what makes it portable across both shells
 | `effect_switch.h` | `EffectSwitch` — per-sample wet fade for click-free patch changes |
 | `reverb_bank.h` | `ReverbBank` — Classic / Plate / Tank / Shimmer (from Seed Bank A) |
 | `delay_bank.h` | `DelayBank` — Ping / Tape / MultiTap / EchoVerb (from Seed Bank B) |
-| `tone_bank.h` | `ToneBank` — Ladder / SVF morph / Comb / WF+Chorus (from Patch SM v1) |
+| `tone_bank.h` | `ToneBank` — Ladder / SVF morph / Comb / Dual LP (two independent mono ladders) |
 | `misc_bank.h` | `MiscBank` — Resonator / Pitch / Drive / Crush |
 | `ui_model.h` | `NavModel` — platform-agnostic two-level Bank/Patch + menu state machine (per-bank patch counts) |
 
@@ -89,13 +89,13 @@ void AudioCallback(...) {
 
 **Phase 2 — give the Patch SM module the voicing + anti-click (highest value).**
 4. Route the existing 8 patches' output through `mfx::OutputStage` (kills the
-   harshness and protects the hot Ladder/Comb/Wavefolder patches from clipping).
+   harshness and protects the hot Ladder/Comb/Dual patches from clipping).
 5. Call `mfx::EffectSwitch::Trigger()` on patch change and apply `NextGain()`.
 6. Reserve CV4 = global Mix across all patches for a consistent dry/wet metaphor.
 
 **Phase 3 — unify the catalog into banks.**
 7. Adopt `mfx::NavModel` (3 banks): **A** Reverb (this core), **B** Delay (this
-   core), **C** Tone = Ladder / SVF-morph / Comb / Wavefolder+Chorus (port from
+   core), **C** Tone = Ladder / SVF-morph / Comb / Dual-LP (port from
    the Patch SM v1's `main.cpp`, which already has them in DaisySP).
 8. Wrap the bank-C effects into a `ToneBank` mirroring `ReverbBank`/`DelayBank`.
 

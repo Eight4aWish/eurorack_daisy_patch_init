@@ -8,14 +8,16 @@
  * Banks (mfx::NavModel, 4 banks of 4):
  *   A REVERB  Classic / Plate / Tank / Shimmer        (mfx::ReverbBank)
  *   B DELAY   Ping / Tape / MultiTap / EchoVerb        (mfx::DelayBank)
- *   C TONE    Ladder / SVF morph / Comb / WF+Chorus    (mfx::ToneBank)
+ *   C TONE    Ladder / SVF morph / Comb / Dual LP      (mfx::ToneBank)
  *   D MISC    Resonator / Pitch / Drive / Crush        (mfx::MiscBank)
  *
  * Control mapping (the Seed has only 2 free pots after Mix, vs Patch.Init's 4 knobs):
- *   P1 = global dry/wet Mix
- *   P2 -> effect p1   | CV1 takes it over (hysteresis)
- *   P3 -> effect p2   | CV2 takes it over, or arms tap-tempo on the Delay bank
+ *   P1 = global dry/wet Mix (no CV)
+ *   P2 -> effect p1   | CV1 sums in as a bipolar offset (0 V = pot alone)
+ *   P3 -> effect p2   | CV2 sums in likewise, EXCEPT on the Delay bank where CV2
+ *                     | is the tap-tempo clock input only (p2 stays pot-only)
  *   effect p3 = fixed musical default per patch (kFixedP3)
+ *   Exception: SVF (Tone 2) routes P3+CV2 to morph and pins resonance.
  *
  * Pin map (homebrew Arduino names -> libDaisy seed pins, via STM32 pin):
  *   P1 A5/PC1 -> D20 | P2 A3/PA7 -> D18 | P3 A2/PB1 -> D17
@@ -59,8 +61,8 @@ static const PatchDef kDelay[4] = {
     {"MULTITAP", "Time", "Sprd"}, {"ECHOVERB", "Time", "Fdbk"},
 };
 static const PatchDef kTone[4] = {
-    {"LADDER", "Cut", "Reso"}, {"SVF", "Cut", "Reso"},
-    {"COMB", "Freq", "Fdbk"}, {"WF+CHR", "Fold", "Rate"},
+    {"LADDER", "Cut", "Reso"}, {"SVF", "Cut", "Mrph"},
+    {"COMB", "Freq", "Fdbk"}, {"DUAL", "CutL", "CutR"},
 };
 static const PatchDef kMisc[4] = {
     {"RESON", "Freq", "Damp"}, {"PITCH", "Ptch", "Size"},
@@ -74,7 +76,7 @@ static const BankDef kBanks[4] = {
 static const float kFixedP3[4][4] = {
     {0.50f, 0.50f, 0.60f, 0.50f},  // Reverb: classic(ign)/plate size/tank size/shimmer amt
     {0.40f, 0.35f, 0.30f, 0.45f},  // Delay : ping damp/tape wow/multitap fb/echoverb blend
-    {0.30f, 0.00f, 0.40f, 0.50f},  // Tone  : ladder drive/svf morph(LP)/comb damp/wc depth
+    {0.30f, 0.00f, 0.40f, 0.30f},  // Tone  : ladder drive/svf morph(overridden by P3+CV2)/comb damp/dual reso
     {0.70f, 0.50f, 0.80f, 0.50f},  // Misc  : reson level/pitch fun/drive level/crush tone
 };
 
@@ -110,25 +112,28 @@ static constexpr float kXfInInc  = 1.0f / 1440.0f;  // ~30 ms @ 48 k
 static volatile bool   g_reset_pending = false;
 
 // ================================================================
-// Control state (homebrew front end: pots inverted, CV via takeover)
+// Control state (homebrew front end: pots inverted, CV sums as a bipolar offset)
 // ================================================================
 static float samplerate = 48000.f;
 static float P1 = 0.f, P2 = 0.f, P3 = 0.f;       // smoothed pots (P1 = Mix)
 static float CV1_volts = 0.f, CV2_volts = 0.f, CV2_raw = 0.f;
 
 static inline float Adc01ToVin(float a01) { return (3.3f * a01 - 1.68f) / -0.33f; }
-static inline float cv_uni01(float v)     { return fclamp((v + 5.f) * 0.1f, 0.f, 1.f); }
 
-struct CvTakeover {
-    float eps_on, eps_off; bool cv_mode;
-    bool update(float pot01) {
-        if(!cv_mode && pot01 <= eps_on)       cv_mode = true;
-        else if(cv_mode && pot01 >= eps_off)  cv_mode = false;
-        return cv_mode;
-    }
-};
-static CvTakeover toP2 = {0.015f, 0.030f, false};
-static CvTakeover toP3 = {0.015f, 0.030f, false};
+// The CV jacks are bipolar (+/-5 V) and act as an *offset added to the pot*,
+// matching daisy_multifx_oled's pot+CV summing: 0 V = pot alone, +/-5 V = +/-full
+// range. (Previously CV *replaced* the pot once it was turned to ~0, which meant a
+// patched CV did nothing unless the pot was at the bottom, and the bottom of every
+// range was unreachable from the pot.) The dead zone ignores any DC offset sitting
+// on an unpatched jack.
+static constexpr float kCvDeadZoneV = 0.05f;
+static inline float cv_bipolar(float v) {
+    if(fabsf(v) < kCvDeadZoneV) return 0.f;
+    return fclamp(v * 0.2f, -1.f, 1.f);
+}
+
+// SVF is a *morph* filter: P3+CV2 drive morph, so resonance is pinned here.
+static constexpr float kSvfFixedReso = 0.35f;
 
 // Tap tempo on CV2 (Delay bank only)
 static uint32_t last_tap_ms = 0;
@@ -210,10 +215,14 @@ static void UpdateDisplay() {
         const int bx = 40, bw = 84, bh = 11;
         display.SetCursor(2, 19);  display.WriteString("Mix", Font_6x8, true);
         DrawBar(bx, 18, bw, bh, P1, false);
+        // Bars show the pot (the base you dial in); the marker above a bar means a
+        // CV is currently offsetting it.
         display.SetCursor(2, 35);  display.WriteString(p.l2,  Font_6x8, true);
-        DrawBar(bx, 34, bw, bh, toP2.cv_mode ? cv_uni01(CV1_volts) : P2, toP2.cv_mode);
+        DrawBar(bx, 34, bw, bh, P2, cv_bipolar(CV1_volts) != 0.f);
         display.SetCursor(2, 51);  display.WriteString(p.l3,  Font_6x8, true);
-        DrawBar(bx, 50, bw, bh, toP3.cv_mode ? cv_uni01(CV2_volts) : P3, toP3.cv_mode);
+        // On the Delay bank CV2 is the clock, not a modulator — no CV marker there.
+        DrawBar(bx, 50, bw, bh, P3,
+                g_nav.bank != 1 && cv_bipolar(CV2_volts) != 0.f);
     }
 
     display.Update();
@@ -235,10 +244,22 @@ static void ProcessControls() {
     CV2_volts = 0.90f * CV2_volts + 0.10f * cv2;
     CV2_raw   = cv2;
 
-    g_k1  = toP2.update(P2) ? cv_uni01(CV1_volts) : P2;
-    g_k2  = toP3.update(P3) ? cv_uni01(CV2_volts) : P3;
+    // Pot sets the base value; CV adds a bipolar offset on top (0 V = pot alone).
+    // Exception: on the Delay bank CV2 is the tap-tempo *clock* input, so it must
+    // not also offset p2 — clock pulses would slam Fdbk/Spread on every edge.
+    const bool cv2_is_clock = (g_nav.bank == 1);
+    g_k1  = fclamp(P2 + cv_bipolar(CV1_volts), 0.f, 1.f);
+    g_k2  = cv2_is_clock ? P3
+                         : fclamp(P3 + cv_bipolar(CV2_volts), 0.f, 1.f);
     g_k3  = kFixedP3[g_nav.bank][g_nav.patch];
     g_mix = P1;
+
+    // SVF (Tone bank, patch 2): hand the second control to morph (p3) and pin
+    // resonance, so the patch can actually morph LP -> BP -> HP.
+    if(g_nav.bank == 2 && g_nav.patch == 1) {
+        g_k3 = g_k2;            // P3 + CV2 -> morph
+        g_k2 = kSvfFixedReso;   // fixed musical resonance
+    }
 
     // Tap tempo on CV2 (Delay bank only)
     uint32_t now = System::GetNow();

@@ -8,7 +8,7 @@
  * Banks (mfx::NavModel, 4 banks):
  *   A REVERB  – Classic / Plate / Tank / Shimmer        (mfx::ReverbBank)
  *   B DELAY   – Ping / Tape / MultiTap / EchoVerb        (mfx::DelayBank)
- *   C TONE    – Ladder / SVF morph / Comb / WF+Chorus    (mfx::ToneBank)
+ *   C TONE    – Ladder / SVF morph / Comb / Dual LP      (mfx::ToneBank)
  *   D MISC    – Resonator / Pitch / Drive / Crush         (mfx::MiscBank)
  *
  * Every patch produces a fully-wet stereo signal; the shared final stage applies
@@ -67,7 +67,7 @@ static const PatchDef kTonePatches[4] = {
     {"LADDER",   "Cut", "Res",  "Drv"},
     {"SVF MRF",  "Cut", "Res",  "Typ"},
     {"COMB",     "Frq", "Fbk",  "Brt"},
-    {"WF+CHR",   "Fld", "Rate", "Dpt"},
+    {"DUAL LP",  "CutL", "CutR", "Res"},
 };
 static const PatchDef kMiscPatches[4] = {
     {"RESONATR", "Freq", "Damp", "InLv"},
