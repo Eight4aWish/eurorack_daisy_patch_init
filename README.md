@@ -4,6 +4,21 @@ Makefile-based firmware projects built on top of Electrosmith **libDaisy** and *
 
 This repo is intended to be self-contained via git submodules (no shared external `../deps` tree).
 
+## Released modules
+
+Firmwares offered as finished modules are named after the magpie counting rhyme
+(*"one for sorrow, two for joy…"* — hence **Eight4aWish**):
+
+| Name | Firmware | Based on | Licence |
+| --- | --- | --- | --- |
+| **Sorrow** | [`daisy_grids/`](daisy_grids/) | Mutable Instruments Grids | **GPL-3.0-or-later** |
+| **Joy** | [`daisy_braids_oled/`](daisy_braids_oled/) | Mutable Instruments Braids | MIT |
+| **Girl** | *(separate repo)* | Mutable Instruments Elements | MIT |
+
+These are independent community works for the Electrosmith Daisy Patch Init. Product
+names of other makers are used only to describe each firmware's origin — **not
+affiliated with, or endorsed by, Mutable Instruments or Electrosmith.**
+
 ## Clone
 
 ```sh
@@ -49,8 +64,8 @@ make DAISY_ROOT=/path/to/daisy
 ## Projects
 
 - `daisy_multiosc/` – **boot-selectable multi-engine synth** for the Daisy Patch Init: pick a voice at power-up, all sharing one universal panel + OLED legend (`BOOT_QSPI`). Engines: **FM4OP** (4-op FM), **INTVL** (dual interval oscillator), **SCAN** (scanned synthesis), plus a SINE test voice. See its [README](daisy_multiosc/README.md), the control contract in [docs/PANEL.md](docs/PANEL.md), and [docs/ROADMAP.md](docs/ROADMAP.md).
-- `daisy_braids_oled/` – Braids macro oscillator port with 64x48 OLED display and menu navigation (see project README for BOOT_QSPI notes)
-- `daisy_grids/` – 3-drum sequencer with Grids-style pattern generator (GPL-3.0)
+- `daisy_grids/` – **Sorrow** — 3 synthetic drum voices + X/Y pattern sequencer, based on Mutable Instruments Grids (**GPL-3.0-or-later**)
+- `daisy_braids_oled/` – **Joy** — macro oscillator (48 models) with 64x48 OLED menu navigation, based on Mutable Instruments Braids (see project README for BOOT_QSPI notes)
 - `daisy_multifx_oled/` – Multi-effect processor with 64x48 OLED: 16 effects in a 4×4 grid (Reverb / Delay / Tone / Misc banks), built on the shared `multifx_core` library (also runs on a bare Daisy Seed with a homebrew front end — see `daisy_multifx_seed/`)
 - `daisy_fm4op/` – 4-op FM synth (standalone build, and the FM4OP engine for `daisy_multiosc`)
 - `daisy_interval_osc/` – dual oscillator with quantized interval offset (standalone build, and the INTVL engine)
@@ -74,9 +89,9 @@ the ports here are community works and are not official or endorsed.
 | --- | --- | --- |
 | libDaisy, DaisySP | Electrosmith | MIT |
 | DaisySP-LGPL (linked by `daisy_interval_osc`, `daisy_multiosc`) | Electrosmith + upstreams | LGPL-2.1 |
-| `daisy_braids_oled` – Braids DSP | Émilie Gillet (Mutable Instruments, [`eurorack`](https://github.com/pichenettes/eurorack)) | MIT |
+| `daisy_braids_oled` (**Joy**) – Braids DSP | Émilie Gillet (Mutable Instruments, [`eurorack`](https://github.com/pichenettes/eurorack)) | MIT |
 | `daisy_interval_osc` – IntervalOsc | Nick Donaldson ([ndonald2/DaisyPatches](https://github.com/ndonald2/DaisyPatches)) | MIT |
-| `daisy_grids` | Mutable Instruments (Grids) derivative | GPL-3.0 |
+| `daisy_grids` (**Sorrow**) – Grids pattern generator | Émilie Gillet (Mutable Instruments) | **GPL-3.0-or-later** |
 | `daisy_multiosc` (host + SCAN engine), `daisy_scanned`, `daisy_fm4op`, `daisy_multifx_*`, integration | David Baghurst | MIT |
 
 Notes:
@@ -86,10 +101,16 @@ Notes:
   control legends). Modifications are noted in the relevant file headers
   alongside the original copyright notices; the original notices are never
   removed.
+- **GPL (Sorrow).** Mutable's **Grids is GPL-3.0-or-later** — unlike most of the
+  `eurorack` sources, which are MIT. So `daisy_grids` (**Sorrow**) is copyleft:
+  distributing it, source or binary, obliges you to pass on the complete
+  corresponding source under the GPL. It cannot be relicensed to MIT/CC0.
 - **LGPL.** `daisy_interval_osc` links Electrosmith's `DaisySP-LGPL`. Because
   full source is published here, LGPL relinking obligations are satisfied. If
   you distribute prebuilt binaries (e.g. attaching `.bin` files to a release),
   include a pointer to this source so the LGPL portions can be relinked.
-- **Trademarks vs. copyright.** The MIT licenses above grant rights to the
-  *code*, not to product names ("Braids", "Grids", "Mutable Instruments",
-  "Daisy"). These ports are community works and do not imply endorsement.
+- **Trademarks vs. copyright.** The licences above grant rights to the *code*,
+  not to product names ("Braids", "Grids", "Elements", "Mutable Instruments",
+  "Daisy"). Released modules therefore carry their own names (**Sorrow**, **Joy**,
+  **Girl**); the originals are cited only to describe lineage. These are community
+  works and do not imply endorsement.

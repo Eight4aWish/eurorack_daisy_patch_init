@@ -1,8 +1,19 @@
-# daisy_grids
+# Sorrow
 
-A Daisy Patch.Init drum module: **3 synthetic drum voices + Grids-style sequencer** inspired by Mutable Instruments Grids.
+*"One for sorrow…"*
 
-This project includes a portable port of the Grids drum pattern generator (GPL-3.0), so downstream distribution must comply with GPL terms.
+**Sorrow** is a drum module for the Electrosmith Daisy Patch Init: **3 synthetic drum
+voices + an X/Y pattern sequencer**. It is the first in a family of firmwares named
+after the magpie counting rhyme.
+
+Based on the **Grids** drum pattern generator by Émilie Gillet (Mutable Instruments).
+*Not affiliated with, or endorsed by, Mutable Instruments or Electrosmith.*
+
+> **Licence: GPL-3.0-or-later.** Mutable's Grids is itself GPL-3.0-or-later (unlike most
+> of the `eurorack` sources, which are MIT), so Sorrow inherits copyleft: if you
+> distribute Sorrow — source *or* binary, modified or not — you must pass on the
+> complete corresponding source under the GPL and may not add further restrictions.
+> See [Licence](#license).
 
 ## Features
 
@@ -146,7 +157,16 @@ make flash DFU_VIDPID=0483:df11         # Flash by VID:PID
 ## License
 
 - Grids pattern generator port (`grids_port.h`, `grids_port.cpp`, `grids_nodes.cpp`): **GPL-3.0-or-later**
-- Main firmware: **GPL-3.0-or-later** (due to Grids inclusion)
+- Main firmware (**Sorrow**): **GPL-3.0-or-later** (due to Grids inclusion)
+
+Mutable Instruments' Grids is published under GPL-3.0-or-later, so this port and the
+whole firmware must remain GPL. **If you distribute a Sorrow binary you must also offer
+the complete corresponding source under the GPL** — the source for every release is
+this repository at the matching tag.
+
+"Grids" and "Mutable Instruments" are marks of their owner and are used here only to
+describe this firmware's origin; "Daisy" is a mark of Electrosmith. Sorrow is an
+independent community work, not affiliated with or endorsed by either.
 
 ## Acknowledgments
 

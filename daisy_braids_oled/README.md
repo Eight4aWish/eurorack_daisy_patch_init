@@ -1,10 +1,19 @@
-# Daisy Braids OLED
+# Joy
 
-Mutable Instruments Braids macro oscillator port for Daisy Patch.Init with OLED display for intuitive patch navigation.
+*"Two for joy…"*
+
+**Joy** is a macro oscillator for the Electrosmith Daisy Patch Init, with a 64x48 OLED
+for patch navigation. It is the second in a family of firmwares named after the magpie
+counting rhyme.
+
+Based on the **Braids** macro oscillator by Émilie Gillet (Mutable Instruments), MIT.
+*Not affiliated with, or endorsed by, Mutable Instruments or Electrosmith.*
 
 ## Overview
 
-A Braids macro oscillator port for Daisy Patch.Init with a 64x48 OLED display for visual feedback and two-level menu navigation. The control scheme uses all four knobs for sound parameters, with patch selection handled via the B7 button.
+A macro oscillator with 48 models, a 64x48 OLED display for visual feedback and
+two-level menu navigation. The control scheme uses all four knobs for sound parameters,
+with patch selection handled via the B7 button.
 
 ## Hardware Requirements
 
@@ -197,5 +206,10 @@ V/Oct calibration can be adjusted by defining these values before `#include`:
 
 ## License
 
-Based on Mutable Instruments Braids, released under the MIT License.
-See the original [Mutable Instruments repository](https://github.com/pichenettes/eurorack) for details.
+**Joy** is MIT-licensed. It is based on Mutable Instruments Braids by Émilie Gillet,
+also released under the MIT License — the original copyright notices are retained in
+the vendored sources. See the original [Mutable Instruments repository](https://github.com/pichenettes/eurorack) for details.
+
+"Braids" and "Mutable Instruments" are marks of their owner and are used here only to
+describe this firmware's origin; "Daisy" is a mark of Electrosmith. Joy is an
+independent community work, not affiliated with or endorsed by either.
