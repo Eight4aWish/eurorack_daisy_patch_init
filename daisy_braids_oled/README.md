@@ -187,13 +187,31 @@ make
 
 ## Flashing
 
-```bash
-# Via USB (DFU mode)
-make program-dfu
+Joy builds `BOOT_QSPI`: it runs from the QSPI chip via the **Daisy bootloader**, so the
+module needs that bootloader installed once. With the Daisy in the ST ROM bootloader
+(hold **BOOT**, tap **RESET**):
 
-# Via ST-Link/SWD
-make program
+```bash
+make program-boot     # one time per module
 ```
+
+Then flash `build/joy.bin` by either route:
+
+**SD card (easiest).** Copy `joy.bin` to the root of a FAT32 card — it must be the only
+`.bin` there — insert it and power-cycle. During its grace period the bootloader finds
+the file, compares it to what's in QSPI, flashes it if different, and boots. On macOS,
+strip the AppleDouble sidecars afterwards (`dot_clean /Volumes/YOURCARD`), since
+`._joy.bin` also ends in `.bin` and can confuse the scanner.
+
+**USB DFU.** Tap **RESET**, and while the LED pulses (tap **BOOT** once to hold the
+window open), run:
+
+```bash
+make program-dfu      # writes QSPI; leaves the bootloader intact
+```
+
+> `make program` (openocd/ST-Link) is **not** available for `BOOT_QSPI` builds.
+> Also note a `BOOT_NONE` binary flashed over DFU would overwrite the bootloader.
 
 ## Calibration
 

@@ -1,9 +1,10 @@
 /**
- * Braids MI OLED
- * 
- * Mutable Instruments Braids macro oscillator port for Daisy Patch.Init
- * with 64x48 OLED display for patch/bank navigation.
- * 
+ * JOY — macro oscillator for the Electrosmith Daisy Patch Init
+ *
+ * 48 oscillator models with a 64x48 OLED display for patch/bank navigation.
+ * Based on Mutable Instruments Braids by Emilie Gillet (MIT); not affiliated
+ * with or endorsed by Mutable Instruments or Electrosmith. See README.
+ *
  * Hardware: Daisy Patch SM, 64x48 SSD1306 OLED on soft I2C (A2=SDA, A3=SCL)
  * 
  * CONTROLS:
@@ -612,10 +613,10 @@ int main(void)
     display.Init(&i2c);
     display.Clear();
     
-    // Splash screen
-    display.DrawStringCentered(0, "BRAIDS", false);
-    display.DrawStringLargeCentered(15, "OLED", false);
-    display.DrawStringCentered(36, "v1.0", false);
+    // Splash screen — product name (see README: "two for joy"). The upstream
+    // Braids name is credited in the docs, not shown on the panel.
+    display.DrawStringLargeCentered(10, "JOY", false);
+    display.DrawStringCentered(34, "v1.0", false);
     display.Update();
     System::Delay(800);
     

@@ -139,7 +139,7 @@ Three synthetic voices using DaisySP:
 make clean && make
 ```
 
-Output: `build/daisy_grids.elf`, `build/daisy_grids.bin`
+Output: `build/sorrow.elf`, `build/sorrow.bin`
 
 ### Flash
 Put Patch.Init in DFU mode (hold BOOT while pressing RESET), then:

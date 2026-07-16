@@ -1,5 +1,5 @@
 # Daisy Grids - Daisy Patch SM firmware
-TARGET = daisy_grids
+TARGET = sorrow
 
 PROJECT_MAKEFILE := $(abspath $(lastword $(MAKEFILE_LIST)))
 _P_DIR := $(patsubst %/,%,$(dir $(PROJECT_MAKEFILE)))
