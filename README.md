@@ -13,7 +13,6 @@ Firmwares offered as finished modules are named after the magpie counting rhyme
 | --- | --- | --- | --- |
 | **Sorrow** | [`daisy_grids/`](daisy_grids/) | Mutable Instruments Grids | **GPL-3.0-or-later** |
 | **Joy** | [`daisy_braids_oled/`](daisy_braids_oled/) | Mutable Instruments Braids | MIT |
-| **Girl** | *(separate repo)* | Mutable Instruments Elements | MIT |
 
 These are independent community works for the Electrosmith Daisy Patch Init. Product
 names of other makers are used only to describe each firmware's origin — **not
@@ -110,7 +109,7 @@ Notes:
   you distribute prebuilt binaries (e.g. attaching `.bin` files to a release),
   include a pointer to this source so the LGPL portions can be relinked.
 - **Trademarks vs. copyright.** The licences above grant rights to the *code*,
-  not to product names ("Braids", "Grids", "Elements", "Mutable Instruments",
-  "Daisy"). Released modules therefore carry their own names (**Sorrow**, **Joy**,
-  **Girl**); the originals are cited only to describe lineage. These are community
-  works and do not imply endorsement.
+  not to product names ("Braids", "Grids", "Mutable Instruments", "Daisy").
+  Released modules therefore carry their own names (**Sorrow**, **Joy**); the
+  originals are cited only to describe lineage. These are community works and do
+  not imply endorsement.
