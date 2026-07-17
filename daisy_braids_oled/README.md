@@ -180,38 +180,90 @@ The 64×48 pixel OLED shows:
 
 ## Building
 
+### What you need first
+
+- **The ARM toolchain** — `arm-none-eabi-gcc` and friends, plus `make`. The easiest way
+  to get these is Electrosmith's [Daisy Toolchain](https://github.com/electro-smith/DaisyToolchain)
+  (their docs walk through it for macOS, Windows and Linux).
+- **`dfu-util`** — only needed if you flash over USB (see below). On macOS: `brew install dfu-util`.
+- **The source, including its submodules.** This project builds against Electrosmith's
+  libDaisy/DaisySP and Mutable's Braids code, which live in git submodules. If you cloned
+  this repo without them, fetch them once from the repo root:
+
+  ```bash
+  git submodule update --init --recursive
+  ```
+
+### Build it
+
+From this project's folder:
+
 ```bash
 cd daisy_braids_oled
 make
 ```
 
+The first build also compiles the libDaisy/DaisySP libraries, so it takes a while. When it
+finishes you'll have the firmware image at **`build/joy.bin`** — that's the file you flash to
+the module in the next step.
+
+> **Can't see `build/joy.bin` in your editor?** It's there on disk, but `build/` is
+> git-ignored, so editors set to hide ignored files won't show it. Check on the command
+> line with `ls build/joy.bin`.
+
 ## Flashing
 
-Joy builds `BOOT_QSPI`: it runs from the QSPI chip via the **Daisy bootloader**, so the
-module needs that bootloader installed once. With the Daisy in the ST ROM bootloader
-(hold **BOOT**, tap **RESET**):
+Joy doesn't run straight off the chip like a plain Daisy program — it lives in the module's
+large external flash and is launched by the **Daisy bootloader**, a tiny loader that has to
+be installed on the module **once**. After that, updating Joy is just a matter of handing the
+bootloader a new `joy.bin`.
 
-```bash
-make program-boot     # one time per module
-```
+Once the module is built into its panel, **the SD card is the only way to load or update
+Joy** — the Daisy's USB port and its BOOT/RESET buttons are no longer reachable. So:
 
-Then flash `build/joy.bin` by either route:
+1. **Install the bootloader** — a one-time bench step done on the Daisy over USB, *before* it
+   goes into the panel. See [First-time setup](#first-time-setup-installing-the-bootloader).
+2. **Load Joy** from an SD card — the everyday way to install or update the firmware. See
+   [Loading Joy from an SD card](#loading-joy-from-an-sd-card).
 
-**SD card (easiest).** Copy `joy.bin` to the root of a FAT32 card — it must be the only
-`.bin` there — insert it and power-cycle. During its grace period the bootloader finds
-the file, compares it to what's in QSPI, flashes it if different, and boots. On macOS,
-strip the AppleDouble sidecars afterwards (`dot_clean /Volumes/YOURCARD`), since
-`._joy.bin` also ends in `.bin` and can confuse the scanner.
+### First-time setup: installing the bootloader
 
-**USB DFU.** Tap **RESET**, and while the LED pulses (tap **BOOT** once to hold the
-window open), run:
+Do this once, on the **bare Daisy while you still have USB access** (i.e. before it's mounted
+in the module — afterwards the USB port and buttons are covered). It needs `dfu-util`
+installed (see above).
 
-```bash
-make program-dfu      # writes QSPI; leaves the bootloader intact
-```
+1. Put the Daisy into its built-in "ST" boot mode: **hold the BOOT button, tap RESET, then
+   release BOOT.**
+2. From this folder, run:
 
-> `make program` (openocd/ST-Link) is **not** available for `BOOT_QSPI` builds.
-> Also note a `BOOT_NONE` binary flashed over DFU would overwrite the bootloader.
+   ```bash
+   make program-boot
+   ```
+
+The bootloader is now installed permanently. You won't repeat this unless you deliberately
+erase it.
+
+### Loading Joy from an SD card
+
+This is how you install Joy and how you'll update it later — no cables or extra software.
+
+1. Format a microSD card as **FAT32** (also called MS-DOS FAT). Most small cards already are.
+2. Copy **`build/joy.bin`** to the **top level** of the card. It must be the **only** `.bin`
+   file on the card — delete any others.
+3. **macOS only:** macOS hides a companion file named `._joy.bin` next to yours, and because
+   it also ends in `.bin` it can confuse the bootloader. Remove these hidden files with
+   `dot_clean` (replace `DAISY` with your card's name as it appears under `/Volumes`):
+
+   ```bash
+   dot_clean /Volumes/DAISY
+   ```
+4. Eject the card, put it in the module, and power-cycle. Shortly after power-up the
+   bootloader checks the card, and if `joy.bin` differs from what's already installed it
+   loads the new version, then starts Joy. Done.
+
+> **Note for the curious.** Joy is a `BOOT_QSPI` build: it runs from the module's external
+> QSPI flash and is launched by the bootloader, so the ST-Link/OpenOCD `make program` route
+> used for ordinary Daisy programs is intentionally disabled here.
 
 ## Calibration
 
