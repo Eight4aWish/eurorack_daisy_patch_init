@@ -33,8 +33,8 @@ with patch selection handled via the B7 button.
 
 | Knob | Function | Range |
 |------|----------|-------|
-| **KNOB 1** (CV_1) | Timbre | Shape-dependent primary parameter |
-| **KNOB 2** (CV_2) | Color | Shape-dependent secondary parameter |
+| **KNOB 1** (CV_1) | Timbre | Model-dependent — the display shows what it does on the current model |
+| **KNOB 2** (CV_2) | Color | Model-dependent — the display shows what it does on the current model |
 | **KNOB 3** (CV_3) | Attack | 1ms → 6 seconds (exponential) |
 | **KNOB 4** (CV_4) | Decay | 1ms → 6 seconds (exponential) |
 
@@ -66,117 +66,130 @@ The display highlights the currently active navigation level:
 
 ## Oscillator Banks
 
-All 48 Braids oscillator shapes are organized into 8 thematic banks of 6 patches each:
+All 48 Braids oscillator shapes are organized into 8 thematic banks of 4-8 patches,
+following the section groupings used by the Braids manual itself (analog, physical,
+percussion, wavetables, noise, ...). Model names match what a real Braids shows on its
+display (and what the manual's model table lists), so the manual can be followed
+directly. Where Braids draws waveform glyphs, Joy uses the same ASCII forms the manual
+prints (`/|` saw, `/\` triangle, `-_` square, `_|` comb). The Timbre/Color columns
+below are from the Braids quickstart fold-out table.
 
-### Bank 1: ANALOG
-Classic analog synthesizer waveforms and morphing.
+### Bank 1: ANALOG (6)
+Classic analog waveforms, including the sub-oscillator variants.
 
-| # | Patch | Description |
-|---|-------|-------------|
-| 1 | CSAW | Continuously variable saw/pulse |
-| 2 | MORPH | Morphing between saw, square, triangle, sine |
-| 3 | SQ/SW | Square/sawtooth blend |
-| 4 | SI/TR | Sine/triangle blend |
-| 5 | BUZZ | Sawtooth with variable harmonic content |
-| 6 | SQ+SB | Square with sub-oscillator |
+| # | Model | Timbre | Color | Description |
+|---|-------|--------|-------|-------------|
+| 1 | `CSAW` | Notch width | Notch polarity | CS-80 imperfect saw |
+| 2 | `/\/\|-_-_` | Waveshape | Distortion/filter | Variable waveshape |
+| 3 | `/\|/\|-_-_` | Pulse width | Saw to square | Classic sawtooth/square |
+| 4 | `FOLD` | Wavefolder amount | Sine to triangle | Sine/triangle into wavefolder |
+| 5 | `SUB-_` | Pulse width | Sub octave & level* | Square with sub-oscillator |
+| 6 | `SUB/\|` | Saw shape | Sub octave & level* | Sawtooth with sub-oscillator |
 
-### Bank 2: SUB+SYNC
-Sub-oscillators and oscillator sync timbres.
+*\* The SUB models postdate the printed fold-out; their Timbre/Color behaviour is taken
+from the Braids source (`MacroOscillator::RenderSub`): COLOR below centre = sub 2 octaves
+down, above centre = 1 octave down, distance from centre = sub level.*
 
-| # | Patch | Description |
-|---|-------|-------------|
-| 1 | SW+SB | Sawtooth with sub-oscillator |
-| 2 | SQSNC | Square with hard sync |
-| 3 | SWSNC | Sawtooth with hard sync |
-| 4 | 3xSAW | Triple detuned sawtooth |
-| 5 | 3xSQ | Triple detuned square |
-| 6 | 3xTRI | Triple detuned triangle |
+### Bank 2: SYNC+3X (6)
+Hardsync pairs and triple oscillators.
 
-### Bank 3: STACK
-Stacked oscillators and complex layered timbres.
+| # | Model | Timbre | Color | Description |
+|---|-------|--------|-------|-------------|
+| 1 | `SYN-_` | VCO frequency ratio | VCO balance | 2 VCOs with hardsync (square) |
+| 2 | `SYN/\|` | VCO frequency ratio | VCO balance | 2 VCOs with hardsync (saw) |
+| 3 | `/\|/\| x3` | Osc. 2 detune | Osc. 3 detune | Triple saw |
+| 4 | `-_ x3` | Osc. 2 detune | Osc. 3 detune | Triple square |
+| 5 | `/\ x3` | Osc. 2 detune | Osc. 3 detune | Triple triangle |
+| 6 | `SI x3` | Osc. 2 detune | Osc. 3 detune | Triple sine |
 
-| # | Patch | Description |
-|---|-------|-------------|
-| 1 | 3xSIN | Triple detuned sine |
-| 2 | 3xRNG | Triple oscillator ring modulation |
-| 3 | SWARM | Sawtooth swarm (many detuned oscs) |
-| 4 | COMB | Sawtooth through comb filter |
-| 5 | TOY | Lo-fi toy keyboard sound |
-| 6 | DIGLP | Digital filter (lowpass) |
+### Bank 3: STACK+FM (8)
+Spectral builders: combs, ring mod, swarm, additive and FM.
 
-### Bank 4: FILTER
-Digital filter and formant synthesis models.
+| # | Model | Timbre | Color | Description |
+|---|-------|--------|-------|-------------|
+| 1 | `_\|_\|_\|_` | Smoothness | Detune | 2 detuned harmonic combs |
+| 2 | `RING` | 2/1 frequency ratio | 3/1 frequency ratio | 3 ring-modulated sine waves |
+| 3 | `/\|/\|/\|/\|` | Detune | High-pass filter | Swarm of 7 sawtooth waves |
+| 4 | `/\|/\|_\|_\|` | Delay time | Neg./pos. feedback | Comb filtered sawtooth |
+| 5 | `HARM` | Harmonic # | Spectral peakedness | Additive synth, 14 harmonics |
+| 6 | `FM` | Modulation index | Frequency ratio | Plain 2-operator FM |
+| 7 | `FBFM` | Modulation index | Frequency ratio | Feedback 2-operator FM |
+| 8 | `WTFM` | Modulation index | Frequency ratio | Chaotic 2-operator FM |
 
-| # | Patch | Description |
-|---|-------|-------------|
-| 1 | DIGPK | Digital filter (peak/resonant) |
-| 2 | DIGBP | Digital filter (bandpass) |
-| 3 | DIGHP | Digital filter (highpass) |
-| 4 | VOSIM | VOSIM vocal synthesis |
-| 5 | VOWEL | Vowel formant synthesis |
-| 6 | FOF | FOF (Forme d'Onde Formantique) |
+### Bank 4: FLT+VOX (7)
+Digital filters and vocal/formant synthesis.
 
-### Bank 5: FM
-FM synthesis and related timbres.
+| # | Model | Timbre | Color | Description |
+|---|-------|--------|-------|-------------|
+| 1 | `ZLPF` | Cutoff frequency | Waveshape | Direct synthesis, LP filtered |
+| 2 | `ZPKF` | Cutoff frequency | Waveshape | Direct synthesis, peaking filtered |
+| 3 | `ZBPF` | Cutoff frequency | Waveshape | Direct synthesis, BP filtered |
+| 4 | `ZHPF` | Cutoff frequency | Waveshape | Direct synthesis, HP filtered |
+| 5 | `VOSM` | Formant 1 frequency | Formant 2 frequency | Sawtooth with 2 formants |
+| 6 | `VOWL` | a, e, i, o, u | Gender | Low-fi vowel synthesis |
+| 7 | `VFOF` | a, e, i, o, u | Gender | Hi-fi vowel synthesis (FOF) |
 
-| # | Patch | Description |
-|---|-------|-------------|
-| 1 | HARMO | Additive harmonics |
-| 2 | FM | 2-operator FM |
-| 3 | FBKFM | FM with feedback |
-| 4 | CHAOS | Chaotic FM feedback |
-| 5 | PLUCK | Plucked string (Karplus-Strong) |
-| 6 | BOWED | Bowed string physical model |
+### Bank 5: PHYSIC (4)
+The manual's "Physical simulations" section, exactly.
 
-### Bank 6: PHYSIC
-Physical modeling synthesis.
+| # | Model | Timbre | Color | Description |
+|---|-------|--------|-------|-------------|
+| 1 | `PLUK` | Decay | Plucking position | Plucked strings |
+| 2 | `BOWD` | Friction | Bowing position | Bowed string |
+| 3 | `BLOW` | Air pressure | Instrument geometry | Reed simulation |
+| 4 | `FLUT` | Air pressure | Instrument geometry | Flute simulation |
 
-| # | Patch | Description |
-|---|-------|-------------|
-| 1 | BLOWN | Blown pipe/reed model |
-| 2 | FLUTE | Flute physical model |
-| 3 | BELL | Struck bell/metallic |
-| 4 | DRUM | Struck drum membrane |
-| 5 | KICK | Synthetic kick drum |
-| 6 | CYMBL | Cymbal/hi-hat |
+### Bank 6: PERCUS (6)
+The manual's "Percussions" section, plus the hidden extra.
 
-### Bank 7: WAVES
-Wavetable synthesis and hybrid approaches.
+| # | Model | Timbre | Color | Description |
+|---|-------|--------|-------|-------------|
+| 1 | `BELL` | Decay | Harmonicity | Bell |
+| 2 | `DRUM` | Decay | Harmonicity | Metallic drum |
+| 3 | `KICK` | Decay | Brightness | 808 bass drum |
+| 4 | `CYMB` | Cutoff | Noisiness | Cymbal noise |
+| 5 | `SNAR` | Tone | Noisiness/decay | 808 snare drum |
+| 6 | `????` | ? | ? | Hidden extra — not in Braids' own menu |
 
-| # | Patch | Description |
-|---|-------|-------------|
-| 1 | SNARE | Synthetic snare drum |
-| 2 | WTABL | Classic wavetable |
-| 3 | WMAP | 2D wavetable mapping |
-| 4 | WLINE | Wavetable with interpolation |
-| 5 | WPARA | Paraphonic wavetable (chords) |
-| 6 | FNOIS | Filtered noise |
+### Bank 7: WAVES (4)
+The manual's "Wavetables" section, exactly.
 
-### Bank 8: NOISE
-Noise, granular, and experimental synthesis.
+| # | Model | Timbre | Color | Description |
+|---|-------|--------|-------|-------------|
+| 1 | `WTBL` | Wavetable position (smooth) | Wavetable selection (quantized) | 21 wavetables |
+| 2 | `WMAP` | X position | Y position | 16x16 waves |
+| 3 | `WLIN` | Wavetable position | Interpolation quality | Linear wavetable scanning |
+| 4 | `WTx4` | Wavetable position | Chord type | Polyphonic wavetable |
 
-| # | Patch | Description |
-|---|-------|-------------|
-| 1 | TWINS | Twin peaks filtered noise |
-| 2 | CLOCK | Clocked digital noise |
-| 3 | GRAIN | Granular cloud synthesis |
-| 4 | PARTC | Particle/dust noise |
-| 5 | DIGMD | Digital modulation artifacts |
-| 6 | ???? | Question mark (surprise!) |
+### Bank 8: NOISE (7)
+The manual's "Noise" section, plus TOY* (lo-fi/glitch).
+
+| # | Model | Timbre | Color | Description |
+|---|-------|--------|-------|-------------|
+| 1 | `NOIS` | Filter resonance | Response, LP to HP | Tuned noise (2-pole filter) |
+| 2 | `TWNQ` | Resonance | Resonators freq. ratio | Noise sent to 2 resonators |
+| 3 | `CLKN` | Cycle length | Quantization | Clocked digital noise |
+| 4 | `CLOU` | Grain density | Frequency dispersion | Sinusoidal granular synthesis |
+| 5 | `PRTC` | Grain density | Frequency dispersion | Droplets granular synthesis |
+| 6 | `QPSK` | Bit-rate | Modulated data | Modem noises |
+| 7 | `TOY*` | Sample reduction | Bit toggling | Low-fi circuit-bent sounds |
 
 ## Display Layout
 
-The 64×48 pixel OLED shows:
+In **Patch mode** the 64×48 pixel OLED shows:
 
 ```
-┌────────────────┐
-│    ANALOG      │  ← Bank name (inverted when in Bank mode)
-│────────────────│
-│     CSAW       │  ← Patch name (large, inverted when in Patch mode)
-│                │
-│   1/8  1/6     │  ← Bank/Patch position
-└────────────────┘
+┌────────────┐
+│   ANALOG   │  ← Bank name
+│    CSAW    │  ← Model name, as on a real Braids
+│────────────│
+│ WIDT  POLR │  ← What TIMBRE (knob 1) / COLOR (knob 2) do on this model
+│ ATK   DCY  │  ← Internal AD envelope (knobs 3 / 4)
+└────────────┘
 ```
+
+In **Bank mode** (B7 long press) the display shows a 3×3 grid of bank names with the
+current bank highlighted.
 
 ## Building
 

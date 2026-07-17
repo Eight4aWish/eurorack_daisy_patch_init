@@ -55,68 +55,79 @@ constexpr size_t kBraidsBlockSize = 24;
 constexpr int32_t kBaseNoteQ7 = (static_cast<int32_t>(VOCT_BASE_MIDI) << 7);
 constexpr float   kVoctCenterNorm = static_cast<float>(VOCT_CENTER_NORM);
 
-// Bank/Patch organization: 8 banks × 6 patches = 48 shapes
+// Bank/Patch organization: 8 banks of 4-8 patches = 48 shapes.
+// Banks follow the Braids manual's own section groupings, so sizes vary.
 constexpr int kBankCount = 8;
-constexpr int kPatchesPerBank = 6;
-constexpr int kTotalPatches = 48;
+constexpr int kMaxPatchesPerBank = 8;
 
 // Bank definitions - thematic groupings
 struct BankDef {
     const char* name;
     const char* short_name;
-    braids::MacroOscillatorShape shapes[kPatchesPerBank];
-    const char* patch_names[kPatchesPerBank];
+    int patch_count;
+    braids::MacroOscillatorShape shapes[kMaxPatchesPerBank];
+    const char* patch_names[kMaxPatchesPerBank];
+    // Per-patch TIMBRE/COLOR reminder line ("XXXX  YYYY", col 0 and col 6),
+    // abbreviated from the Braids quickstart fold-out table.
+    const char* knob_labels[kMaxPatchesPerBank];
 };
 
 // Short names for the 3x3 grid menu (BNK + 8 banks)
 const char* kBankShortNames[kBankCount] = {
-    "ANA", "SUB", "STK", "FLT", "FM", "PHY", "WAV", "NSE"
+    "ANA", "SYN", "STK", "FLT", "PHY", "PRC", "WAV", "NSE"
 };
 
 const BankDef kBanks[kBankCount] = {
-    // Bank 0: ANALOG - Classic analog synth sounds
+    // Bank 0: ANALOG - classic analog waveforms + sub-oscillator variants
     {
-        "ANALOG", "ANA",
+        "ANALOG", "ANA", 6,
         {
             braids::MACRO_OSC_SHAPE_CSAW,
             braids::MACRO_OSC_SHAPE_MORPH,
             braids::MACRO_OSC_SHAPE_SAW_SQUARE,
             braids::MACRO_OSC_SHAPE_SINE_TRIANGLE,
-            braids::MACRO_OSC_SHAPE_BUZZ,
-            braids::MACRO_OSC_SHAPE_SQUARE_SUB
+            braids::MACRO_OSC_SHAPE_SQUARE_SUB,
+            braids::MACRO_OSC_SHAPE_SAW_SUB
         },
-        {"CSAW", "MORPH", "SQ/SW", "SI/TR", "BUZZ", "SQ+SB"}
+        {"CSAW", "/\\/|-_-_", "/|/|-_-_", "FOLD", "SUB-_", "SUB/|"},
+        {"WIDT  POLR", "WAVE  DIST", "PW    SHAP", "FOLD  SI>T", "PW    SUB", "SHAP  SUB"}
     },
-    // Bank 1: SUB/SYNC - Sub oscillators and sync
+    // Bank 1: SYNC+3X - hardsync pairs and triple oscillators
     {
-        "SUB+SYNC", "SYN",
+        "SYNC+3X", "SYN", 6,
         {
-            braids::MACRO_OSC_SHAPE_SAW_SUB,
             braids::MACRO_OSC_SHAPE_SQUARE_SYNC,
             braids::MACRO_OSC_SHAPE_SAW_SYNC,
             braids::MACRO_OSC_SHAPE_TRIPLE_SAW,
             braids::MACRO_OSC_SHAPE_TRIPLE_SQUARE,
-            braids::MACRO_OSC_SHAPE_TRIPLE_TRIANGLE
+            braids::MACRO_OSC_SHAPE_TRIPLE_TRIANGLE,
+            braids::MACRO_OSC_SHAPE_TRIPLE_SINE
         },
-        {"SW+SB", "SQSNC", "SWSNC", "3xSAW", "3xSQ", "3xTRI"}
+        {"SYN-_", "SYN/|", "/|/| x3", "-_ x3", "/\\ x3", "SI x3"},
+        {"RTIO  BAL", "RTIO  BAL", "DET2  DET3", "DET2  DET3", "DET2  DET3", "DET2  DET3"}
     },
-    // Bank 2: STACK - Stacked oscillators and complex
+    // Bank 2: STACK+FM - combs, ring mod, swarm, additive and FM
     {
-        "STACK", "STK",
+        "STACK+FM", "STK", 8,
         {
-            braids::MACRO_OSC_SHAPE_TRIPLE_SINE,
+            braids::MACRO_OSC_SHAPE_BUZZ,
             braids::MACRO_OSC_SHAPE_TRIPLE_RING_MOD,
             braids::MACRO_OSC_SHAPE_SAW_SWARM,
             braids::MACRO_OSC_SHAPE_SAW_COMB,
-            braids::MACRO_OSC_SHAPE_TOY,
-            braids::MACRO_OSC_SHAPE_DIGITAL_FILTER_LP
+            braids::MACRO_OSC_SHAPE_HARMONICS,
+            braids::MACRO_OSC_SHAPE_FM,
+            braids::MACRO_OSC_SHAPE_FEEDBACK_FM,
+            braids::MACRO_OSC_SHAPE_CHAOTIC_FEEDBACK_FM
         },
-        {"3xSIN", "3xRNG", "SWARM", "COMB", "TOY", "DIGLP"}
+        {"_|_|_|_", "RING", "/|/|/|/|", "/|/|_|_|", "HARM", "FM", "FBFM", "WTFM"},
+        {"SMTH  DTUN", "2/1   3/1", "DTUN  HPF", "DLAY  FDBK", "HRM#  PEAK",
+         "INDX  RTIO", "INDX  RTIO", "INDX  RTIO"}
     },
-    // Bank 3: FILTER - Digital filter models
+    // Bank 3: FLT+VOX - digital filters and vocal/formant synthesis
     {
-        "FILTER", "FLT",
+        "FLT+VOX", "FLT", 7,
         {
+            braids::MACRO_OSC_SHAPE_DIGITAL_FILTER_LP,
             braids::MACRO_OSC_SHAPE_DIGITAL_FILTER_PK,
             braids::MACRO_OSC_SHAPE_DIGITAL_FILTER_BP,
             braids::MACRO_OSC_SHAPE_DIGITAL_FILTER_HP,
@@ -124,59 +135,64 @@ const BankDef kBanks[kBankCount] = {
             braids::MACRO_OSC_SHAPE_VOWEL,
             braids::MACRO_OSC_SHAPE_VOWEL_FOF
         },
-        {"DIGPK", "DIGBP", "DIGHP", "VOSIM", "VOWEL", "FOF"}
+        {"ZLPF", "ZPKF", "ZBPF", "ZHPF", "VOSM", "VOWL", "VFOF"},
+        {"CUTF  WAVE", "CUTF  WAVE", "CUTF  WAVE", "CUTF  WAVE",
+         "FRM1  FRM2", "AEIO  GNDR", "AEIO  GNDR"}
     },
-    // Bank 4: FM - FM synthesis
+    // Bank 4: PHYSIC - the manual's "Physical simulations"
     {
-        "FM", "FM",
+        "PHYSIC", "PHY", 4,
         {
-            braids::MACRO_OSC_SHAPE_HARMONICS,
-            braids::MACRO_OSC_SHAPE_FM,
-            braids::MACRO_OSC_SHAPE_FEEDBACK_FM,
-            braids::MACRO_OSC_SHAPE_CHAOTIC_FEEDBACK_FM,
             braids::MACRO_OSC_SHAPE_PLUCKED,
-            braids::MACRO_OSC_SHAPE_BOWED
-        },
-        {"HARMO", "FM", "FBKFM", "CHAOS", "PLUCK", "BOWED"}
-    },
-    // Bank 5: PHYSICAL - Physical modeling
-    {
-        "PHYSIC", "PHY",
-        {
+            braids::MACRO_OSC_SHAPE_BOWED,
             braids::MACRO_OSC_SHAPE_BLOWN,
-            braids::MACRO_OSC_SHAPE_FLUTED,
+            braids::MACRO_OSC_SHAPE_FLUTED
+        },
+        {"PLUK", "BOWD", "BLOW", "FLUT"},
+        {"DECY  POS", "FRIC  POS", "PRES  GEOM", "PRES  GEOM"}
+    },
+    // Bank 5: PERCUS - the manual's "Percussions" + the hidden extra
+    {
+        "PERCUS", "PRC", 6,
+        {
             braids::MACRO_OSC_SHAPE_STRUCK_BELL,
             braids::MACRO_OSC_SHAPE_STRUCK_DRUM,
             braids::MACRO_OSC_SHAPE_KICK,
-            braids::MACRO_OSC_SHAPE_CYMBAL
-        },
-        {"BLOWN", "FLUTE", "BELL", "DRUM", "KICK", "CYMBL"}
-    },
-    // Bank 6: WAVE - Wavetables and hybrid
-    {
-        "WAVES", "WAV",
-        {
+            braids::MACRO_OSC_SHAPE_CYMBAL,
             braids::MACRO_OSC_SHAPE_SNARE,
+            braids::MACRO_OSC_SHAPE_QUESTION_MARK
+        },
+        {"BELL", "DRUM", "KICK", "CYMB", "SNAR", "????"},
+        {"DECY  HARM", "DECY  HARM", "DECY  BRIT", "CUTF  NOIZ",
+         "TONE  NOIZ", "????  ????"}
+    },
+    // Bank 6: WAVES - the manual's "Wavetables"
+    {
+        "WAVES", "WAV", 4,
+        {
             braids::MACRO_OSC_SHAPE_WAVETABLES,
             braids::MACRO_OSC_SHAPE_WAVE_MAP,
             braids::MACRO_OSC_SHAPE_WAVE_LINE,
-            braids::MACRO_OSC_SHAPE_WAVE_PARAPHONIC,
-            braids::MACRO_OSC_SHAPE_FILTERED_NOISE
+            braids::MACRO_OSC_SHAPE_WAVE_PARAPHONIC
         },
-        {"SNARE", "WTABL", "WMAP", "WLINE", "WPARA", "FNOIS"}
+        {"WTBL", "WMAP", "WLIN", "WTx4"},
+        {"POS   TABL", "XPOS  YPOS", "POS   INTP", "POS   CHRD"}
     },
-    // Bank 7: NOISE/GLITCH - Noise and experimental
+    // Bank 7: NOISE - the manual's "Noise" + TOY* (lo-fi/glitch)
     {
-        "NOISE", "NSE",
+        "NOISE", "NSE", 7,
         {
+            braids::MACRO_OSC_SHAPE_FILTERED_NOISE,
             braids::MACRO_OSC_SHAPE_TWIN_PEAKS_NOISE,
             braids::MACRO_OSC_SHAPE_CLOCKED_NOISE,
             braids::MACRO_OSC_SHAPE_GRANULAR_CLOUD,
             braids::MACRO_OSC_SHAPE_PARTICLE_NOISE,
             braids::MACRO_OSC_SHAPE_DIGITAL_MODULATION,
-            braids::MACRO_OSC_SHAPE_QUESTION_MARK
+            braids::MACRO_OSC_SHAPE_TOY
         },
-        {"TWINS", "CLOCK", "GRAIN", "PARTC", "DIGMD", "????"}
+        {"NOIS", "TWNQ", "CLKN", "CLOU", "PRTC", "QPSK", "TOY*"},
+        {"RESO  LPHP", "RESO  RTIO", "CYCL  QNTZ", "DENS  DISP",
+         "DENS  DISP", "RATE  DATA", "SMPL  BITS"}
     }
 };
 
@@ -407,21 +423,19 @@ void UpdateDisplay()
             }
         }
     } else {
-        // PATCH MODE: Bank:Patch on top, CV functions below
-        
-        // Top line: BANK:PATCH (e.g., "ANA:CSAW")
-        char title[12];
-        snprintf(title, sizeof(title), "%s:%s", 
-                 kBankShortNames[current_bank],
-                 kBanks[current_bank].patch_names[current_patch]);
-        display.DrawStringCentered(0, title, false);
-        
+        // PATCH MODE: bank / patch name / divider / knob functions
+        display.DrawStringCentered(0, kBanks[current_bank].name, false);
+        display.DrawStringCentered(10,
+                 kBanks[current_bank].patch_names[current_patch], false);
+
         // Divider
-        display.DrawHLine(0, 9, 64);
-        
-        // CV function reminders
-        display.DrawString(0, 14, "TIMB  COLR", false);
-        display.DrawString(0, 24, "ATK   DCY", false);
+        display.DrawHLine(0, 19, 64);
+
+        // Knob reminders: per-model TIMBRE/COLOR (from the Braids manual
+        // fold-out table), fixed internal AD envelope on knobs 3/4.
+        display.DrawString(0, 23,
+                 kBanks[current_bank].knob_labels[current_patch], false);
+        display.DrawString(0, 33, "ATK   DCY", false);
     }
     
     display.Update();
@@ -431,7 +445,7 @@ void UpdateDisplay()
 void SetPatch(int bank, int patch)
 {
     current_bank = bank % kBankCount;
-    current_patch = patch % kPatchesPerBank;
+    current_patch = patch % kBanks[current_bank].patch_count;
     
     braids::MacroOscillatorShape shape = kBanks[current_bank].shapes[current_patch];
     osc.set_shape(shape);
@@ -474,7 +488,8 @@ void ProcessNavigation()
                 // Short press: cycle within current mode
                 if(nav_mode == NavMode::Patch)
                 {
-                    SetPatch(current_bank, (current_patch + 1) % kPatchesPerBank);
+                    SetPatch(current_bank,
+                             (current_patch + 1) % kBanks[current_bank].patch_count);
                 }
                 else
                 {
@@ -616,7 +631,7 @@ int main(void)
     // Splash screen — product name (see README: "two for joy"). The upstream
     // Braids name is credited in the docs, not shown on the panel.
     display.DrawStringLargeCentered(10, "JOY", false);
-    display.DrawStringCentered(34, "v1.0", false);
+    display.DrawStringCentered(34, "v1.1", false);
     display.Update();
     System::Delay(800);
     
