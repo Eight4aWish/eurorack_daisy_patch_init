@@ -50,8 +50,10 @@ LDFLAGS += -u _printf_float
 # Core location and generic makefile
 SYSTEM_FILES_DIR = $(LIBDAISY_DIR)/core
 
-# App type / linker selection (QSPI for bootloader support)
-APP_TYPE ?= BOOT_QSPI
+# App type / linker selection. BOOT_SRAM keeps the Daisy-bootloader SD-card
+# workflow (binary stored in QSPI) but executes from SRAM, leaving QSPI free
+# to be written at runtime for persistent settings (last patch memory).
+APP_TYPE ?= BOOT_SRAM
 
 ifeq ($(APP_TYPE),BOOT_QSPI)
 LDSCRIPT ?= $(SYSTEM_FILES_DIR)/STM32H750IB_qspi.lds

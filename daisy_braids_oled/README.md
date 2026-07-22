@@ -13,7 +13,8 @@ Based on the **Braids** macro oscillator by Émilie Gillet (Mutable Instruments)
 
 A macro oscillator with 48 models, a 64x48 OLED display for visual feedback and
 two-level menu navigation. The control scheme uses all four knobs for sound parameters,
-with patch selection handled via the B7 button.
+with patch selection handled via the B7 button. The last selected patch is remembered
+across power cycles (saved to QSPI flash a couple of seconds after each change).
 
 ## Hardware Requirements
 
@@ -274,9 +275,11 @@ This is how you install Joy and how you'll update it later — no cables or extr
    bootloader checks the card, and if `joy.bin` differs from what's already installed it
    loads the new version, then starts Joy. Done.
 
-> **Note for the curious.** Joy is a `BOOT_QSPI` build: it runs from the module's external
-> QSPI flash and is launched by the bootloader, so the ST-Link/OpenOCD `make program` route
-> used for ordinary Daisy programs is intentionally disabled here.
+> **Note for the curious.** Joy is a `BOOT_SRAM` build: the bootloader stores the binary
+> in the module's external QSPI flash, copies it into SRAM at each power-up (a read, not
+> a flash write) and runs it from there. Executing from SRAM leaves QSPI free to be
+> written at runtime, which is how Joy remembers your last patch. The ST-Link/OpenOCD
+> `make program` route used for ordinary Daisy programs is intentionally disabled here.
 
 ## Calibration
 

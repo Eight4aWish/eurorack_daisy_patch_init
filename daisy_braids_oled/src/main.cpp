@@ -325,6 +325,30 @@ int      current_bank = 0;
 int      current_patch = 0;
 bool     display_dirty = true;
 
+// Persistent settings: last selected bank/patch, stored in QSPI flash.
+// Requires APP_TYPE=BOOT_SRAM (app runs from SRAM, so QSPI is writable).
+// Bump kSettingsVersion whenever the bank layout changes so a stale saved
+// index falls back to defaults instead of landing on the wrong model.
+constexpr int      kSettingsVersion    = 1;
+constexpr uint32_t kSettingsQspiOffset = 0x7F0000;  // last 64KB of 8MB chip
+
+struct JoySettings
+{
+    int version;
+    int bank;
+    int patch;
+    bool operator!=(const JoySettings &rhs) const
+    {
+        return version != rhs.version || bank != rhs.bank
+               || patch != rhs.patch;
+    }
+};
+
+PersistentStorage<JoySettings> settings_storage(hw.qspi);
+volatile bool     settings_dirty      = false;
+volatile uint32_t settings_dirty_time = 0;
+constexpr uint32_t kSettingsSaveDelayMs = 2000;  // debounce to limit wear
+
 // Button timing for long press detection
 uint32_t button_press_start = 0;
 bool     button_was_pressed = false;
@@ -446,12 +470,16 @@ void SetPatch(int bank, int patch)
 {
     current_bank = bank % kBankCount;
     current_patch = patch % kBanks[current_bank].patch_count;
-    
+
     braids::MacroOscillatorShape shape = kBanks[current_bank].shapes[current_patch];
     osc.set_shape(shape);
-    
+
     display_dirty = true;
     BlinkLed();
+
+    // Schedule a debounced settings save (performed in the main loop).
+    settings_dirty      = true;
+    settings_dirty_time = System::GetNow();
 }
 
 void ProcessNavigation()
@@ -639,14 +667,36 @@ int main(void)
     osc.Init();
     amp_env.Init(sample_rate);
     
-    // Start with first patch
-    SetPatch(0, 0);
-    
+    // Restore last selected patch from QSPI (defaults to bank 0, patch 0).
+    JoySettings defaults{kSettingsVersion, 0, 0};
+    settings_storage.Init(defaults, kSettingsQspiOffset);
+    if(settings_storage.GetSettings().version != kSettingsVersion)
+        settings_storage.RestoreDefaults();
+    SetPatch(settings_storage.GetSettings().bank,
+             settings_storage.GetSettings().patch);
+    settings_dirty = false;  // restoring is not a change worth saving
+
     SetPanelLed(false);
-    
+
     hw.StartAdc();
     hw.StartAudio(AudioCallback);
-    
+
     while(1)
+    {
+        // Debounced persistence: save the current patch once it has been
+        // stable for a while. Runs here (not in the audio callback) because
+        // the QSPI erase blocks for tens of ms; the audio interrupt keeps
+        // running from SRAM meanwhile.
+        if(settings_dirty
+           && System::GetNow() - settings_dirty_time > kSettingsSaveDelayMs)
+        {
+            settings_dirty = false;
+            JoySettings &s = settings_storage.GetSettings();
+            s.version = kSettingsVersion;
+            s.bank    = current_bank;
+            s.patch   = current_patch;
+            settings_storage.Save();  // no-op if nothing actually changed
+        }
         System::Delay(1);
+    }
 }
