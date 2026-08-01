@@ -15,7 +15,8 @@
  *   
  *   B7 Short Press: Cycle through patches (in Patch mode) or banks (in Bank mode)
  *   B7 Long Press:  Toggle between Patch and Bank navigation modes
- *   
+ *   B7 held at power-up: enter V/Oct calibration (patch 1V, press; 3V, press)
+ *
  *   CV_5: V/Oct pitch input (-5V to +5V)
  *   CV_6: Timbre modulation input
  *   CV_7: Color modulation input
@@ -28,6 +29,7 @@
 
 #include "daisy_patch_sm.h"
 #include "oled_soft_i2c.h"
+#include "voct_cal.h"
 
 #include <braids/macro_oscillator.h>
 
@@ -43,7 +45,10 @@ namespace {
 
 constexpr size_t kBraidsBlockSize = 24;
 
-// V/Oct calibration
+// V/Oct calibration — these are the compile-time DEFAULTS (also the fallback if
+// an end user never runs the calibration routine, and overridable per build via
+// -D). At runtime they can be replaced by a stored two-point calibration
+// (hold B7 at power-up); see RunCalibration() and g_voct_cal.
 #ifndef VOCT_BASE_MIDI
 #define VOCT_BASE_MIDI 48
 #endif
@@ -52,8 +57,16 @@ constexpr size_t kBraidsBlockSize = 24;
 #define VOCT_CENTER_NORM 0.007074f   // measured cal: nulls intercept (0.002133f left C1-C4 +30c; +0.30 st / 0.30/60.73)
 #endif
 
+#ifndef VOCT_SLOPE
+#define VOCT_SLOPE 60.73f            // measured cal: -14.4 c/oct correction (was 60.0f)
+#endif
+
 constexpr int32_t kBaseNoteQ7 = (static_cast<int32_t>(VOCT_BASE_MIDI) << 7);
 constexpr float   kVoctCenterNorm = static_cast<float>(VOCT_CENTER_NORM);
+constexpr float   kVoctSlope      = static_cast<float>(VOCT_SLOPE);
+
+// Active calibration, loaded from persistent settings at boot (defaults above).
+joy::VoctCal g_voct_cal = {kVoctCenterNorm, kVoctSlope};
 
 // Bank/Patch organization: 8 banks of 4-8 patches = 48 shapes.
 // Banks follow the Braids manual's own section groupings, so sizes vary.
@@ -329,18 +342,21 @@ bool     display_dirty = true;
 // Requires APP_TYPE=BOOT_SRAM (app runs from SRAM, so QSPI is writable).
 // Bump kSettingsVersion whenever the bank layout changes so a stale saved
 // index falls back to defaults instead of landing on the wrong model.
-constexpr int      kSettingsVersion    = 1;
+constexpr int      kSettingsVersion    = 2;  // v2: added V/Oct calibration
 constexpr uint32_t kSettingsQspiOffset = 0x7F0000;  // last 64KB of 8MB chip
 
 struct JoySettings
 {
-    int version;
-    int bank;
-    int patch;
+    int   version;
+    int   bank;
+    int   patch;
+    float voct_center; // stored 1V/oct calibration (see voct_cal.h)
+    float voct_slope;
     bool operator!=(const JoySettings &rhs) const
     {
         return version != rhs.version || bank != rhs.bank
-               || patch != rhs.patch;
+               || patch != rhs.patch || voct_center != rhs.voct_center
+               || voct_slope != rhs.voct_slope;
     }
 };
 
@@ -580,9 +596,9 @@ void ProcessControls()
     const float decay_ms  = 1.0f + (env_decay_norm * env_decay_norm) * kMaxDecayMs;
     amp_env.SetAttackDecayMs(attack_ms, decay_ms);
     
-    // V/Oct pitch from CV_5
+    // V/Oct pitch from CV_5 (runtime calibration; see g_voct_cal).
     const float voct_cv = Clamp11(hw.GetAdcValue(CV_5));
-    const float voct_semitones = (voct_cv - kVoctCenterNorm) * 60.73f;   // measured cal: -14.4c/oct slope (was 60.0f)
+    const float voct_semitones = joy::VoctToSemitones(g_voct_cal, voct_cv);
     const int32_t pitch_q7 = kBaseNoteQ7 + static_cast<int32_t>(SemitonesToQ7(voct_semitones));
     osc.set_pitch(ClampI16(pitch_q7));
     
@@ -634,10 +650,75 @@ void AudioCallback(AudioHandle::InputBuffer in,
     }
 }
 
+// Wait for the button to be released and then pressed again (a fresh press),
+// debouncing continuously. Used to step through the calibration prompts.
+void WaitForFreshPress()
+{
+    do {
+        hw.ProcessAllControls();
+        nav_button.Debounce();
+        System::Delay(1);
+    } while(nav_button.Pressed());
+    do {
+        hw.ProcessAllControls();
+        nav_button.Debounce();
+        System::Delay(1);
+    } while(!nav_button.Pressed());
+}
+
+// Average the CV_5 reading over a short window for a stable capture.
+float CaptureVoct()
+{
+    constexpr int kN = 200; // ~200 ms
+    float acc = 0.0f;
+    for(int i = 0; i < kN; i++)
+    {
+        hw.ProcessAllControls();
+        acc += Clamp11(hw.GetAdcValue(CV_5));
+        System::Delay(1);
+    }
+    return acc / static_cast<float>(kN);
+}
+
+// Two-point 1V/oct calibration (entered by holding B7 at power-up). Requires
+// StartAdc() already running. Prompts on the OLED, captures 1 V then 3 V, stores
+// the result to persistent settings and updates g_voct_cal. A bad capture keeps
+// the previous/default calibration (ComputeVoctCal falls back).
+void RunCalibration()
+{
+    auto prompt = [](const char* volts) {
+        display.Clear();
+        display.DrawStringCentered(0, "CALIBRATE", false);
+        display.DrawStringLargeCentered(15, volts, false);
+        display.DrawStringCentered(38, "patch+B7", false);
+        display.Update();
+    };
+
+    prompt("1V");
+    WaitForFreshPress();
+    const float adc_1v = CaptureVoct();
+
+    prompt("3V");
+    WaitForFreshPress();
+    const float adc_3v = CaptureVoct();
+
+    g_voct_cal = joy::ComputeVoctCal(adc_1v, adc_3v, g_voct_cal);
+
+    JoySettings &s = settings_storage.GetSettings();
+    s.voct_center  = g_voct_cal.center;
+    s.voct_slope   = g_voct_cal.slope;
+    settings_storage.Save();
+
+    display.Clear();
+    display.DrawStringLargeCentered(15, "DONE", false);
+    display.Update();
+    System::Delay(900);
+}
+
 int main(void)
 {
     hw.Init();
-    
+
     const float sample_rate = hw.AudioSampleRate();
     
     // B7 navigation button
@@ -667,18 +748,26 @@ int main(void)
     osc.Init();
     amp_env.Init(sample_rate);
     
-    // Restore last selected patch from QSPI (defaults to bank 0, patch 0).
-    JoySettings defaults{kSettingsVersion, 0, 0};
+    // Restore last selected patch + calibration from QSPI. Defaults fall back to
+    // the compile-time calibration constants.
+    JoySettings defaults{kSettingsVersion, 0, 0, kVoctCenterNorm, kVoctSlope};
     settings_storage.Init(defaults, kSettingsQspiOffset);
     if(settings_storage.GetSettings().version != kSettingsVersion)
         settings_storage.RestoreDefaults();
-    SetPatch(settings_storage.GetSettings().bank,
-             settings_storage.GetSettings().patch);
+    const JoySettings &saved = settings_storage.GetSettings();
+    SetPatch(saved.bank, saved.patch);
+    g_voct_cal = {saved.voct_center, saved.voct_slope};
     settings_dirty = false;  // restoring is not a change worth saving
 
     SetPanelLed(false);
 
     hw.StartAdc();
+
+    // Hold B7 at power-up to enter V/Oct calibration.
+    for(int i = 0; i < 40; i++) { hw.ProcessAllControls(); nav_button.Debounce(); System::Delay(1); }
+    if(nav_button.Pressed())
+        RunCalibration();
+
     hw.StartAudio(AudioCallback);
 
     while(1)

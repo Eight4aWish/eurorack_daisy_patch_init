@@ -283,11 +283,25 @@ This is how you install Joy and how you'll update it later — no cables or extr
 
 ## Calibration
 
-V/Oct calibration can be adjusted by defining these values before `#include`:
+**On-module (no recompile).** Hold **B7 while powering up** to enter V/Oct
+calibration. The OLED prompts a two-point routine:
+
+1. `CALIBRATE 1V` — patch a **1 V** reference (C1) to V/Oct, press **B7**.
+2. `CALIBRATE 3V` — patch **3 V** (C3, two octaves up), press **B7**.
+3. `DONE` — the calibration is solved, **saved to flash**, and used immediately.
+
+It persists across power cycles (stored alongside the last-patch setting). A
+bad capture (e.g. nothing patched) is rejected and the previous calibration is
+kept, so the routine can't leave the module mistracking. If you never calibrate,
+the firmware uses sensible measured defaults.
+
+**Compile-time defaults / overrides** (used as the fallback and for hard-coded
+builds) can be set before `#include`:
 
 ```cpp
-#define VOCT_BASE_MIDI 48     // MIDI note at 0V (default: C3)
-#define VOCT_CENTER_NORM 0.0f // ADC value at 0V (trim offset)
+#define VOCT_BASE_MIDI   48        // MIDI note at 0V (default: C3)
+#define VOCT_CENTER_NORM 0.007074f // ADC value at 0V (intercept)
+#define VOCT_SLOPE       60.73f    // semitones per ADC unit (slope)
 ```
 
 ## License
