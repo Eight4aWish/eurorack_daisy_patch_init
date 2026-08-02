@@ -64,7 +64,8 @@ make DAISY_ROOT=/path/to/daisy
 
 - `daisy_multiosc/` – **boot-selectable multi-engine synth** for the Daisy Patch Init: pick a voice at power-up, all sharing one universal panel + OLED legend (`BOOT_QSPI`). Engines: **FM4OP** (4-op FM), **INTVL** (dual interval oscillator), **SCAN** (scanned synthesis), plus a SINE test voice. See its [README](daisy_multiosc/README.md), the control contract in [docs/PANEL.md](docs/PANEL.md), and [docs/ROADMAP.md](docs/ROADMAP.md).
 - `daisy_grids/` – **Sorrow** — 3 synthetic drum voices + X/Y pattern sequencer, based on Mutable Instruments Grids (**GPL-3.0-or-later**)
-- `daisy_braids_oled/` – **Joy** — macro oscillator (48 models) with 64x48 OLED menu navigation, based on Mutable Instruments Braids (see project README for BOOT_QSPI notes)
+- `daisy_braids_oled/` – **Joy** — macro oscillator (48 models) with 64x48 OLED menu navigation, based on Mutable Instruments Braids; on-module V/Oct calibration (hold B7 at power-up)
+- `daisy_joy_lite/` – **Joy Lite** — screenless sibling: a curated 16 Braids models (the ones Plaits doesn't cover) in two toggle banks, model number shown by LED blink
 - `daisy_multifx_oled/` – Multi-effect processor with 64x48 OLED: 16 effects in a 4×4 grid (Reverb / Delay / Tone / Misc banks), built on the shared `multifx_core` library (also runs on a bare Daisy Seed with a homebrew front end — see `daisy_multifx_seed/`)
 - `daisy_fm4op/` – 4-op FM synth (standalone build, and the FM4OP engine for `daisy_multiosc`)
 - `daisy_interval_osc/` – dual oscillator with quantized interval offset (standalone build, and the INTVL engine)
@@ -74,6 +75,7 @@ make DAISY_ROOT=/path/to/daisy
 
 - `common/multiosc_core/` – host/framework for `daisy_multiosc`: the `Engine` interface, boot chooser, B7 gestures (short = cycle, long = Play/Edit), soft-takeover, and the OLED legend. See its [README](common/multiosc_core/README.md).
 - `common/multifx_core/` – portable, DaisySP-only MultiFX DSP/UI core (reverb, delay, tone and misc effect banks, output voicing, and a Bank/Patch navigation model) shared by `daisy_multifx_oled` (and its homebrew Daisy Seed variant), and intended for reuse on other Daisy boards. See its [README](common/multifx_core/README.md).
+- `common/voct_cal.h` + `common/joy_dsp.h` – shared by **Joy** and **Joy Lite**: the two-point V/Oct calibration math, and the envelope + fixed-point DSP helpers. Only each build's front-end (OLED navigator vs screenless LED/toggle) differs.
 - `common/` also holds the shared `oled_soft_i2c` SSD1306 driver used by the OLED projects.
 
 ## Credits & Licenses
