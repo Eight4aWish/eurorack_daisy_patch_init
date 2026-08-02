@@ -37,9 +37,9 @@ Digi-Filter HP · Clocked-Noise · Twin-Peaks · ????
 | **B7 short** | Next model in bank (wraps 1→8) — the **LED blinks the number** |
 | **B7 long** | Re-blink the current model number |
 
-The LED shows gate activity while playing, and blinks the model number (1–8)
-whenever you change model or flip the bank. The last model per bank is saved to
-flash.
+The LED blinks the model number (1–8) whenever you change model or flip the
+bank, and is otherwise dark (it deliberately does **not** flash on every gate).
+The last model per bank is saved to flash.
 
 ## Calibration
 

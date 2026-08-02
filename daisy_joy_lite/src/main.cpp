@@ -390,10 +390,8 @@ int main(void)
                 else        { SetPanelLed(false); led_on = false; led_next = now + 160; blinks_left--; }
             }
         }
-        else
-        {
-            SetPanelLed(gate1_state);  // idle: mirror the gate
-        }
+        // When idle the LED stays dark: it only blinks the model number on a
+        // model/bank change (and during calibration), not on every gate.
 
         if(settings_dirty
            && System::GetNow() - settings_dirty_time > kSettingsSaveDelayMs)
