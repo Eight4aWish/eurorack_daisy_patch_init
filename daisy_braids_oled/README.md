@@ -9,6 +9,10 @@ counting rhyme.
 Based on the **Braids** macro oscillator by Émilie Gillet (Mutable Instruments), MIT.
 *Not affiliated with, or endorsed by, Mutable Instruments or Electrosmith.*
 
+> Prefer no screen? [**Joy Lite**](../daisy_joy_lite/) is the screenless sibling —
+> a curated 16 models (the ones Plaits doesn't cover) on LED + button + toggle,
+> sharing Joy's calibration and DSP.
+
 ## Overview
 
 A macro oscillator with 48 models, a 64x48 OLED display for visual feedback and
