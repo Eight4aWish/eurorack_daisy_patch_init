@@ -11,6 +11,8 @@
  *   KNOB 3 (CV_3): Attack        KNOB 4 (CV_4): Decay
  *   CV_5: V/Oct   CV_6: Timbre mod   CV_7: Color mod
  *   GATE IN 1: trigger/gate      GATE IN 2: hard sync
+ *              (nothing patched to GATE IN 1 = drone, as on a stock Braids;
+ *               the first gate edge hands the VCA to the AD envelope)
  *   TOGGLE (B8): bank A / bank B
  *   B7 short: next model in bank (wraps); LED blinks the number
  *   B7 long : re-blink current model number
@@ -329,13 +331,22 @@ void RunCalibration()
 int main(void)
 {
     hw.Init();
+
+    // 96 kHz to match the rate Braids' DSP and its increment/delay tables were
+    // written for (braids.cc runs its timer at F_CPU/96000). At libDaisy's
+    // 48 kHz default the same per-sample increments played every model an
+    // octave sharp and ran every table-derived time constant twice as fast.
+    hw.SetAudioSampleRate(SaiHandle::Config::SampleRate::SAI_96KHZ);
+    hw.SetAudioBlockSize(kBraidsBlockSize);
+
     const float sample_rate = hw.AudioSampleRate();
 
-    nav_button.Init(hw.B7, sample_rate, Switch::TYPE_MOMENTARY, Switch::POLARITY_INVERTED);
-    bank_toggle.Init(hw.B8, sample_rate, Switch::TYPE_TOGGLE, Switch::POLARITY_NORMAL);
+    // Both switches are debounced once per audio block, so they want the
+    // callback rate rather than the sample rate.
+    nav_button.Init(hw.B7, hw.AudioCallbackRate(), Switch::TYPE_MOMENTARY, Switch::POLARITY_INVERTED);
+    bank_toggle.Init(hw.B8, hw.AudioCallbackRate(), Switch::TYPE_TOGGLE, Switch::POLARITY_NORMAL);
 
     hw.StartDac();
-    hw.SetAudioBlockSize(kBraidsBlockSize);
 
     osc.Init();
     amp_env.Init(sample_rate);

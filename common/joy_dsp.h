@@ -37,16 +37,23 @@ inline int16_t ClampI16(int32_t v)
 }
 
 // Simple attack/decay(/sustain) envelope with millisecond times, gate-driven.
+//
+// Starts in Drone: until the first gate is seen the envelope sits wide open, so
+// a module with nothing patched to GATE IN 1 sings continuously the way a stock
+// Braids does (its AD->VCA depth defaults to zero, see braids/settings.cc
+// kInitSettings). The first rising gate hands control to the envelope for good,
+// and because Drone leaves the level at 1.0 that handover is click-free: the
+// attack segment is already at full scale and passes straight to Sustain.
 struct AdEnvelope
 {
-    enum class Stage : uint8_t { Dead, Attack, Sustain, Decay };
+    enum class Stage : uint8_t { Drone, Dead, Attack, Sustain, Decay };
 
     void Init(float sample_rate_hz)
     {
         sample_rate_hz_ = std::max(1.0f, sample_rate_hz);
         dt_ms_          = 1000.0f / sample_rate_hz_;
-        stage_          = Stage::Dead;
-        level_          = 0.0f;
+        stage_          = Stage::Drone;
+        level_          = 1.0f;
         attack_ms_      = 10.0f;
         decay_ms_       = 100.0f;
     }
@@ -57,8 +64,8 @@ struct AdEnvelope
         const bool falling = !gate && gate_;
         gate_              = gate;
         if(rising)
-            stage_ = Stage::Attack;
-        else if(falling && stage_ != Stage::Dead)
+            stage_ = Stage::Attack;  // also the one-way exit from Drone
+        else if(falling && stage_ != Stage::Dead && stage_ != Stage::Drone)
             stage_ = Stage::Decay;
     }
 
@@ -72,6 +79,7 @@ struct AdEnvelope
     {
         switch(stage_)
         {
+            case Stage::Drone: level_ = 1.0f; break;
             case Stage::Dead: level_ = 0.0f; break;
             case Stage::Attack:
                 if(attack_ms_ <= 0.0f)
@@ -109,8 +117,8 @@ struct AdEnvelope
   private:
     float sample_rate_hz_ = 48000.0f;
     float dt_ms_          = 1000.0f / 48000.0f;
-    Stage stage_          = Stage::Dead;
-    float level_          = 0.0f;
+    Stage stage_          = Stage::Drone;
+    float level_          = 1.0f;
     float attack_ms_      = 10.0f;
     float decay_ms_       = 100.0f;
     bool  gate_           = false;

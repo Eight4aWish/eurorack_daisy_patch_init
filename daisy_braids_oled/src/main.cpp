@@ -21,14 +21,21 @@
  *   CV_6: Timbre modulation input
  *   CV_7: Color modulation input
  *   
- *   GATE IN 1: Trigger/Gate for envelope
+ *   GATE IN 1: Trigger/Gate for envelope. With nothing patched here the AD
+ *              never takes over and the oscillator drones, as a stock Braids
+ *              does (its AD->VCA depth defaults to off). The first gate edge
+ *              hands the VCA to the envelope until the next power cycle.
  *   GATE IN 2: Hard sync
+ *
+ * Audio runs at 96 kHz to match the rate Braids' DSP and lookup tables were
+ * written for — see the note in main().
  *
  * PATCHES: 48 Braids oscillator models organized into 8 thematic banks of 6
  */
 
 #include "daisy_patch_sm.h"
 #include "oled_soft_i2c.h"
+#include "joy_dsp.h"
 #include "voct_cal.h"
 
 #include <braids/macro_oscillator.h>
@@ -209,109 +216,15 @@ const BankDef kBanks[kBankCount] = {
     }
 };
 
-inline float Clamp01(float v)
-{
-    return std::max(0.0f, std::min(1.0f, v));
-}
-
-inline float Clamp11(float v)
-{
-    return std::max(-1.0f, std::min(1.0f, v));
-}
-
-inline int16_t Float01ToParamQ15(float v)
-{
-    v = Clamp01(v);
-    return static_cast<int16_t>(std::lround(v * 32767.0f));
-}
-
-inline int16_t SemitonesToQ7(float semitones)
-{
-    return static_cast<int16_t>(std::lround(semitones * 128.0f));
-}
-
-inline int16_t ClampI16(int32_t v)
-{
-    if(v > 32767)  return 32767;
-    if(v < -32768) return -32768;
-    return static_cast<int16_t>(v);
-}
-
-// AD Envelope
-struct AdEnvelope
-{
-    enum class Stage : uint8_t { Dead, Attack, Sustain, Decay };
-
-    void Init(float sample_rate_hz)
-    {
-        sample_rate_hz_ = std::max(1.0f, sample_rate_hz);
-        dt_ms_ = 1000.0f / sample_rate_hz_;
-        stage_ = Stage::Dead;
-        level_ = 0.0f;
-        attack_ms_ = 10.0f;
-        decay_ms_ = 100.0f;
-    }
-
-    void SetGate(bool gate)
-    {
-        const bool rising = gate && !gate_;
-        const bool falling = !gate && gate_;
-        gate_ = gate;
-
-        if(rising) stage_ = Stage::Attack;
-        else if(falling && stage_ != Stage::Dead) stage_ = Stage::Decay;
-    }
-
-    void SetAttackDecayMs(float attack_ms, float decay_ms)
-    {
-        attack_ms_ = std::max(0.0f, attack_ms);
-        decay_ms_ = std::max(0.0f, decay_ms);
-    }
-
-    float Process()
-    {
-        switch(stage_)
-        {
-            case Stage::Dead:
-                level_ = 0.0f;
-                break;
-
-            case Stage::Attack:
-                if(attack_ms_ <= 0.0f) level_ = 1.0f;
-                else {
-                    level_ += dt_ms_ / attack_ms_;
-                    if(level_ >= 1.0f) level_ = 1.0f;
-                }
-                if(level_ >= 1.0f)
-                    stage_ = gate_ ? Stage::Sustain : Stage::Decay;
-                break;
-
-            case Stage::Sustain:
-                level_ = 1.0f;
-                if(!gate_) stage_ = Stage::Decay;
-                break;
-
-            case Stage::Decay:
-                if(decay_ms_ <= 0.0f) level_ = 0.0f;
-                else {
-                    level_ -= dt_ms_ / decay_ms_;
-                    if(level_ <= 0.0f) level_ = 0.0f;
-                }
-                if(level_ <= 0.0f) stage_ = Stage::Dead;
-                break;
-        }
-        return level_;
-    }
-
-  private:
-    float sample_rate_hz_ = 48000.0f;
-    float dt_ms_ = 1000.0f / 48000.0f;
-    Stage stage_ = Stage::Dead;
-    float level_ = 0.0f;
-    float attack_ms_ = 10.0f;
-    float decay_ms_ = 100.0f;
-    bool  gate_ = false;
-};
+// The clamp/fixed-point helpers and the AD envelope live in common/joy_dsp.h so
+// Joy and Joy Lite share one implementation (this file used to carry its own
+// copy). Pulled in here by name so the call sites below read unchanged.
+using joy::AdEnvelope;
+using joy::Clamp01;
+using joy::Clamp11;
+using joy::ClampI16;
+using joy::Float01ToParamQ15;
+using joy::SemitonesToQ7;
 
 } // namespace
 
@@ -331,12 +244,27 @@ oled::SSD1306 display;
 uint8_t sync_buffer[kBraidsBlockSize];
 int16_t render_buffer[kBraidsBlockSize];
 
-// Navigation state
+// Navigation state. Owned by the audio callback (ProcessNavigation runs there);
+// the main loop only ever sees it through display_state.
 enum class NavMode { Patch, Bank };
 NavMode  nav_mode = NavMode::Patch;
 int      current_bank = 0;
 int      current_patch = 0;
-bool     display_dirty = true;
+
+// Everything the screen needs, packed into one word so the main loop reads a
+// consistent bank/patch/mode triple without locking: a plain 32-bit load can't
+// tear, whereas three separate reads could catch a half-applied patch change.
+// Written only by PublishDisplayState() (audio callback side).
+volatile uint32_t display_state = 0;
+volatile bool     display_dirty = true;
+
+inline void PublishDisplayState()
+{
+    display_state = (static_cast<uint32_t>(nav_mode) << 16)
+                    | (static_cast<uint32_t>(current_bank & 0xFF) << 8)
+                    | static_cast<uint32_t>(current_patch & 0xFF);
+    display_dirty = true;
+}
 
 // Persistent settings: last selected bank/patch, stored in QSPI flash.
 // Requires APP_TYPE=BOOT_SRAM (app runs from SRAM, so QSPI is writable).
@@ -375,10 +303,6 @@ bool gate1_trig = false;
 bool gate2_trig = false;
 bool gate1_state = false;
 
-// Control update rate limiting for OLED
-size_t   control_ticks = 0;
-constexpr size_t kDisplayUpdateTicks = 16; // Update display every N audio blocks
-
 // LED blink for feedback
 static constexpr float kPanelLedVoltsOn = 4.0f;
 bool led_state = false;
@@ -394,16 +318,32 @@ inline void BlinkLed()
 {
     led_state = true;
     SetPanelLed(true);
-    led_off_countdown = 8; // ~8 audio blocks = ~4ms
+    // Counted in audio blocks, so it tracks the callback rate: 16 blocks of 24
+    // samples is ~4 ms at 96 kHz (it was 8 blocks for the same 4 ms at 48 kHz).
+    led_off_countdown = 16;
 }
 
+// Renders and pushes a frame. Runs in the main loop, never in the audio
+// callback: pushing 64x48 pixels over bit-banged I2C takes far longer than one
+// audio block, so doing it here keeps the render interrupt free of a multi-
+// millisecond stall on every patch change.
 void UpdateDisplay()
 {
     if(!display_dirty) return;
-    
+
+    // Clear before rendering, not after: a navigation change that lands while
+    // the frame is being pushed then re-arms the flag and gets its own frame,
+    // instead of being swallowed.
+    display_dirty = false;
+
+    const uint32_t snapshot = display_state;
+    const NavMode  cur_mode = static_cast<NavMode>((snapshot >> 16) & 0xFF);
+    const int      cur_bank = static_cast<int>((snapshot >> 8) & 0xFF);
+    const int      cur_patch = static_cast<int>(snapshot & 0xFF);
+
     display.Clear();
-    
-    if(nav_mode == NavMode::Bank) {
+
+    if(cur_mode == NavMode::Bank) {
         // BANK MODE: 3x3 grid menu
         // Grid layout: 3 columns x 3 rows
         // Cell width: ~21 pixels (64/3), height: 16 pixels (48/3)
@@ -421,7 +361,7 @@ void UpdateDisplay()
         // Draw bank 0 (ANA) in second cell
         uint8_t x = cellW;
         uint8_t y = 0;
-        if(current_bank == 0) {
+        if(cur_bank == 0) {
             display.FillRect(x, y, cellW, cellH);
             display.DrawString(x + 3, y + 4, kBankShortNames[0], true);
         } else {
@@ -430,7 +370,7 @@ void UpdateDisplay()
         
         // Draw bank 1 (SUB) in third cell
         x = cellW * 2;
-        if(current_bank == 1) {
+        if(cur_bank == 1) {
             display.FillRect(x, y, cellW + 1, cellH);
             display.DrawString(x + 3, y + 4, kBankShortNames[1], true);
         } else {
@@ -442,7 +382,7 @@ void UpdateDisplay()
         for(int i = 0; i < 3; i++) {
             x = i * cellW;
             int bank = i + 2;
-            if(current_bank == bank) {
+            if(cur_bank == bank) {
                 display.FillRect(x, y, cellW + (i == 2 ? 1 : 0), cellH);
                 display.DrawString(x + 3, y + 4, kBankShortNames[bank], true);
             } else {
@@ -455,7 +395,7 @@ void UpdateDisplay()
         for(int i = 0; i < 3; i++) {
             x = i * cellW;
             int bank = i + 5;
-            if(current_bank == bank) {
+            if(cur_bank == bank) {
                 display.FillRect(x, y, cellW + (i == 2 ? 1 : 0), cellH);
                 display.DrawString(x + 3, y + 4, kBankShortNames[bank], true);
             } else {
@@ -464,9 +404,9 @@ void UpdateDisplay()
         }
     } else {
         // PATCH MODE: bank / patch name / divider / knob functions
-        display.DrawStringCentered(0, kBanks[current_bank].name, false);
+        display.DrawStringCentered(0, kBanks[cur_bank].name, false);
         display.DrawStringCentered(10,
-                 kBanks[current_bank].patch_names[current_patch], false);
+                 kBanks[cur_bank].patch_names[cur_patch], false);
 
         // Divider
         display.DrawHLine(0, 19, 64);
@@ -474,12 +414,11 @@ void UpdateDisplay()
         // Knob reminders: per-model TIMBRE/COLOR (from the Braids manual
         // fold-out table), fixed internal AD envelope on knobs 3/4.
         display.DrawString(0, 23,
-                 kBanks[current_bank].knob_labels[current_patch], false);
+                 kBanks[cur_bank].knob_labels[cur_patch], false);
         display.DrawString(0, 33, "ATK   DCY", false);
     }
-    
+
     display.Update();
-    display_dirty = false;
 }
 
 void SetPatch(int bank, int patch)
@@ -490,7 +429,7 @@ void SetPatch(int bank, int patch)
     braids::MacroOscillatorShape shape = kBanks[current_bank].shapes[current_patch];
     osc.set_shape(shape);
 
-    display_dirty = true;
+    PublishDisplayState();
     BlinkLed();
 
     // Schedule a debounced settings save (performed in the main loop).
@@ -524,7 +463,7 @@ void ProcessNavigation()
             {
                 // Long press: toggle navigation mode
                 nav_mode = (nav_mode == NavMode::Patch) ? NavMode::Bank : NavMode::Patch;
-                display_dirty = true;
+                PublishDisplayState();
                 BlinkLed();
             }
             else
@@ -606,14 +545,6 @@ void ProcessControls()
     std::memset(sync_buffer, 0, sizeof(sync_buffer));
     if(gate2_trig)
         sync_buffer[0] = 1;
-    
-    // Update display periodically (not every audio block)
-    control_ticks++;
-    if(control_ticks >= kDisplayUpdateTicks)
-    {
-        control_ticks = 0;
-        UpdateDisplay();
-    }
 }
 
 void AudioCallback(AudioHandle::InputBuffer in,
@@ -719,19 +650,32 @@ int main(void)
 {
     hw.Init();
 
+    // Braids is a 96 kHz machine: braids.cc runs its timer at F_CPU/96000, and
+    // the oscillator increment/delay tables in resources.cc are generated for
+    // that rate (braids/resources/lookup_tables.py). Running the same DSP at
+    // libDaisy's 48 kHz default consumed those per-sample increments at half
+    // speed, which put every model an octave above its nominal pitch, halved
+    // the effective anti-aliasing headroom and ran every table-derived time
+    // constant (comb delays, resonators, drum decays, grain rates) twice as
+    // fast. Matching Braids' rate is what makes the vendored DSP behave as
+    // written; it also puts the control rate at Braids' own 96000/24 = 4 kHz.
+    hw.SetAudioSampleRate(SaiHandle::Config::SampleRate::SAI_96KHZ);
+    hw.SetAudioBlockSize(kBraidsBlockSize);
+
     const float sample_rate = hw.AudioSampleRate();
-    
-    // B7 navigation button
+
+    // B7 navigation button. Debounce() is called once per audio block from
+    // ProcessNavigation, so the switch wants the callback rate, not the sample
+    // rate — passing the latter made the debounce window 24x shorter than
+    // intended (and would have shifted again with the rate change above).
     nav_button.Init(hw.B7,
-                    sample_rate,
+                    hw.AudioCallbackRate(),
                     Switch::TYPE_MOMENTARY,
                     Switch::POLARITY_INVERTED);
-    
+
     // DAC for panel LED
     hw.StartDac();
-    
-    hw.SetAudioBlockSize(kBraidsBlockSize);
-    
+
     // Initialize OLED on soft I2C (A2=SDA, A3=SCL via expansion header)
     i2c.Init(hw.A2, hw.A3);
     display.Init(&i2c);
@@ -740,7 +684,7 @@ int main(void)
     // Splash screen — product name (see README: "two for joy"). The upstream
     // Braids name is credited in the docs, not shown on the panel.
     display.DrawStringLargeCentered(10, "JOY", false);
-    display.DrawStringCentered(34, "v1.3", false);
+    display.DrawStringCentered(34, "v1.4", false);
     display.Update();
     System::Delay(800);
     
@@ -772,6 +716,11 @@ int main(void)
 
     while(1)
     {
+        // Screen redraws happen here rather than in the audio callback: the
+        // soft-I2C frame push blocks for milliseconds, which at 96 kHz is
+        // hundreds of audio blocks' worth of render interrupt.
+        UpdateDisplay();
+
         // Debounced persistence: save the current patch once it has been
         // stable for a while. Runs here (not in the audio callback) because
         // the QSPI erase blocks for tens of ms; the audio interrupt keeps
@@ -780,10 +729,13 @@ int main(void)
            && System::GetNow() - settings_dirty_time > kSettingsSaveDelayMs)
         {
             settings_dirty = false;
+            // Same snapshot the screen uses, for the same reason: bank and
+            // patch are written together by the audio callback.
+            const uint32_t snapshot = display_state;
             JoySettings &s = settings_storage.GetSettings();
             s.version = kSettingsVersion;
-            s.bank    = current_bank;
-            s.patch   = current_patch;
+            s.bank    = static_cast<int>((snapshot >> 8) & 0xFF);
+            s.patch   = static_cast<int>(snapshot & 0xFF);
             settings_storage.Save();  // no-op if nothing actually changed
         }
         System::Delay(1);

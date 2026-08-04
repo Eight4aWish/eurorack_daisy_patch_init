@@ -31,7 +31,7 @@ Digi-Filter HP · Clocked-Noise · Twin-Peaks · ????
 | Knob 4 (CV_4) | Decay (1 ms – 6 s) |
 | CV_5 | V/Oct pitch |
 | CV_6 / CV_7 | Timbre / Color modulation |
-| Gate In 1 | Trigger / gate (envelope) |
+| Gate In 1 | Trigger / gate (envelope) — **unpatched = drone** |
 | Gate In 2 | Hard sync |
 | **Toggle (B8)** | Bank A / Bank B (each bank remembers its last model) |
 | **B7 short** | Next model in bank (wraps 1→8) — the **LED blinks the number** |
@@ -40,6 +40,12 @@ Digi-Filter HP · Clocked-Noise · Twin-Peaks · ????
 The LED blinks the model number (1–8) whenever you change model or flip the
 bank, and is otherwise dark (it deliberately does **not** flash on every gate).
 The last model per bank is saved to flash.
+
+With **nothing patched to Gate In 1** the VCA stays open and the oscillator
+drones — the same default a stock Braids has (its AD→VCA depth ships at zero).
+The first gate edge hands the VCA to the AD envelope for the rest of the power
+cycle, so patched behaviour is unchanged. If you want the envelope with a
+stopped sequencer patched, just send one gate.
 
 ## Calibration
 
@@ -63,6 +69,15 @@ Runs via the Daisy bootloader (same as Joy): copy `joy_lite.bin` to a FAT32 SD
 card root (only `.bin` there; on macOS `dot_clean` the card after), power-cycle;
 or `make program-dfu` during the bootloader grace period. If the module has no
 bootloader yet, install it once with `make program-boot`.
+
+## Sample rate
+
+Audio runs at **96 kHz**, the rate Braids itself runs at and the rate its
+oscillator increment/delay tables are generated for. Builds before this ran at
+libDaisy's 48 kHz default, which played every model an octave sharp and ran
+every table-derived time constant (comb delays, resonators, drum decays, grain
+rates) at double speed. **Pitch therefore drops an octave versus older builds** —
+recalibration is not needed, the V/Oct calibration is unaffected.
 
 ## Shared code
 
