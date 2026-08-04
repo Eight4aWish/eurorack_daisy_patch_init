@@ -20,6 +20,7 @@
  *   CV_5: V/Oct pitch input (-5V to +5V)
  *   CV_6: Timbre modulation input
  *   CV_7: Color modulation input
+ *   CV_8: FM input (Braids' FM jack at full attenuverter, ~6 semitones/V)
  *   
  *   GATE IN 1: Trigger/Gate for envelope. With nothing patched here the AD
  *              never takes over and the oscillator drones, as a stock Braids
@@ -538,7 +539,16 @@ void ProcessControls()
     // V/Oct pitch from CV_5 (runtime calibration; see g_voct_cal).
     const float voct_cv = Clamp11(hw.GetAdcValue(CV_5));
     const float voct_semitones = joy::VoctToSemitones(g_voct_cal, voct_cv);
-    const int32_t pitch_q7 = kBaseNoteQ7 + static_cast<int32_t>(SemitonesToQ7(voct_semitones));
+
+    // FM from CV_8 — Braids' FM input at full attenuverter (joy::kFmDepth-
+    // Semitones). Uncalibrated and intentionally not 1 V/oct: it is a depth
+    // control, so it takes the raw CV rather than the V/Oct calibration.
+    const float fm_semitones = Clamp11(hw.GetAdcValue(CV_8)) * joy::kFmDepthSemitones;
+
+    // Summed before the Q7 conversion so the two contributions round once.
+    const int32_t pitch_q7
+        = kBaseNoteQ7
+          + static_cast<int32_t>(SemitonesToQ7(voct_semitones + fm_semitones));
     osc.set_pitch(ClampI16(pitch_q7));
     
     // Hard sync from Gate In 2
@@ -664,10 +674,11 @@ int main(void)
 
     const float sample_rate = hw.AudioSampleRate();
 
-    // B7 navigation button. Debounce() is called once per audio block from
-    // ProcessNavigation, so the switch wants the callback rate, not the sample
-    // rate — passing the latter made the debounce window 24x shorter than
-    // intended (and would have shifted again with the rate change above).
+    // B7 navigation button. The rate argument is documented as "does nothing"
+    // in this libDaisy (Switch::Debounce self-limits to 1 kHz off System::
+    // GetNow), so this is about stating intent, not behaviour: Debounce() is
+    // called once per audio block from ProcessNavigation, so the callback rate
+    // is the honest value to pass. Button feel is unchanged by the 96 kHz move.
     nav_button.Init(hw.B7,
                     hw.AudioCallbackRate(),
                     Switch::TYPE_MOMENTARY,

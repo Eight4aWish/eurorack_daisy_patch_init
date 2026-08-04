@@ -9,7 +9,7 @@
  * CONTROLS:
  *   KNOB 1 (CV_1): Timbre        KNOB 2 (CV_2): Color
  *   KNOB 3 (CV_3): Attack        KNOB 4 (CV_4): Decay
- *   CV_5: V/Oct   CV_6: Timbre mod   CV_7: Color mod
+ *   CV_5: V/Oct   CV_6: Timbre mod   CV_7: Color mod   CV_8: FM
  *   GATE IN 1: trigger/gate      GATE IN 2: hard sync
  *              (nothing patched to GATE IN 1 = drone, as on a stock Braids;
  *               the first gate edge hands the VCA to the AD envelope)
@@ -223,7 +223,15 @@ void ProcessControls()
 
     const float   voct_cv        = joy::Clamp11(hw.GetAdcValue(CV_5));
     const float   voct_semitones = joy::VoctToSemitones(g_voct_cal, voct_cv);
-    const int32_t pitch_q7 = kBaseNoteQ7 + static_cast<int32_t>(joy::SemitonesToQ7(voct_semitones));
+
+    // FM from CV_8 — Braids' FM input at full attenuverter. Uncalibrated and
+    // intentionally not 1 V/oct: it is a depth control, not a pitch input.
+    const float fm_semitones
+        = joy::Clamp11(hw.GetAdcValue(CV_8)) * joy::kFmDepthSemitones;
+
+    const int32_t pitch_q7
+        = kBaseNoteQ7
+          + static_cast<int32_t>(joy::SemitonesToQ7(voct_semitones + fm_semitones));
     osc.set_pitch(joy::ClampI16(pitch_q7));
 
     std::memset(sync_buffer, 0, sizeof(sync_buffer));
@@ -341,8 +349,9 @@ int main(void)
 
     const float sample_rate = hw.AudioSampleRate();
 
-    // Both switches are debounced once per audio block, so they want the
-    // callback rate rather than the sample rate.
+    // Both switches are debounced once per audio block, so the callback rate is
+    // the honest value to pass. libDaisy ignores it either way (Switch::Debounce
+    // self-limits to 1 kHz off System::GetNow), so button feel is unchanged.
     nav_button.Init(hw.B7, hw.AudioCallbackRate(), Switch::TYPE_MOMENTARY, Switch::POLARITY_INVERTED);
     bank_toggle.Init(hw.B8, hw.AudioCallbackRate(), Switch::TYPE_TOGGLE, Switch::POLARITY_NORMAL);
 

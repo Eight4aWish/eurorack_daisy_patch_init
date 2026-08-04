@@ -17,8 +17,11 @@ panel works for every engine. Control contract and panel layout:
 
 - Host/framework: [`../common/multiosc_core/`](../common/multiosc_core/)
   (`Engine` interface, boot menu, B7 gestures, OLED legend, soft-takeover).
-- Engines live in their own folders and are compiled in via the Makefile:
+- Engines live in their own folders and are compiled in via the Makefile. All
+  four registered in `main.cpp`, in chooser order:
   - `FmFourOp` — [`../daisy_fm4op/fm4op_voice.{h,cpp}`](../daisy_fm4op/)
+  - `IntervalOscVoice` — [`../daisy_interval_osc/intervalosc_voice.{h,cpp}`](../daisy_interval_osc/)
+  - `ScannedVoice` — [`../daisy_scanned/scanned_voice.{h,cpp}`](../daisy_scanned/)
   - `SineEngine` — `sine_engine.h` (test tone; proves the chooser)
 
 To add an engine: implement `multiosc::Engine` in its folder, add its source to

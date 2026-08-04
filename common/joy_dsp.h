@@ -36,6 +36,20 @@ inline int16_t ClampI16(int32_t v)
     return static_cast<int16_t>(v);
 }
 
+// Depth of the FM CV input, in semitones at full-scale (+-1.0) CV.
+//
+// Ported from Braids: its FM jack runs through the MOD attenuverter into
+// Settings::adc_to_fm(), which scales the ADC code by 7680/4096 in Q7
+// semitones, so a full +-2048-code swing becomes +-3840 Q7 = +-30 semitones.
+// Over a +-5 V input that is 6 semitones per volt — deliberately not 1 V/oct.
+// FM is a depth control, not a second pitch input.
+//
+// The Joy panel has no knob left for the attenuverter, so this is fixed at
+// Braids' full-clockwise depth; attenuate at the source for less. Like Braids,
+// the value is applied once per render block rather than per sample, so this is
+// control-rate FM.
+constexpr float kFmDepthSemitones = 30.0f;
+
 // Simple attack/decay(/sustain) envelope with millisecond times, gate-driven.
 //
 // Starts in Drone: until the first gate is seen the envelope sits wide open, so
