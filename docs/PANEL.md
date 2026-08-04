@@ -5,10 +5,22 @@ hand-built Daisy Patch Init module. The panel labels are fixed; each firmware
 conforms to the roles below, and the OLED prints the exact per-app meaning of
 the variable controls.
 
-This targets the "occasional-use" firmware family selectable at boot:
-`daisy_fm4op` (FM), `daisy_interval_osc` (dual osc), `daisy_scanned` (scanned
-synthesis). New synth-voice
-firmwares are expected to follow the same contract.
+This targets the "occasional-use" firmware family intended to be selectable at
+boot: `daisy_fm4op` (FM), `daisy_interval_osc` (dual osc), `daisy_scanned`
+(scanned synthesis). New synth-voice firmwares are expected to follow the same
+contract.
+
+> **Scope.** This document is the *design contract for that family*, not a
+> description of everything flashed on the module.
+>
+> - The contract is **implemented** by [`daisy_multiosc/`](../daisy_multiosc/),
+>   which hosts FM4OP, INTVL, SCAN and a SINE test voice behind the boot-time
+>   chooser described below.
+> - **Joy** (`daisy_braids_oled/`) and **Joy Lite** (`daisy_joy_lite/`) are
+>   separate firmwares on this same panel that **do not follow the contract**.
+>   They predate it and spend all four knobs on voice parameters, so there is
+>   no `TUNE` knob and no Play/Edit page. Their actual map is under
+>   [Per-firmware maps](#per-firmware-maps).
 
 ## Hardware surface (from `patch_init_schematic.pdf`)
 
@@ -26,7 +38,13 @@ firmwares are expected to follow the same contract.
 | OLED | SSD1306 64×48, soft I2C | **A2 = SDA, A3 = SCL** |
 
 The former **SW_2 ON-ON toggle (B8) is removed** — its panel position is taken
-by the OLED. B8 is unused in firmware.
+by the OLED — for every firmware in this contract, and for Joy.
+
+**Exception:** **Joy Lite** is screenless and uses B8 as its bank A/B toggle, so
+the claim "B8 is unused in firmware" holds for everything *except* Joy Lite. The
+toggle and the OLED compete for one panel position, so a given physical build
+picks one. Joy Lite still runs on a Joy panel, but with B8 unpopulated the
+internal pull-up reads as closed and it is stuck in **Bank B**.
 
 ## Label scheme (silk-ready)
 
@@ -51,13 +69,39 @@ screen always shows what `MOD 1–3` currently mean.
   `GATE 2`, `GATE OUT 1/2`, `CV OUT`.
 - The red LED (CV Out 2) is an activity/indicator output, not jacked.
 
+What the Joy family makes of those same positions, since it is what is on the
+module most of the time:
+
+| Panel position | Contract meaning | Joy / Joy Lite |
+| --- | --- | --- |
+| `TUNE` knob | Coarse pitch | **Timbre** (no manual pitch control at all) |
+| `MOD 1` knob | Screen-defined | **Color** |
+| `MOD 2` / `MOD 3` knobs | Screen-defined | **Attack** / **Decay** |
+| `V/OCT` CV | 1 V/oct | 1 V/oct (as contract) |
+| `MOD 1` / `MOD 2` CV | Modulates matching knob | **Timbre CV** / **Color CV** (±50%) |
+| `MOD 3` CV | Modulates matching knob | **FM** (~6 semitones/V, not 1 V/oct) |
+| `TRIG` (Gate In 1) | Trigger | Trigger/gate — **unpatched = drone** |
+| `GATE 2` (Gate In 2) | Reserved / per-app | **Hard sync** |
+| `GATE OUT 1/2`, `CV OUT` | Per-app | Unused |
+| `IN` (audio in) | Per-app | Unused |
+
+If the panel is ever re-silked, `MOD 3` wants a `FM` sub-label and `GATE 2` a
+`SYNC` one for the Joy family's sake.
+
 ### The pitch pair (fixed)
 
 `TUNE` (manual coarse pitch) is **summed** with `V/OCT` (1 V/oct CV), in every
-firmware. The tune knob is required even when V/Oct is patched: it sets pitch
-when nothing is patched (standalone/drone/resonator use), and provides
-transpose / fine-tune against an external sequencer. All three firmwares already
-implement `pitch = TUNE_knob + V/OCT_cv`.
+firmware that follows this contract. The tune knob is required even when V/Oct
+is patched: it sets pitch when nothing is patched (standalone/drone/resonator
+use), and provides transpose / fine-tune against an external sequencer. The
+three firmwares listed above implement `pitch = TUNE_knob + V/OCT_cv`.
+
+**Joy and Joy Lite are the exception**, and it is a real gap rather than an
+oversight in this document: their pitch is `fixed base note + V/OCT + FM`, with
+no manual pitch control, because all four knobs are spent on Timbre, Color,
+Attack and Decay. Unpatched, they drone at a fixed C. A real Braids has COARSE
+and FINE pots for this. Closing the gap needs either a knob freed up or a
+settings page — see the Joy README's "Differences from Braids".
 
 ## Button (B7) gesture budget — universal
 
@@ -77,7 +121,9 @@ not grab a value until swept through it) — the same mechanism already in
 
 ## Firmware selection — boot-time only
 
-The app chooser is not a runtime gesture, so it never competes with B7:
+Implemented in [`daisy_multiosc/`](../daisy_multiosc/) (the Joy family is not
+part of that image). The app chooser is not a runtime gesture, so it never
+competes with B7:
 
 - **At power-on:** OLED lists the firmwares. A MOD knob scrolls; short-press
   selects (auto-boots the last-used after a short timeout).
@@ -93,8 +139,32 @@ DSP config; large buffers belong in SDRAM.
 
 ## Per-firmware maps
 
-`TUNE` = pitch (+V/OCT) in all apps. `MOD n` CV jacks modulate the matching MOD
-knob's parameter.
+`TUNE` = pitch (+V/OCT) in all contract-following apps. `MOD n` CV jacks
+modulate the matching MOD knob's parameter.
+
+### Joy / Joy Lite (macro oscillator) — does not follow the contract
+
+Documented here because it is what the module runs, not as a model to copy.
+
+| Slot | Joy | Joy Lite |
+| --- | --- | --- |
+| TUNE | Timbre | Timbre |
+| MOD 1 | Color | Color |
+| MOD 2 | Attack (1 ms – 6 s) | Attack (1 ms – 6 s) |
+| MOD 3 | Decay (1 ms – 6 s) | Decay (1 ms – 6 s) |
+| Short press | Next patch (or next bank, in Bank mode) | Next model in bank |
+| Long press | Toggle Patch ↔ Bank navigation | Re-blink model number |
+| B8 | *(removed — OLED occupies the position)* | **Toggle: bank A / B** |
+
+- No Play/Edit page and no soft-takeover: every knob is live at all times.
+- `MOD 3` CV is **FM**, not a Decay modulator — it is Braids' FM input at full
+  attenuverter depth (~6 semitones/V, deliberately not 1 V/oct).
+- `GATE 2` is **hard sync**, and only the analog-family models respond to it;
+  the digital, physical, percussion, wavetable and noise engines ignore sync,
+  exactly as on a real Braids.
+- Joy Lite keeps the B8 toggle, so it is the one firmware that still needs that
+  switch fitted; on a Joy panel (toggle removed for the OLED) it runs but stays
+  in Bank B.
 
 ### SCAN (scanned synthesis)
 

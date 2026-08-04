@@ -61,6 +61,15 @@ The display highlights the currently active navigation level:
 | CV_5 | V/Oct pitch (C3 at 0V, ±5 octaves) |
 | CV_6 | Timbre modulation (±50% depth) |
 | CV_7 | Color modulation (±50% depth) |
+| CV_8 | FM (±30 semitones at ±5V ≈ 6 semitones/V) |
+
+**FM (CV_8)** is Braids' FM input, ported at the depth Braids gives it with the
+MOD attenuverter fully clockwise — `adc_to_fm()` scales a full-scale swing to
+±30 semitones. It is deliberately *not* 1 V/oct: it's a depth control, not a
+second pitch input, so it takes the raw CV rather than the V/Oct calibration.
+Braids has an attenuverter knob for this and Joy has no knob to spare, so the
+depth is fixed — attenuate at the source for less. Like Braids, FM is applied
+once per render block, so it is control-rate FM.
 
 ### Gate Inputs
 
@@ -93,6 +102,63 @@ should.
 > calibration is unaffected and carries over — the calibration is in the CV
 > domain. If you would rather keep the pitch older builds produced, rebuild with
 > `-DVOCT_BASE_MIDI=60`.
+
+## Differences from Braids
+
+The DSP is Mutable's own, compiled unmodified from the `eurorack` submodule —
+`macro_oscillator.cc`, `analog_oscillator.cc`, `digital_oscillator.cc`,
+`resources.cc`, all 48 shapes including the hidden `????`. What differs is
+everything around it: Braids' `RenderBlock()` does a lot before and after
+`osc.Render()`, and Joy is a different front end.
+
+**Worth knowing first:** Braids ships those extras *switched off*
+(`settings.cc` `kInitSettings` — 16-bit, 96 kHz, signature 0, drift off,
+quantizer off, meta off, all AD routings 0). At factory defaults its bit mask is
+`0xffff`, its decimation factor is 1 and its waveshaper mix is zero, so the
+whole post-oscillator chain is a no-op. **Default against default, Joy's voice
+matches a stock Braids.** The list below is missing *features*, not missing
+fidelity.
+
+### Not ported
+
+| Braids | Status in Joy |
+|---|---|
+| `RESO` bit reduction (2–16 bit) | Absent |
+| `RATE` sample-rate decimation (4k–96k) | Absent |
+| `SIGN` signature waveshaper | Absent — `signature_waveshaper.h` isn't compiled in |
+| `DRFT` VCO drift / `FLAT` VCO flatten | Absent — `vco_jitter_source.h` isn't compiled in |
+| Quantizer: 49 scales + root | Absent — `quantizer.cc` isn't compiled in |
+| `META` (CV → model selection) | Absent |
+| Pitch range / octave, incl. the hidden LFO range | Absent — so no sub-audio use |
+| COARSE and FINE tune pots | Absent — no manual pitch control at all (see below) |
+| AD → TIMBRE / COLOR / FM routing | Absent — the envelope reaches the VCA only |
+| `TRIG DELAY`, auto-trigger on pitch change | Absent |
+| Per-input CV offset/scale calibration | V/Oct only (Joy calibrates it on-module; Timbre/Color CV are fixed ±50%) |
+| Marquee, CV tester, brightness, `paques` easter egg | Absent — `????` is a normal patch here instead |
+
+All of these are global settings on a real Braids, reached through its encoder
+menu. Adding any of them to Joy needs a settings page, since all four knobs and
+both B7 gestures are already spent.
+
+**The one that is a real gap rather than a choice:** Braids has COARSE and FINE
+pitch pots. Joy's pitch is `fixed base note + V/Oct + FM`, so there is no way to
+tune or transpose from the panel, and unpatched it drones at a fixed C.
+
+### Behaviour that differs
+
+- **Envelope.** Braids' internal AD is exponential (`lut_env_expo`), reaches
+  ~12 s, has no sustain segment, and is routable in variable amounts to four
+  destinations. Joy's is a linear AD **with a sustain segment**, up to 6 s,
+  hardwired to the VCA — but on two continuous knobs rather than Braids' 0–15
+  menu settings, which is the trade Joy is making.
+- **Trigger timing.** Braids samples TRIG once per sample in its timer ISR. Joy
+  reads a rising edge once per 24-sample render block.
+- **Sync.** Braids has no sync jack: it reuses TRIG, and `RenderBlock()` clears
+  the sync buffer whenever any AD routing is on, so a real Braids cannot
+  trigger and sync at the same time. Joy gives sync its own jack (GATE IN 2),
+  block-quantised the same way the trigger is.
+- **Output.** Mono, duplicated to both outputs through the Daisy's 24-bit codec,
+  versus Braids' single output.
 
 ## Oscillator Banks
 

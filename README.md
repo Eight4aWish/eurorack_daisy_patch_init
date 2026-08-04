@@ -12,8 +12,8 @@ Firmwares offered as finished modules are named after the magpie counting rhyme
 | Name | Firmware | Version | Based on | Licence |
 | --- | --- | --- | --- | --- |
 | **Sorrow** | [`daisy_grids/`](daisy_grids/) | v1.0.1 | Mutable Instruments Grids | **GPL-3.0-or-later** |
-| **Joy** | [`daisy_braids_oled/`](daisy_braids_oled/) | v1.3.0 | Mutable Instruments Braids | MIT |
-| **Joy Lite** | [`daisy_joy_lite/`](daisy_joy_lite/) | v1.3.0 | Mutable Instruments Braids | MIT |
+| **Joy** | [`daisy_braids_oled/`](daisy_braids_oled/) | v1.4.0 | Mutable Instruments Braids | MIT |
+| **Joy Lite** | [`daisy_joy_lite/`](daisy_joy_lite/) | v1.4.0 | Mutable Instruments Braids | MIT |
 
 **Joy** and **Joy Lite** are the same macro-oscillator generation (shared calibration
 and DSP, so they carry the same version): Joy is the full 48-model version with an
