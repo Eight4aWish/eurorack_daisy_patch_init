@@ -66,8 +66,33 @@ The display highlights the currently active navigation level:
 
 | Input | Function |
 |-------|----------|
-| GATE IN 1 | Trigger/Gate for AD envelope |
+| GATE IN 1 | Trigger/Gate for AD envelope — **unpatched = drone** |
 | GATE IN 2 | Hard sync (reset oscillator phase) |
+
+With nothing patched to GATE IN 1 the VCA stays open and the oscillator drones,
+which is a stock Braids' default too (its AD→VCA depth ships at zero, so a
+Braids sings continuously and TRIG only strikes the model). The first gate edge
+hands the VCA to the AD envelope for the rest of the power cycle, so behaviour
+with a gate patched is unchanged. Hard sync only affects the models that use it —
+the analog and sync/triple families; the digital, physical, percussion,
+wavetable and noise engines ignore it, exactly as on a real Braids.
+
+## Sample rate
+
+Audio runs at **96 kHz**. Braids' firmware clocks its render timer at
+`F_CPU/96000` and its oscillator increment/delay lookup tables are generated for
+that rate, so the vendored DSP only behaves as written at 96 kHz. Builds before
+v1.4 ran at libDaisy's 48 kHz default, consuming those per-sample increments at
+half speed: every model played an octave above its nominal pitch, every
+table-derived time constant (comb delays, resonators, drum decays, grain rates)
+ran twice as fast, and the band-limited tables were chosen for a Nyquist twice
+as high as the one actually in use, so bright models aliased more than they
+should.
+
+> **Upgrading from v1.3 or earlier:** pitch drops an octave. Your saved V/Oct
+> calibration is unaffected and carries over — the calibration is in the CV
+> domain. If you would rather keep the pitch older builds produced, rebuild with
+> `-DVOCT_BASE_MIDI=60`.
 
 ## Oscillator Banks
 
