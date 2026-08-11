@@ -24,6 +24,22 @@ These are independent community works for the Electrosmith Daisy Patch Init. Pro
 names of other makers are used only to describe each firmware's origin — **not
 affiliated with, or endorsed by, Mutable Instruments or Electrosmith.**
 
+## Build guides and downloads
+
+Prebuilt `.bin` files, flashing instructions, panel STLs and a wiring guide for each
+module: **https://eight4awish.com/modules/**
+
+## Getting in touch
+
+Email **info@eight4awish.com**.
+
+I usually have a few spare front panels over from each print run — if you would like one,
+say which module and roughly where you are and I will come back to you on postage.
+
+Questions about building or flashing are best raised as an
+[issue](https://github.com/Eight4aWish/eurorack_daisy_patch_init/issues), so the answer
+stays available to whoever hits the same thing next.
+
 ## Clone
 
 ```sh
