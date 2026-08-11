@@ -4,7 +4,7 @@
 
 **Sorrow** is a drum module for the Electrosmith Daisy Patch Init: **3 synthetic drum
 voices + an X/Y pattern sequencer**. It is the first in a family of firmwares named
-after the magpie counting rhyme.
+after the nursery rhyme.
 
 Based on the **Grids** drum pattern generator by Émilie Gillet (Mutable Instruments).
 *Not affiliated with, or endorsed by, Mutable Instruments or Electrosmith.*

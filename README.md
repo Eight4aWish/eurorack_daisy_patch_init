@@ -6,7 +6,7 @@ This repo is intended to be self-contained via git submodules (no shared externa
 
 ## Released modules
 
-Firmwares offered as finished modules are named after the magpie counting rhyme
+Firmwares offered as finished modules are named after the nursery rhyme
 (*"one for sorrow, two for joy…"* — hence **Eight4aWish**):
 
 | Name | Firmware | Version | Based on | Licence |
