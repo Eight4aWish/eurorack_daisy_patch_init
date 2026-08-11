@@ -3,8 +3,7 @@
 *"Two for joy…"*
 
 **Joy** is a macro oscillator for the Electrosmith Daisy Patch Init, with a 64x48 OLED
-for patch navigation. It is the second in a family of firmwares named after the magpie
-counting rhyme.
+for patch navigation. It is the second in a family of firmwares named after the nursery rhyme.
 
 Based on the **Braids** macro oscillator by Émilie Gillet (Mutable Instruments), MIT.
 *Not affiliated with, or endorsed by, Mutable Instruments or Electrosmith.*
