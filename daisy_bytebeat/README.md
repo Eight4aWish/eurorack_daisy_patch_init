@@ -73,18 +73,32 @@ wraps; the Edit page picks the family.
   **Drone** is on, which freezes voice 2's rate and A/B and lets it free-run.
 - **Env off by default** — this is a free-running oscillator, not a plucked voice.
 
-## What is not ported (yet)
+## What is not ported
 
-Ogham is more than its engine. Left out of this first pass, in rough order of
-how much they'd add:
+**Deliberately out of scope**, not a backlog:
 
-- **FX chain** — chorus → flanger → phaser, series or parallel, all DaisySP, so
-  a straight lift once there are controls to spare.
-- **Env Out / EOC** — envelope follower and end-of-cycle to `CV OUT` / `GATE OUT 1`.
-- **Clock in and BPM estimation** — would land on `GATE 2`.
-- **Internal LPG**, plucked by Sync.
-- Ogham's 22-field settings menu, which the three MOD knobs can't hold; PANEL.md
-  anticipates a deep menu as a final Edit-page item.
+- **FX chain** — chorus → flanger → phaser, series or parallel. A straight
+  DaisySP lift, but the rack does modulation and delay better in dedicated
+  hardware, and it would cost knobs BEAT has better uses for.
+- **Internal LPG**, plucked by Sync — same reasoning.
+
+Ogham puts these inside the module because it is a standalone 10 HP voice with
+nowhere to send Out 1 and Out 2. Here the outputs go straight into the rack, so
+the module only has to be a good source.
+
+**Still worth doing.** Note that all three want *jacks*, not knobs — `GATE 2`,
+`GATE OUT 1` and `CV OUT` are all currently unused, so none of them costs
+anything on the panel:
+
+- **Env Out** — the envelope follower to `CV OUT`.
+- **EOC** — end-of-cycle to `GATE OUT 1`, which pairs with the one-shot formulas.
+- **Clock in and BPM estimation** — would land on `GATE 2`, and is the other half
+  of what makes the rhythmic families useful against a sequencer.
+
+**Grid** (A/B interpolation) is implemented in the engine and switched off for
+want of a control; it wants the deep menu PANEL.md anticipates as a final
+Edit-page item. That menu is also where the rest of Ogham's 22 settings fields
+would live, if any of them turn out to be wanted.
 
 ## Verified so far
 
