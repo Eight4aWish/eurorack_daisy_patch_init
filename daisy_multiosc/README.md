@@ -42,9 +42,16 @@ Or drag `build/daisy_multiosc.bin` onto the SD card root and power-cycle. See
 ## Status
 
 Hardware-verified on the Daisy Patch Init for **FM4OP**, **INTVL**, **SCAN** and
-the SINE test voice. **BEAT** (bytebeat) is new and **not yet built for the
-target or bench-tested** — its DSP is checked host-side
-([`../daisy_bytebeat/tools/`](../daisy_bytebeat/tools/)), its control mapping is not. Possible follow-ups: tune SCAN's spring constants to
+the SINE test voice. **BYTEBEAT** is new: it now **builds for the target** and its
+DSP passes the host-side checks
+([`../daisy_bytebeat/tools/`](../daisy_bytebeat/tools/)), but it is **not yet
+bench-tested** — the control mapping and panel behaviour are unverified.
+
+Adding a fifth engine exposed two panel bugs, both fixed: the boot menu drew its
+last entry off the bottom of the 48 px screen (it now scrolls to keep the
+highlighted engine visible, for any number of engines), and a title longer than
+ten characters underflowed the centring arithmetic and rendered as a wrapped
+fragment (long strings now clip at the right edge instead). Possible follow-ups: tune SCAN's spring constants to
 taste; retire the SINE test voice; converge the standalone `fm4op.cpp` /
 `IntervalOsc.cpp` onto their `*_voice` modules (currently duplicated). Future
 "different" engines: see [../docs/ROADMAP.md](../docs/ROADMAP.md).

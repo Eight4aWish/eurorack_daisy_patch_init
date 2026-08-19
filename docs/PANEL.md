@@ -216,3 +216,10 @@ The OLED always shows: firmware name, current page (Play / Edit), the live
 meaning of `MOD 1–3`, and the current short-press selection (model / algorithm /
 waveform). This is the per-firmware control reminder the panel intentionally
 omits.
+
+At 64 px and a 5×7 font, a line is **ten characters** — the hard budget every
+name on screen has to live inside. The title is `NAME:SEL` where that fits
+(`FM4OP:SwTr`); where it does not, the firmware name keeps the title line and
+the selection drops to its own line under the knob grid, truncated to ten. Keep
+engine names short enough to leave room for a selection, and check any selection
+string that reads as words rather than an abbreviation.
