@@ -25,10 +25,21 @@ constexpr float kVoctOct     = 5.0f;  // octaves per ADC unit
 constexpr float kRateMin     = 1.0f / 64.0f;
 constexpr float kRateMax     = 64.0f;
 
-// A/B interpolation grid (engine SetParamQuant): 0/1 = exact evaluation, larger
-// values crossfade the formula between grid corners and tame the knobs' steps.
-const int kGrids[]  = {0, 2, 4, 8, 16, 32, 64};
-const int kNumGrids = sizeof(kGrids) / sizeof(kGrids[0]);
+// Final safety knee before the jack, transparent below 0.7 and asymptotic to
+// 1.0. Needed because the DC blocker is a high-pass: fed a formula with a large
+// offset and fast transitions it overshoots, and was measured at 1.25 from an
+// engine output bounded to 1.0. Cheaper and more transparent here than SCAN's
+// tanh(x * 2.5), which is voiced as saturation rather than as a limiter.
+inline float SoftLimit(float v)
+{
+    constexpr float kKnee = 0.7f;
+    const float     mag   = fabsf(v);
+    if(mag <= kKnee)
+        return v;
+    const float over = (mag - kKnee) / (1.0f - kKnee);
+    const float lim  = kKnee + (1.0f - kKnee) * tanhf(over);
+    return (v < 0.0f) ? -lim : lim;
+}
 
 // Knob 0..1 -> an index in [0, n).
 inline int KnobToIndex(float knob, int n)
@@ -69,6 +80,14 @@ void BytebeatVoice::Init(DaisyPatchSM& hw, float sample_rate)
 {
     (void)hw;
     engine_.Init();
+    tone_.Init(sample_rate);
+    tone_st_[0] = LofiTone::State();
+    tone_st_[1] = LofiTone::State();
+
+    // Ogham's default: exact evaluation, no A/B grid interpolation. The engine
+    // supports it (SetParamQuant) but there is no knob left to spare — it wants
+    // the deep menu PANEL.md anticipates.
+    engine_.SetParamQuant(0);
 
     // Keep ticks-per-second right if the host ever runs at anything but the
     // 48 kHz the vendored engine assumes.
@@ -80,8 +99,8 @@ void BytebeatVoice::Init(DaisyPatchSM& hw, float sample_rate)
     engine_.SetFormula1(func1_);
     engine_.SetFormula2(func2_);
 
+    st_bank_.Set(0.0f);
     st_func2_.Set((float)func2_ / (float)(GetFormulaCount() - 1));
-    st_grid_.Set(0.0f);
     st_drone_.Set(0.0f);
 }
 
@@ -91,8 +110,8 @@ const char* BytebeatVoice::ModLabel(int idx, bool edit) const
     {
         switch(idx)
         {
-            case 0: return "Func2";
-            case 1: return "Grid";
+            case 0: return "Bank";
+            case 1: return "Func2";
             case 2: return "Drone";
             default: return "-";
         }
@@ -101,7 +120,7 @@ const char* BytebeatVoice::ModLabel(int idx, bool edit) const
     {
         case 0: return "A";
         case 1: return "B";
-        case 2: return "Func";
+        case 2: return "Tone";
         default: return "-";
     }
 }
@@ -124,15 +143,13 @@ void BytebeatVoice::Process(DaisyPatchSM&             hw,
 {
     (void)in;
 
-    // Short press cycles the bank. func1_ is clamped into the new family so the
-    // screen and voice 2 are coherent straight away; on the Play page MOD 3
-    // re-asserts the slot on the very next block.
+    // Short press steps voice 1 through the current family, wrapping at its end
+    // — the contract's "primary cycle", and what Ogham's Func encoder does.
+    // Selecting a formula restarts t, so a one-shot fires as you land on it.
     if(ctx.short_press)
     {
-        const int off = func1_ - BankAt(bank_).first;
-        bank_         = (bank_ + 1) % kNumBanks;
         const Bank& b = BankAt(bank_);
-        func1_        = b.first + (off < b.count ? off : b.count - 1);
+        func1_        = b.first + ((func1_ - b.first + 1) % b.count);
         engine_.SetFormula1(func1_);
     }
 
@@ -140,25 +157,34 @@ void BytebeatVoice::Process(DaisyPatchSM&             hw,
     // parameters until each knob sweeps through the stored value.
     if(ctx.page_changed && ctx.edit_page)
     {
+        st_bank_.Reset((float)bank_ / (float)(kNumBanks - 1));
         st_func2_.Reset((float)func2_ / (float)(GetFormulaCount() - 1));
-        st_grid_.Reset(st_grid_.value());
         st_drone_.Reset(st_drone_.value());
     }
 
     if(ctx.edit_page)
     {
+        // Family for voice 1; short press then walks within it.
+        const float bn = st_bank_.Process(hw.GetAdcValue(KNOB_MOD1));
+        const int   bi = KnobToIndex(bn, kNumBanks);
+        if(bi != bank_)
+        {
+            bank_         = bi;
+            const Bank& b = BankAt(bank_);
+            if(func1_ < b.first || func1_ >= b.first + b.count)
+                func1_ = b.first;
+            engine_.SetFormula1(func1_);
+        }
+
         // Voice 2 picks from the whole bank, not just the current family — two
         // voices from different families is most of the point of having two.
-        const float f2n = st_func2_.Process(hw.GetAdcValue(KNOB_MOD1));
+        const float f2n = st_func2_.Process(hw.GetAdcValue(KNOB_MOD2));
         const int   f2  = KnobToIndex(f2n, GetFormulaCount());
         if(f2 != func2_)
         {
             func2_ = f2;
             engine_.SetFormula2(func2_);
         }
-
-        const float gn = st_grid_.Process(hw.GetAdcValue(KNOB_MOD2));
-        engine_.SetParamQuant(kGrids[KnobToIndex(gn, kNumGrids)]);
 
         const float dn = st_drone_.Process(hw.GetAdcValue(KNOB_MOD3));
         engine_.SetOut2Decoupled(dn >= 0.5f); // idempotent; only the edge freezes
@@ -182,14 +208,11 @@ void BytebeatVoice::Process(DaisyPatchSM&             hw,
         engine_.SetParamA((int32_t)(a * 255.0f + 0.5f));
         engine_.SetParamB((int32_t)(b * 255.0f + 0.5f));
 
-        // Formula within the current bank.
-        const Bank& bk = BankAt(bank_);
-        const int   f1 = bk.first + KnobToIndex(hw.GetAdcValue(KNOB_MOD3), bk.count);
-        if(f1 != func1_)
-        {
-            func1_ = f1;
-            engine_.SetFormula1(func1_); // restarts t, so one-shots fire on select
-        }
+        // Tone: bipolar lo-fi macro, clean at noon. Ogham has no CV for this
+        // (it can only steal CV A or B); the spare MOD 3 jack gives it one.
+        const float tone
+            = fclamp(hw.GetAdcValue(KNOB_MOD3) + hw.GetAdcValue(CV_MOD3), 0.f, 1.f);
+        tone_.SetMacro(tone);
     }
 
     // TRIG = hard sync. Polled per block, so the restart lands within one block
@@ -203,6 +226,15 @@ void BytebeatVoice::Process(DaisyPatchSM&             hw,
         float o1 = 0.f, o2 = 0.f;
         engine_.Process(o1, o2);
 
+        // Tone runs on the engine's raw output, DC and all, exactly as it does
+        // on Ogham — the offset is part of what the wavefolder and the clipper
+        // see there, and the AC coupling happens after them at the jack.
+        if(!tone_.IsClean()) // Process() bypasses too; this just skips the calls
+        {
+            o1 = tone_.Process(o1, tone_st_[0]);
+            o2 = tone_.Process(o2, tone_st_[1]);
+        }
+
         // A formula parked on a constant value is a DC level at the jack, not
         // silence — Ogham AC-couples in hardware, so block it here instead.
         const float d1 = o1 - dc_x1_[0] + 0.999f * dc_y1_[0];
@@ -212,8 +244,8 @@ void BytebeatVoice::Process(DaisyPatchSM&             hw,
         dc_x1_[1]      = o2;
         dc_y1_[1]      = d2;
 
-        out[0][n] = d1;
-        out[1][n] = d2;
+        out[0][n] = SoftLimit(d1);
+        out[1][n] = SoftLimit(d2);
     }
 }
 

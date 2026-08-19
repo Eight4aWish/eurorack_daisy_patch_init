@@ -34,6 +34,7 @@ CPP_SOURCES = main.cpp \
               $(_P_UP1)/daisy_interval_osc/intervalosc_voice.cpp \
               $(_P_UP1)/daisy_scanned/scanned_voice.cpp \
               $(_P_UP1)/daisy_bytebeat/bytebeat_voice.cpp \
+              $(_P_UP1)/daisy_bytebeat/lofi_tone.cpp \
               $(_P_UP1)/daisy_bytebeat/bytebeat_engine.cpp \
               $(_P_UP1)/daisy_bytebeat/formulas.cpp
 

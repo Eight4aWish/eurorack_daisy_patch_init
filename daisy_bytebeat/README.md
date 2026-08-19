@@ -19,6 +19,13 @@ module by Steven Collins (Keeos.io), MIT:
 | `bytebeat_engine.{h,cpp}` | 32.32 fixed-point master phase accumulator, two voices, linear interpolation between ticks, A/B grid interpolation, Out 2 decouple/drone, hard sync |
 | `formulas.{h,cpp}` | The hundred-formula bank plus an A440 reference, generated from Ogham's curated library |
 
+`lofi_tone.{h,cpp}` is **extracted and adapted** rather than vendored, from the
+same project's `AudioPipeline`, where it is the `Tone` pot. Its staging and tuned
+constants carry over; what changed is listed in that file's header, and the one
+that matters is the pot calibration — Ogham measures its own pots because a 10k
+pull-down makes them non-linear, and copying its numbers would sit the clean
+deadzone left of noon on this hardware.
+
 The formulas were **found by machine search** (a GPU search with a neural fitness
 model) and are original to that project — not taken from published bytebeat
 collections. Original copyright headers are intact and no line of either file has
@@ -33,16 +40,29 @@ Universal panel — see [`../docs/PANEL.md`](../docs/PANEL.md).
 | Slot | Play page | Edit page |
 | --- | --- | --- |
 | TUNE | Rate, 1/64x–64x (+ V/OCT) | — (host: env on/off) |
-| MOD 1 | **A** (+ MOD1 CV) | **Func 2** — voice 2, whole bank |
-| MOD 2 | **B** (+ MOD2 CV) | **Grid** — A/B interpolation step |
-| MOD 3 | **Func 1** — within the current bank | **Drone** — decouple Out 2 |
-| Short press | cycle bank | — |
+| MOD 1 | **A** (+ MOD1 CV) | **Bank** — family for voice 1 |
+| MOD 2 | **B** (+ MOD2 CV) | **Func 2** — voice 2, whole bank |
+| MOD 3 | **Tone** (+ MOD3 CV) | **Drone** — decouple Out 2 |
+| Short press | next formula | — |
 
-- **Banks.** The hundred formulas ship in five families of twenty, and the engine
+The Play page is **Ogham's four pots exactly** — Rate, A, B, Tone — and formula
+selection comes off the knobs and onto the button, which is where Ogham puts it
+too (its `Func` encoder). Short press walks the current family of twenty and
+wraps; the Edit page picks the family.
+
+- **Families.** The hundred formulas ship in five of twenty, and the engine
   exposes them that way: `TEXT` `NOISE` `PERC` `RHYTM` `MELOD`, plus `REF` (the
-  A440 tuning reference). Short press steps family; MOD 3 picks within it, so one
-  knob covers twenty slots rather than a hundred. The position within the family
-  carries across when you change bank.
+  A440 tuning reference).
+- **Tone** is Ogham's lo-fi macro: CCW a 2-pole low-pass sweeping shut and then
+  drive → wavefold → saturation; CW sample-rate reduction, saturation, overdrive
+  and a resonant band-pass sweeping up. Clean in a deadzone at noon. Note that
+  full CCW is *not* the darkest setting — the low-pass is fully shut by 60% of
+  the throw and the wavefolder then re-brightens it, which is the design, not a
+  bug. Ogham has no CV for Tone (it can only steal CV A or B); the spare MOD 3
+  jack gives it one here.
+- **Grid** (the engine's A/B interpolation) is left at Ogham's default of off.
+  The engine supports it and it is worth having, but there is no knob to spare —
+  it wants the deep menu PANEL.md anticipates.
 - **Screen** shows the formula's own name (`BEAT:Oldskool Tune`), which is more
   use while scrubbing MOD 3 than the family name.
 - **`TRIG`** (Gate In 1) is hard sync — restarts the waveform at `t = 0`.
@@ -58,8 +78,6 @@ Universal panel — see [`../docs/PANEL.md`](../docs/PANEL.md).
 Ogham is more than its engine. Left out of this first pass, in rough order of
 how much they'd add:
 
-- **Lo-fi `Tone` macro** — bipolar: LPF → drive/wavefold CCW, HPF → sample-rate
-  reduction CW. Ogham's fourth pot, and the biggest single loss here.
 - **FX chain** — chorus → flanger → phaser, series or parallel, all DaisySP, so
   a straight lift once there are controls to spare.
 - **Env Out / EOC** — envelope follower and end-of-cycle to `CV OUT` / `GATE OUT 1`.
@@ -81,6 +99,10 @@ Host-side, with `g++` — there is no ARM toolchain in the porting environment, 
   second** at 1x, which exercises the phase accumulator, the rate mapping and the
   48 kHz assumption end to end.
 - Grid interpolation (q = 0/2/8/32) neither mutes nor overflows.
+- Tone is a true bypass at noon (bit-identical), and stays finite and inside full
+  scale across all 101 knob positions — including under a continuous knob sweep
+  with filter state carried across, which is the case that actually rings a
+  resonant SVF.
 - All 100 numbered formulas have an 8 kHz base rate, so 1x is one tick per 6
   output samples; above ~6x the accumulator crosses more than one tick per sample
   and starts skipping. That is Ogham's behaviour too, and the top of the knob is
@@ -89,13 +111,22 @@ Host-side, with `g++` — there is no ARM toolchain in the porting environment, 
 **Why the DC blocker.** Formula 85 *Gently Evolving* runs between −1.000 and
 +0.004 — a mean near −0.5. Ogham AC-couples at the jack in hardware; this build
 has to block DC in firmware, as `daisy_scanned` does, or that formula would push
-a large DC offset out of the output.
+a large DC offset out of the output. Measured: −0.500 raw → +0.00002 blocked.
+
+**Why the output limiter.** Two stages overshoot. Tone's overdrive and resonant
+band-pass reach **1.88** from the engine's ±1, and the DC blocker — a high-pass —
+reaches **1.25** on a formula with a large offset and fast transitions. Ogham can
+afford the first because it halves its output afterwards to suit a hot analog
+stage; here both would simply clip at the codec. A soft knee at 0.7, applied
+inside Tone and again as the last stage before the jack, leaves everything below
+it untouched and holds the ceiling at 1.0. Neither was predictable by reading the
+code — both came out of measurement.
 
 ## Next
 
 1. Build for the target and bench-test — the untested half is the control
    mapping, not the DSP.
-2. Check CPU headroom against the other engines, especially with Grid on (q > 1
-   costs four formula evaluations per tick instead of one).
+2. Check CPU headroom against the other engines. Tone is the new cost: at full
+   CW it runs a sample-and-hold, two saturators and an SVF per voice per sample.
 3. Consider `voct_cal.h` for calibrated 1 V/oct, as the Joy family uses; this
    follows SCAN/INTVL's uncalibrated convention for now.
