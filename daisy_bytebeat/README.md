@@ -156,4 +156,9 @@ code — both came out of measurement.
    budget, but that is an estimate from a host build, not a target measurement.
    Dropouts or crackle at the extremes of MOD 3 is the thing to listen for.
 3. Consider `voct_cal.h` for calibrated 1 V/oct, as the Joy family uses; this
-   follows SCAN/INTVL's uncalibrated convention for now.
+   follows SCAN/INTVL's uncalibrated convention for now. **Do not borrow Joy's
+   measured constants** (`VOCT_SLOPE 60.73`, `VOCT_CENTER_NORM 0.007074`): those
+   were measured on a different physical module, and a 1.2% slope error is
+   mostly input-divider tolerance, so it does not transfer between hand-built
+   units. Calibration has to be measured on the board it runs on. Bytebeat is
+   also the engine least in need of it — see the varispeed note above.

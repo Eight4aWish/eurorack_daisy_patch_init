@@ -1,3 +1,12 @@
+// Declarations for the Grids drum-map nodes in src/grids_nodes.cpp.
+//
+// The data itself is extracted from deps/mutable/eurorack/grids/resources.cc.
+//
+// Original author: Emilie Gillet (Mutable Instruments)
+// License: GPL-3.0-or-later — see daisy_grids/LICENSE.
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 #pragma once
 
 #include <cstdint>

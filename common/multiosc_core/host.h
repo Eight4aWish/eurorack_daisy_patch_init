@@ -12,6 +12,7 @@
 #include "daisy_patch_sm.h"
 #include "oled_soft_i2c.h"
 #include "engine.h"
+#include "legend_layout.h"
 
 namespace multiosc {
 

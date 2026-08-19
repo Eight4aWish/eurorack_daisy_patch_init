@@ -100,6 +100,7 @@ make DAISY_ROOT=/path/to/daisy
 - `common/multifx_core/` – portable, DaisySP-only MultiFX DSP/UI core (reverb, delay, tone and misc effect banks, output voicing, and a Bank/Patch navigation model) shared by `daisy_multifx_oled` (and its homebrew Daisy Seed variant), and intended for reuse on other Daisy boards. See its [README](common/multifx_core/README.md).
 - `common/voct_cal.h` + `common/joy_dsp.h` – shared by **Joy** and **Joy Lite**: the two-point V/Oct calibration math, and the envelope + fixed-point DSP helpers. Only each build's front-end (OLED navigator vs screenless LED/toggle) differs.
 - `common/` also holds the shared `oled_soft_i2c` SSD1306 driver used by the OLED projects.
+- `common/tools/` – host-side **panel checks** (`make check`): builds the real OLED driver and the real legend/menu layout with a PC compiler and asserts nothing falls off the 64x48 screen. The panel fails silently — a row one pixel too low draws nothing at all — so this catches layout bugs without a bench cycle. See its [README](common/tools/README.md).
 
 ## Credits & Licenses
 

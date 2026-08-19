@@ -1,3 +1,18 @@
+// SORROW — 3 synthetic drum voices + X/Y pattern sequencer for the Daisy Patch
+// Init. The synthesis, panel handling and UI here are original work; the
+// patterns come from grids_port, which is derived from Mutable Instruments
+// Grids by Emilie Gillet.
+//
+// Not affiliated with or endorsed by Mutable Instruments or Electrosmith; the
+// name Grids is used only to describe lineage. See README.md.
+//
+// License: GPL-3.0-or-later. Grids is GPL — unlike most of the Mutable
+// `eurorack` sources, which are MIT — so this firmware is copyleft as a whole,
+// including this file, however original it is on its own. See daisy_grids/LICENSE.
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 David Baghurst
+
 #include "daisy_patch_sm.h"
 #include "daisysp.h"
 
