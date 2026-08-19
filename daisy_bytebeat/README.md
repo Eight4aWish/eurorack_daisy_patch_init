@@ -12,7 +12,10 @@ scales together and the waveform's shape is preserved.
 ## Provenance
 
 The DSP is vendored **unmodified** from the [Ogham](https://github.com/keeos-io/ogham)
-module by Steven Collins (Keeos.io), MIT:
+module by Steven Collins (Keeos.io), MIT. The upstream file headers point to a
+`LICENSE-firmware.txt` at *Ogham's* repository root, so the permission notice is
+reproduced here as [`LICENSE-ogham.txt`](LICENSE-ogham.txt) — MIT requires the
+notice to travel with the code, and a pointer to another repository does not.
 
 | File | What it is |
 | --- | --- |

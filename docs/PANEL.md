@@ -14,7 +14,7 @@ contract.
 > description of everything flashed on the module.
 >
 > - The contract is **implemented** by [`daisy_multiosc/`](../daisy_multiosc/),
->   which hosts FM4OP, INTVL, SCAN and a SINE test voice behind the boot-time
+>   which hosts FM4OP, INTVL, SCAN, BYTEBEAT and a SINE test voice behind the boot-time
 >   chooser described below.
 > - **Joy** (`daisy_braids_oled/`) and **Joy Lite** (`daisy_joy_lite/`) are
 >   separate firmwares on this same panel that **do not follow the contract**.
