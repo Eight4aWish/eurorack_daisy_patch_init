@@ -32,7 +32,10 @@ CPP_SOURCES = main.cpp \
               $(_P_UP1)/common/oled_soft_i2c.cpp \
               $(_P_UP1)/daisy_fm4op/fm4op_voice.cpp \
               $(_P_UP1)/daisy_interval_osc/intervalosc_voice.cpp \
-              $(_P_UP1)/daisy_scanned/scanned_voice.cpp
+              $(_P_UP1)/daisy_scanned/scanned_voice.cpp \
+              $(_P_UP1)/daisy_bytebeat/bytebeat_voice.cpp \
+              $(_P_UP1)/daisy_bytebeat/bytebeat_engine.cpp \
+              $(_P_UP1)/daisy_bytebeat/formulas.cpp
 
 C_INCLUDES += \
 -I. \
@@ -40,6 +43,7 @@ C_INCLUDES += \
 -I$(_P_UP1)/daisy_fm4op \
 -I$(_P_UP1)/daisy_interval_osc \
 -I$(_P_UP1)/daisy_scanned \
+-I$(_P_UP1)/daisy_bytebeat \
 -I$(LIBDAISY_DIR)/src \
 -I$(DAISYSP_DIR)/Source
 

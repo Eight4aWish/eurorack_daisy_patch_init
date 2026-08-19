@@ -9,6 +9,7 @@
 #include "fm4op_voice.h"
 #include "intervalosc_voice.h"
 #include "scanned_voice.h"
+#include "bytebeat_voice.h"
 #include "sine_engine.h"
 
 using namespace multiosc;
@@ -17,6 +18,7 @@ static Host             host;
 static FmFourOp         fm4op;
 static IntervalOscVoice interval;
 static ScannedVoice     scanned;
+static BytebeatVoice    bytebeat;
 static SineEngine       sine;
 
 int main(void)
@@ -24,6 +26,7 @@ int main(void)
     host.AddEngine(&fm4op);
     host.AddEngine(&interval);
     host.AddEngine(&scanned);
+    host.AddEngine(&bytebeat);
     host.AddEngine(&sine);
     host.Run(); // does not return
 }
