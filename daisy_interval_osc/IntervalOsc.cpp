@@ -1,3 +1,15 @@
+// IntervalOsc — dual oscillator with a quantized interval offset.
+//
+// Nick Donaldson's patch, from ndonald2/DaisyPatches:
+// https://github.com/ndonald2/DaisyPatches/tree/main/patches/IntervalOsc
+// That repository is a soft fork of Electrosmith's DaisyExamples and carries its
+// MIT licence; the full permission notice, with both upstream copyright lines,
+// is in LICENSE-daisypatches.txt beside this file.
+//
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2020 andrewikenberry
+// SPDX-FileCopyrightText: 2022 Nick Donaldson
+
 #include <functional>
 #include "daisy_patch_sm.h"
 #include "daisysp.h"
