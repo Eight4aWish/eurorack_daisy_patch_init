@@ -64,6 +64,13 @@ class Engine {
     virtual const char* ShortLabel() const = 0;   // e.g. "ALGO", "MODEL"
     virtual const char* Selection() const = 0;     // e.g. "Parallel"
 
+    // What the short-press selection is *on the Edit page*, for engines where
+    // that page has its own state worth naming -- bytebeat's formula family, for
+    // instance, which decides what the short press then walks. Returning nullptr
+    // (the default) leaves the page reading plain "EDIT" as before. Must be a
+    // stable pointer for the same value: the redraw check compares by pointer.
+    virtual const char* EditSelection() const { return nullptr; }
+
     // Native audio block size for this engine.
     virtual int BlockSize() const { return 48; }
 

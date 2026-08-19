@@ -50,6 +50,10 @@ class BytebeatVoice : public Engine {
     const char* ModLabel(int idx, bool edit) const override;
     const char* ShortLabel() const override { return "BANK"; }
     const char* Selection() const override;
+    // Edit page walks families rather than formulas, so name the family there --
+    // it is what the short press will step through when you go back to Play.
+    // kBanks holds string literals, so the pointer is stable per bank.
+    const char* EditSelection() const override { return BankAt(bank_).name; }
     bool        DefaultEnvOn() const override { return false; } // free-running
 
   private:

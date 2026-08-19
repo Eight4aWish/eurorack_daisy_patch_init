@@ -57,6 +57,7 @@ class Host {
     // Tracks everything shown so engine-internal state changes refresh too.
     const Engine* drawn_engine_ = nullptr;
     const char*   drawn_sel_    = nullptr;
+    const char*   drawn_esel_   = nullptr;
     const char*   drawn_l_[3]   = {nullptr, nullptr, nullptr};
     bool          drawn_edit_   = false;
     bool          drawn_env_    = true;
