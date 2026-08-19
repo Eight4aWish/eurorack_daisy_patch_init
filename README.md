@@ -90,7 +90,7 @@ make DAISY_ROOT=/path/to/daisy
 - `daisy_joy_lite/` – **Joy Lite** — screenless sibling: a curated 16 Braids models (the ones Plaits doesn't cover) in two toggle banks, model number shown by LED blink
 - `daisy_multifx_oled/` – Multi-effect processor with 64x48 OLED: 16 effects in a 4×4 grid (Reverb / Delay / Tone / Misc banks), built on the shared `multifx_core` library (also runs on a bare Daisy Seed with a homebrew front end — see `daisy_multifx_seed/`)
 - `daisy_fm4op/` – 4-op FM synth (standalone build, and the FM4OP engine for `daisy_multiosc`)
-- `daisy_interval_osc/` – dual oscillator with quantized interval offset (standalone build, and the INTVL engine)
+- `daisy_interval_osc/` – **INTVL** — Nick Donaldson's IntervalOsc: dual oscillator with quantized interval offset ([ndonald2/DaisyPatches](https://github.com/ndonald2/DaisyPatches), MIT — see [`daisy_interval_osc/LICENSE-daisypatches.txt`](daisy_interval_osc/LICENSE-daisypatches.txt)). His patch and README are kept as written; the multiosc engine is a port of that DSP onto the universal panel
 - `daisy_scanned/` – scanned-synthesis engine source for `daisy_multiosc` (no standalone build)
 - `daisy_bytebeat/` – **BYTEBEAT** engine source for `daisy_multiosc` (no standalone build): dual-voice bytebeat with a 100-formula bank in five families and a lo-fi Tone macro, ported from [Ogham](https://github.com/keeos-io/ogham) by Steven Collins (Keeos.io, MIT — see [`daisy_bytebeat/LICENSE-ogham.txt`](daisy_bytebeat/LICENSE-ogham.txt))
 
@@ -114,10 +114,10 @@ the ports here are community works and are not official or endorsed.
 | libDaisy, DaisySP | Electrosmith | MIT |
 | DaisySP-LGPL (linked by `daisy_interval_osc`, `daisy_multiosc`) | Electrosmith + upstreams | LGPL-2.1 |
 | `daisy_braids_oled` (**Joy**) – Braids DSP | Émilie Gillet (Mutable Instruments, [`eurorack`](https://github.com/pichenettes/eurorack)) | MIT |
-| `daisy_interval_osc` – IntervalOsc | Nick Donaldson ([ndonald2/DaisyPatches](https://github.com/ndonald2/DaisyPatches)) | MIT |
+| `daisy_interval_osc` (**INTVL**) – IntervalOsc patch + the DSP behind the multiosc engine | Nick Donaldson ([ndonald2/DaisyPatches](https://github.com/ndonald2/DaisyPatches)), after Electrosmith DaisyExamples | MIT ([notice](daisy_interval_osc/LICENSE-daisypatches.txt)) |
 | `daisy_bytebeat` (**BYTEBEAT**) – bytebeat engine, formula bank, Tone macro | Steven Collins (Keeos.io, [`ogham`](https://github.com/keeos-io/ogham)) | MIT ([notice](daisy_bytebeat/LICENSE-ogham.txt)) |
 | `daisy_grids` (**Sorrow**) – Grids pattern generator | Émilie Gillet (Mutable Instruments) | **GPL-3.0-or-later** |
-| `daisy_multiosc` (host + SCAN engine), `daisy_scanned`, `daisy_fm4op`, `daisy_multifx_*`, integration | David Baghurst | MIT |
+| `daisy_multiosc` (host + SCAN engine), `daisy_scanned`, `daisy_fm4op`, `daisy_multifx_*`, `common/`, integration and the ports of the above | David Baghurst | MIT |
 
 Notes:
 

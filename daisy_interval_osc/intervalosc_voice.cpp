@@ -1,6 +1,11 @@
-// interval_osc multiosc engine — DSP ported from IntervalOsc.cpp
-// (Nick Donaldson, ndonald2/DaisyPatches, MIT).
-// Copyright (c) 2026 David Baghurst — MIT (see repo LICENSE).
+// interval_osc multiosc engine — DSP ported from IntervalOsc.cpp beside this
+// file (Nick Donaldson, ndonald2/DaisyPatches). See intervalosc_voice.h for the
+// split of authorship, and LICENSE-daisypatches.txt for the permission notice.
+//
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2020 andrewikenberry
+// SPDX-FileCopyrightText: 2022 Nick Donaldson        (original IntervalOsc DSP)
+// SPDX-FileCopyrightText: 2026 David Baghurst        (multiosc port)
 
 #include "intervalosc_voice.h"
 #include <cmath>

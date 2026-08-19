@@ -1,3 +1,9 @@
+<!-- Note added in this repository; everything below is Nick Donaldson's README
+     as written. His patch is MIT-licensed -- see LICENSE-daisypatches.txt in
+     this directory for the permission notice and the copyright lines. The
+     INTVL engine in daisy_multiosc is a port of this DSP onto that project's
+     universal panel; see intervalosc_voice.h. -->
+
 # IntervalOsc
 
 Dual oscillator with interval offset for Daisy Patch.Init()

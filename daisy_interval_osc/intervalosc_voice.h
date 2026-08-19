@@ -7,11 +7,17 @@
 //   Edit : MOD1 = Interval/Rational mode
 // Continuous (VCO/drone): no envelope. Out L = osc 1, Out R = osc 2.
 //
-// DSP ported from daisy_interval_osc/IntervalOsc.cpp
-// (Nick Donaldson, ndonald2/DaisyPatches, MIT). The standalone build is kept
+// The oscillator behaviour, the interval/rational modes and the ratio table are
+// ported from IntervalOsc.cpp beside this file (Nick Donaldson,
+// ndonald2/DaisyPatches). His copyright carries over with the DSP; the engine
+// wrapper, panel mapping and soft-takeover are new. The standalone build is kept
 // behind its own Makefile; this is the integrated form for daisy_multiosc.
 //
-// Copyright (c) 2026 David Baghurst — MIT (see repo LICENSE).
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2020 andrewikenberry
+// SPDX-FileCopyrightText: 2022 Nick Donaldson        (original IntervalOsc DSP)
+// SPDX-FileCopyrightText: 2026 David Baghurst        (multiosc port)
+// See LICENSE-daisypatches.txt beside this file, and the repo LICENSE.
 
 #pragma once
 
