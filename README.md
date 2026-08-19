@@ -84,7 +84,7 @@ make DAISY_ROOT=/path/to/daisy
 
 ## Projects
 
-- `daisy_multiosc/` – **boot-selectable multi-engine synth** for the Daisy Patch Init: pick a voice at power-up, all sharing one universal panel + OLED legend (`BOOT_QSPI`). Engines: **FM4OP** (4-op FM), **INTVL** (dual interval oscillator), **SCAN** (scanned synthesis), plus a SINE test voice. See its [README](daisy_multiosc/README.md), the control contract in [docs/PANEL.md](docs/PANEL.md), and [docs/ROADMAP.md](docs/ROADMAP.md).
+- `daisy_multiosc/` – **boot-selectable multi-engine synth** for the Daisy Patch Init: pick a voice at power-up, all sharing one universal panel + OLED legend (`BOOT_QSPI`). Engines: **FM4OP** (4-op FM), **INTVL** (dual interval oscillator), **SCAN** (scanned synthesis), **BYTEBEAT** (dual-voice bytebeat), plus a SINE test voice. See its [README](daisy_multiosc/README.md), the control contract in [docs/PANEL.md](docs/PANEL.md), and [docs/ROADMAP.md](docs/ROADMAP.md).
 - `daisy_grids/` – **Sorrow** — 3 synthetic drum voices + X/Y pattern sequencer, based on Mutable Instruments Grids (**GPL-3.0-or-later**)
 - `daisy_braids_oled/` – **Joy** — macro oscillator (48 models) with 64x48 OLED menu navigation, based on Mutable Instruments Braids; on-module V/Oct calibration (hold B7 at power-up)
 - `daisy_joy_lite/` – **Joy Lite** — screenless sibling: a curated 16 Braids models (the ones Plaits doesn't cover) in two toggle banks, model number shown by LED blink
@@ -92,6 +92,7 @@ make DAISY_ROOT=/path/to/daisy
 - `daisy_fm4op/` – 4-op FM synth (standalone build, and the FM4OP engine for `daisy_multiosc`)
 - `daisy_interval_osc/` – dual oscillator with quantized interval offset (standalone build, and the INTVL engine)
 - `daisy_scanned/` – scanned-synthesis engine source for `daisy_multiosc` (no standalone build)
+- `daisy_bytebeat/` – **BYTEBEAT** engine source for `daisy_multiosc` (no standalone build): dual-voice bytebeat with a 100-formula bank in five families and a lo-fi Tone macro, ported from [Ogham](https://github.com/keeos-io/ogham) by Steven Collins (Keeos.io, MIT — see [`daisy_bytebeat/LICENSE-ogham.txt`](daisy_bytebeat/LICENSE-ogham.txt))
 
 ## Shared code
 
@@ -114,7 +115,7 @@ the ports here are community works and are not official or endorsed.
 | DaisySP-LGPL (linked by `daisy_interval_osc`, `daisy_multiosc`) | Electrosmith + upstreams | LGPL-2.1 |
 | `daisy_braids_oled` (**Joy**) – Braids DSP | Émilie Gillet (Mutable Instruments, [`eurorack`](https://github.com/pichenettes/eurorack)) | MIT |
 | `daisy_interval_osc` – IntervalOsc | Nick Donaldson ([ndonald2/DaisyPatches](https://github.com/ndonald2/DaisyPatches)) | MIT |
-| `daisy_bytebeat` (**BYTEBEAT**) – bytebeat engine, formula bank, Tone macro | Steven Collins (Keeos.io, [`ogham`](https://github.com/keeos-io/ogham)) | MIT |
+| `daisy_bytebeat` (**BYTEBEAT**) – bytebeat engine, formula bank, Tone macro | Steven Collins (Keeos.io, [`ogham`](https://github.com/keeos-io/ogham)) | MIT ([notice](daisy_bytebeat/LICENSE-ogham.txt)) |
 | `daisy_grids` (**Sorrow**) – Grids pattern generator | Émilie Gillet (Mutable Instruments) | **GPL-3.0-or-later** |
 | `daisy_multiosc` (host + SCAN engine), `daisy_scanned`, `daisy_fm4op`, `daisy_multifx_*`, integration | David Baghurst | MIT |
 
