@@ -104,8 +104,10 @@ would live, if any of them turn out to be wanted.
 
 ## Verified so far
 
-Host-side, with `g++` — there is no ARM toolchain in the porting environment, so
-**this has not been compiled for the target or run on hardware yet**:
+It now **builds for the target** (2026-08-19, `daisy_multiosc` at 122,280 B —
+1.5% of QSPI, so size is not a constraint), and the checks below pass host-side
+with `g++`. What remains unverified is **the control mapping on hardware**: no
+knob, jack or button in the map above has been touched on the bench.
 
 - The bank is 101 slots (100 numbered + A440 at index 100), and the family
   boundaries really are 0/20/40/60/80 — the `kBanks` table was checked against
@@ -140,9 +142,13 @@ code — both came out of measurement.
 
 ## Next
 
-1. Build for the target and bench-test — the untested half is the control
-   mapping, not the DSP.
-2. Check CPU headroom against the other engines. Tone is the new cost: at full
-   CW it runs a sample-and-hold, two saturators and an SVF per voice per sample.
+1. Bench-test the control map — the untested half is the panel, not the DSP.
+2. Confirm CPU headroom by ear. Tone is the new cost: measured host-side it is
+   about 2.7x the clean path at full CCW and 1.9x at full CW, against a budget of
+   10,000 cycles per sample (480 MHz / 48 kHz). The worst case is roughly six
+   `tanhf` calls per sample — two voices past the limiter knee, each through a
+   saturator and the output knee — which should land near a quarter of the
+   budget, but that is an estimate from a host build, not a target measurement.
+   Dropouts or crackle at the extremes of MOD 3 is the thing to listen for.
 3. Consider `voct_cal.h` for calibrated 1 V/oct, as the Joy family uses; this
    follows SCAN/INTVL's uncalibrated convention for now.
