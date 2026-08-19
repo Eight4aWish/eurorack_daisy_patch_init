@@ -1,3 +1,18 @@
+// Minimal, portable port of the Mutable Instruments Grids drum pattern
+// generator — the implementation for grids_port.h.
+//
+// Derived from deps/mutable/eurorack/grids/pattern_generator.{h,cc}: the drum
+// map layout, the Galois LFSR, the fixed-point helpers and the step logic are
+// Emilie Gillet's. The port to portable C++ is by David Baghurst.
+//
+// Original author: Emilie Gillet (Mutable Instruments)
+// License: GPL-3.0-or-later — see daisy_grids/LICENSE. Because this file is
+// derived from Grids, the whole of daisy_grids (Sorrow) is copyleft and cannot
+// be relicensed; distributing it, source or binary, obliges you to pass on the
+// complete corresponding source.
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 #include "grids_port.h"
 
 #include "grids_nodes.h"

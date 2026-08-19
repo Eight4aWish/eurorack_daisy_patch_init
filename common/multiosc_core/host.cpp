@@ -47,30 +47,17 @@ void Host::InitHardware()
 
 void Host::DrawMenu(int sel)
 {
-    // The panel is 48 px tall and a glyph is 7, so under the "SELECT" header
-    // there is room for kRows entries at kStep apart. Five fit exactly; beyond
-    // that the list scrolls to keep the highlighted engine on screen, rather
-    // than drawing the tail below the bottom edge where it silently vanishes.
-    constexpr uint8_t kTop  = 9;
-    constexpr uint8_t kStep = 8;
-    constexpr int     kRows = (oled::OLED_HEIGHT - kTop - 7) / kStep + 1;
-
-    int first = 0;
-    if(engine_count_ > kRows)
-    {
-        first = sel - kRows / 2;
-        if(first < 0)
-            first = 0;
-        if(first > engine_count_ - kRows)
-            first = engine_count_ - kRows;
-    }
+    // Geometry and the scroll window live in legend_layout.h so that
+    // tools/panel_check reasons about the same numbers this draws with.
+    static_assert(kMenuHeight == oled::OLED_HEIGHT, "menu geometry vs panel");
+    const int first = MenuWindowStart(sel, engine_count_);
 
     char line[24];
     display_.Clear();
     display_.DrawStringCentered(0, "SELECT", false);
-    for(int i = first; i < engine_count_ && i - first < kRows; i++)
+    for(int i = first; i < engine_count_ && i - first < kMenuRows; i++)
     {
-        const uint8_t y = kTop + (uint8_t)(i - first) * kStep;
+        const uint8_t y = (uint8_t)MenuRowY(i - first);
         std::snprintf(line, sizeof(line), "%s %s", i == sel ? ">" : " ",
                       engines_[i]->Name());
         display_.DrawString(2, y, line, false);
@@ -180,42 +167,10 @@ void Host::DrawLegend()
     drawn_l_[2]   = l2;
     drawn_valid_  = true;
 
-    // On the Edit page, name the page's own selection alongside it where the
-    // engine offers one: "EDIT:NOISE" is ten characters, exactly the line, and
-    // tells you which family the short press is about to walk.
-    char        tagbuf[16];
-    const char* tag = sel;
-    if(edit)
-    {
-        if(esel && esel[0])
-        {
-            std::snprintf(tagbuf, sizeof(tagbuf), "EDIT:%s", esel);
-            tag = tagbuf;
-        }
-        else
-            tag = "EDIT";
-    }
-    char title[24], row1[16], row2[16];
-
-    // A 64 px line holds ten characters. "NAME:SEL" is the house style and fits
-    // for engines with short selections (FM4OP:SwTr), but an engine that names
-    // its selection in words -- bytebeat reports the formula, "Oldskool Tune" --
-    // blows straight past it. Rather than clip the engine name away, drop the
-    // selection onto its own line under the knob grid, where there is space.
-    constexpr size_t kCols = oled::OLED_WIDTH / 6;
-    const char*      own_line = nullptr;
-
-    if(tag && tag[0])
-    {
-        std::snprintf(title, sizeof(title), "%s:%s", active_->Name(), tag);
-        if(std::strlen(title) > kCols)
-        {
-            std::snprintf(title, sizeof(title), "%s", active_->Name());
-            own_line = tag;
-        }
-    }
-    else
-        std::snprintf(title, sizeof(title), "%s", active_->Name());
+    // Title and selection lines: see legend_layout.h, which tools/panel_check
+    // asserts against.
+    const LegendText lt = ComposeLegend(active_->Name(), sel, esel, edit);
+    char             row1[16], row2[16];
 
     // Top-left cell is the pitch knob in Play, the envelope on/off in Edit.
     const char* tl = edit ? (env_on_ ? "EnvOn" : "EnvOf") : "Tune";
@@ -223,12 +178,12 @@ void Host::DrawLegend()
     std::snprintf(row2, sizeof(row2), "%-6s%s", l1, l2);
 
     display_.Clear();
-    display_.DrawStringCentered(0, title, false);
+    display_.DrawStringCentered(0, lt.title, false);
     display_.DrawHLine(0, 9, 64);
     display_.DrawString(0, 13, row1, false);
     display_.DrawString(0, 23, row2, false);
-    if(own_line)
-        display_.DrawStringCentered(33, own_line, false);
+    if(lt.has_selection())
+        display_.DrawStringCentered(33, lt.selection, false);
     display_.Update();
 }
 
