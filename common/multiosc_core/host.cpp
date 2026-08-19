@@ -160,26 +160,42 @@ void Host::DrawLegend()
     //     <MOD2> <MOD3>
     const bool  edit = ctx_.edit_page;
     const char* sel  = active_->Selection();
+    const char* esel = active_->EditSelection();
     const char* l0   = active_->ModLabel(0, edit);
     const char* l1   = active_->ModLabel(1, edit);
     const char* l2   = active_->ModLabel(2, edit);
 
     // Skip the (slow, noisy) soft-I2C redraw when nothing on screen changed.
     if(drawn_valid_ && active_ == drawn_engine_ && edit == drawn_edit_
-       && env_on_ == drawn_env_ && sel == drawn_sel_ && l0 == drawn_l_[0]
-       && l1 == drawn_l_[1] && l2 == drawn_l_[2])
+       && env_on_ == drawn_env_ && sel == drawn_sel_ && esel == drawn_esel_
+       && l0 == drawn_l_[0] && l1 == drawn_l_[1] && l2 == drawn_l_[2])
         return;
     drawn_engine_ = active_;
     drawn_edit_   = edit;
     drawn_env_    = env_on_;
     drawn_sel_    = sel;
+    drawn_esel_   = esel;
     drawn_l_[0]   = l0;
     drawn_l_[1]   = l1;
     drawn_l_[2]   = l2;
     drawn_valid_  = true;
 
-    const char* tag = edit ? "EDIT" : sel;
-    char        title[24], row1[16], row2[16];
+    // On the Edit page, name the page's own selection alongside it where the
+    // engine offers one: "EDIT:NOISE" is ten characters, exactly the line, and
+    // tells you which family the short press is about to walk.
+    char        tagbuf[16];
+    const char* tag = sel;
+    if(edit)
+    {
+        if(esel && esel[0])
+        {
+            std::snprintf(tagbuf, sizeof(tagbuf), "EDIT:%s", esel);
+            tag = tagbuf;
+        }
+        else
+            tag = "EDIT";
+    }
+    char title[24], row1[16], row2[16];
 
     // A 64 px line holds ten characters. "NAME:SEL" is the house style and fits
     // for engines with short selections (FM4OP:SwTr), but an engine that names

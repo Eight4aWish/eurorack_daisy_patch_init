@@ -66,7 +66,9 @@ wraps; the Edit page picks the family.
 - **Screen** shows the formula's own name, which is more use while scrubbing
   MOD 3 than the family name. The panel is ten characters wide, so `BYTEBEAT`
   keeps the title line and the formula gets its own line under the knob grid,
-  truncated to ten (`Oldskool T`). No two of the 101 names collide there.
+  truncated to ten (`Oldskool T`). No two of the 101 names collide there. The
+  Edit page names the family on the same line instead — `EDIT:NOISE`, exactly
+  ten — so you can see which twenty the short press is about to walk.
 - **`TRIG`** (Gate In 1) is hard sync — restarts the waveform at `t = 0`.
   Roughly a fifth of the bank is one-shots that sound for between 0.4 s and about
   a minute and are silent after, so Sync is what keeps those alive. Selecting a
