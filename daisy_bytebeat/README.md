@@ -1,4 +1,4 @@
-# daisy_bytebeat — BEAT engine
+# daisy_bytebeat — BYTEBEAT engine
 
 A dual-voice **bytebeat** oscillator for [`daisy_multiosc`](../daisy_multiosc/).
 
@@ -63,8 +63,10 @@ wraps; the Edit page picks the family.
 - **Grid** (the engine's A/B interpolation) is left at Ogham's default of off.
   The engine supports it and it is worth having, but there is no knob to spare —
   it wants the deep menu PANEL.md anticipates.
-- **Screen** shows the formula's own name (`BEAT:Oldskool Tune`), which is more
-  use while scrubbing MOD 3 than the family name.
+- **Screen** shows the formula's own name, which is more use while scrubbing
+  MOD 3 than the family name. The panel is ten characters wide, so `BYTEBEAT`
+  keeps the title line and the formula gets its own line under the knob grid,
+  truncated to ten (`Oldskool T`). No two of the 101 names collide there.
 - **`TRIG`** (Gate In 1) is hard sync — restarts the waveform at `t = 0`.
   Roughly a fifth of the bank is one-shots that sound for between 0.4 s and about
   a minute and are silent after, so Sync is what keeps those alive. Selecting a
@@ -79,7 +81,7 @@ wraps; the Edit page picks the family.
 
 - **FX chain** — chorus → flanger → phaser, series or parallel. A straight
   DaisySP lift, but the rack does modulation and delay better in dedicated
-  hardware, and it would cost knobs BEAT has better uses for.
+  hardware, and it would cost knobs BYTEBEAT has better uses for.
 - **Internal LPG**, plucked by Sync — same reasoning.
 
 Ogham puts these inside the module because it is a standalone 10 HP voice with

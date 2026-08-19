@@ -1,4 +1,4 @@
-# Host-side checks for the BEAT engine. Nothing here is built into firmware or
+# Host-side checks for the BYTEBEAT engine. Nothing here is built into firmware or
 # flashed; it is a PC compiler driving the same sources the module runs, in the
 # spirit of Ogham's own firmware/tools.
 #

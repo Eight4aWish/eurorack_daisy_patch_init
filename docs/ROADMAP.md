@@ -34,7 +34,7 @@ and headers (see root README "Credits & Licenses").
 | **FM4OP** | original (DaisySP) | MIT | 4-op FM; short-press = algorithm; edit = Vol/Atk/Rel |
 | **INTVL** | ndonald2/DaisyPatches (Donaldson) | MIT | dual osc; interval/detune/PW; mono sum; optional AR env |
 | **SCAN** | original | MIT | scanned synthesis; Tension/Damping/Hammer; evolving drone |
-| **BEAT** | keeos-io/ogham (Collins) | MIT | dual-voice bytebeat; 100 formulas in 5 families; Tone lo-fi macro; short-press = next formula |
+| **BYTEBEAT** | keeos-io/ogham (Collins) | MIT | dual-voice bytebeat; 100 formulas in 5 families; Tone lo-fi macro; short-press = next formula |
 | SINE | original | MIT | test voice |
 
 `daisy_fm4op/` and `daisy_interval_osc/` keep a `BOOT_NONE` standalone build for

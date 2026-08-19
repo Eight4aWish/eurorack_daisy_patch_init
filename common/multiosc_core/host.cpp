@@ -3,6 +3,7 @@
 
 #include "host.h"
 #include <cstdio>
+#include <cstring>
 
 using namespace daisy;
 using namespace daisy::patch_sm;
@@ -46,12 +47,30 @@ void Host::InitHardware()
 
 void Host::DrawMenu(int sel)
 {
+    // The panel is 48 px tall and a glyph is 7, so under the "SELECT" header
+    // there is room for kRows entries at kStep apart. Five fit exactly; beyond
+    // that the list scrolls to keep the highlighted engine on screen, rather
+    // than drawing the tail below the bottom edge where it silently vanishes.
+    constexpr uint8_t kTop  = 9;
+    constexpr uint8_t kStep = 8;
+    constexpr int     kRows = (oled::OLED_HEIGHT - kTop - 7) / kStep + 1;
+
+    int first = 0;
+    if(engine_count_ > kRows)
+    {
+        first = sel - kRows / 2;
+        if(first < 0)
+            first = 0;
+        if(first > engine_count_ - kRows)
+            first = engine_count_ - kRows;
+    }
+
     char line[24];
     display_.Clear();
     display_.DrawStringCentered(0, "SELECT", false);
-    for(int i = 0; i < engine_count_; i++)
+    for(int i = first; i < engine_count_ && i - first < kRows; i++)
     {
-        const uint8_t y = 12 + i * 9;
+        const uint8_t y = kTop + (uint8_t)(i - first) * kStep;
         std::snprintf(line, sizeof(line), "%s %s", i == sel ? ">" : " ",
                       engines_[i]->Name());
         display_.DrawString(2, y, line, false);
@@ -162,8 +181,23 @@ void Host::DrawLegend()
     const char* tag = edit ? "EDIT" : sel;
     char        title[24], row1[16], row2[16];
 
+    // A 64 px line holds ten characters. "NAME:SEL" is the house style and fits
+    // for engines with short selections (FM4OP:SwTr), but an engine that names
+    // its selection in words -- bytebeat reports the formula, "Oldskool Tune" --
+    // blows straight past it. Rather than clip the engine name away, drop the
+    // selection onto its own line under the knob grid, where there is space.
+    constexpr size_t kCols = oled::OLED_WIDTH / 6;
+    const char*      own_line = nullptr;
+
     if(tag && tag[0])
+    {
         std::snprintf(title, sizeof(title), "%s:%s", active_->Name(), tag);
+        if(std::strlen(title) > kCols)
+        {
+            std::snprintf(title, sizeof(title), "%s", active_->Name());
+            own_line = tag;
+        }
+    }
     else
         std::snprintf(title, sizeof(title), "%s", active_->Name());
 
@@ -177,6 +211,8 @@ void Host::DrawLegend()
     display_.DrawHLine(0, 9, 64);
     display_.DrawString(0, 13, row1, false);
     display_.DrawString(0, 23, row2, false);
+    if(own_line)
+        display_.DrawStringCentered(33, own_line, false);
     display_.Update();
 }
 

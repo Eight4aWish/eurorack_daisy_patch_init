@@ -130,6 +130,11 @@ uint8_t SSD1306::DrawChar(uint8_t x, uint8_t y, char c, bool invert) {
 uint8_t SSD1306::DrawString(uint8_t x, uint8_t y, const char* str, bool invert) {
     uint8_t startX = x;
     while (*str) {
+        // Stop at the right-hand edge. SetPixel already discards off-screen
+        // pixels, but x is a uint8_t: left to run it wraps past 255 and the
+        // rest of the string reappears at the left, overwriting what is there.
+        // Clipping a long string is legible; wrapping it is not.
+        if (x + 5 >= OLED_WIDTH) break;
         x += DrawChar(x, y, *str, invert);
         str++;
     }
@@ -137,9 +142,13 @@ uint8_t SSD1306::DrawString(uint8_t x, uint8_t y, const char* str, bool invert) 
 }
 
 uint8_t SSD1306::DrawStringCentered(uint8_t y, const char* str, bool invert) {
-    size_t len = strlen(str);
-    uint8_t width = len * 6;
-    uint8_t x = (OLED_WIDTH - width) / 2;
+    // 64 px at 6 px per character is ten characters. Anything wider cannot be
+    // centred, so pin it to the left edge and let DrawString clip the tail --
+    // the old (OLED_WIDTH - width) / 2 went negative and landed in x as a large
+    // uint8_t, which pushed the whole string off screen.
+    size_t  len   = strlen(str);
+    size_t  width = len * 6;
+    uint8_t x     = width >= OLED_WIDTH ? 0 : (uint8_t)((OLED_WIDTH - width) / 2);
     return DrawString(x, y, str, invert);
 }
 
@@ -168,6 +177,7 @@ uint8_t SSD1306::DrawCharLarge(uint8_t x, uint8_t y, char c, bool invert) {
 uint8_t SSD1306::DrawStringLarge(uint8_t x, uint8_t y, const char* str, bool invert) {
     uint8_t startX = x;
     while (*str) {
+        if (x + 10 >= OLED_WIDTH) break; // clip rather than wrap x -- see DrawString
         x += DrawCharLarge(x, y, *str, invert);
         str++;
     }

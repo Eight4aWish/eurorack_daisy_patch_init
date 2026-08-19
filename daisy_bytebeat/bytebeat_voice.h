@@ -46,7 +46,7 @@ class BytebeatVoice : public Engine {
                  AudioHandle::OutputBuffer out,
                  size_t                    size) override;
 
-    const char* Name() const override { return "BEAT"; }
+    const char* Name() const override { return "BYTEBEAT"; }
     const char* ModLabel(int idx, bool edit) const override;
     const char* ShortLabel() const override { return "BANK"; }
     const char* Selection() const override;
