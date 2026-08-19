@@ -31,6 +31,18 @@ across power cycles (saved to QSPI flash a couple of seconds after each change).
 
 > **Note:** The B8 toggle switch must be removed to make physical panel space for the OLED screen.
 
+### Faceplate
+
+The Joy panel lives in the [build123d workshop](https://github.com/Eight4aWish/build123d)
+repo, in two forms built from the same hole and label data:
+
+- **3D printed**, two-colour — `panels/daisy_braids.py`
+- **PCB**, black solder mask with white silkscreen — `exports/pcb/joy_10hp/`,
+  with a JLCPCB-ready gerber zip and ordering notes
+
+Both put the OLED window where B8 used to be, and add two Ø3 mm screen mounting
+holes 19.5 mm apart.
+
 ## Controls
 
 ### Knobs
