@@ -31,6 +31,16 @@ C_INCLUDES += \
 OPT = -O2
 
 SYSTEM_FILES_DIR = $(LIBDAISY_DIR)/core
+
+# BOOT_SRAM: the app is loaded into SRAM by the Daisy bootloader from QSPI.
+# Sorrow v2 needs this: the v1 BOOT_NONE image already filled 77% of the 128 KB
+# internal flash, which leaves no room for the extra drum models. BOOT_SRAM
+# raises the budget to ~480 KB and leaves QSPI writable at runtime.
+#
+# Requires the Daisy bootloader on the module (one-off: `make program-boot`).
+# Override for a unit without it:  make APP_TYPE=BOOT_NONE
+APP_TYPE ?= BOOT_SRAM
+
 include $(LIBDAISY_DIR)/core/Makefile
 
 # Ensure required static libraries exist
@@ -54,7 +64,9 @@ DFU_VIDPID ?= 0483:df11
 # If you have more than one STM32 in DFU mode, set DFU_SERIAL to pick the right one.
 DFU_SERIAL ?=
 DFU_ALT    ?= 0
-DFU_ADDR   ?= 0x08000000:leave
+# Follows APP_TYPE via libDaisy: internal flash (0x08000000) for BOOT_NONE,
+# QSPI (0x90040000) for BOOT_SRAM/BOOT_QSPI.
+DFU_ADDR   ?= $(FLASH_ADDRESS):leave
 
 .PHONY: dfu-list dfu-check program-dfu-local flash
 
@@ -105,3 +117,79 @@ program-dfu-local: build/$(TARGET).bin
 	exit $$status
 
 flash: program-dfu-local
+
+#######################################
+# SD card flashing
+#######################################
+# With the Daisy bootloader installed, the most convenient way to load a build
+# is to drop the .bin on the SD card and power-cycle: the bootloader scans the
+# card root for the first .bin and re-flashes QSPI only when it differs, so the
+# file can just live there and be replaced to iterate.
+#
+# Requires a BOOT_SRAM/BOOT_QSPI build — a BOOT_NONE .bin on the card makes the
+# bootloader blink SOS.
+#
+#   make card                            # copy to the single mounted FAT volume
+#   make card SD_VOLUME=/Volumes/DAISY   # or name it explicitly
+#   make card-list                       # show candidate volumes
+
+SD_VOLUME ?=
+
+# FAT volumes mounted under /Volumes (macOS). exFAT is listed too so the target
+# can explain itself, but the bootloader wants FAT32.
+_SD_FIND = mount -t msdos 2>/dev/null | sed -n 's|^.* on \(/Volumes/.*\) (.*|\1|p'
+_SD_FIND_EXFAT = mount -t exfat 2>/dev/null | sed -n 's|^.* on \(/Volumes/.*\) (.*|\1|p'
+
+.PHONY: card card-list
+
+card-list:
+	@echo "FAT32 volumes (usable):"; \
+	$(_SD_FIND) | sed 's/^/  /' | grep . || echo "  (none)"; \
+	echo "exFAT volumes (reformat as FAT32 to use):"; \
+	$(_SD_FIND_EXFAT) | sed 's/^/  /' | grep . || echo "  (none)"
+
+card: build/$(TARGET).bin
+	@set -e; \
+	if [ "$(APP_TYPE)" = "BOOT_NONE" ]; then \
+		echo "APP_TYPE=BOOT_NONE builds cannot boot from SD (the bootloader will blink SOS)."; \
+		echo "Build without the override, or use 'make flash' for a bootloader-less unit."; \
+		exit 2; \
+	fi; \
+	vol="$(SD_VOLUME)"; \
+	if [ -z "$$vol" ]; then \
+		cands=`$(_SD_FIND)`; \
+		count=`printf "%s\n" "$$cands" | sed '/^$$/d' | wc -l | tr -d ' '`; \
+		if [ "$$count" -eq 0 ]; then \
+			echo "No FAT32 volume mounted. Insert the SD card, or pass SD_VOLUME=/Volumes/NAME."; \
+			exfat=`$(_SD_FIND_EXFAT)`; \
+			if [ -n "$$exfat" ]; then \
+				echo "Found exFAT volume(s) — the bootloader needs FAT32:"; \
+				printf "  %s\n" $$exfat; \
+			fi; \
+			exit 2; \
+		fi; \
+		if [ "$$count" -gt 1 ]; then \
+			echo "More than one FAT32 volume is mounted. Re-run with SD_VOLUME=<path>:"; \
+			printf "%s\n" "$$cands" | sed 's/^/  /'; \
+			exit 2; \
+		fi; \
+		vol="$$cands"; \
+	fi; \
+	if [ ! -d "$$vol" ]; then echo "Not a mounted volume: $$vol"; exit 2; fi; \
+	others=`ls "$$vol"/*.bin 2>/dev/null | grep -v "/$(TARGET).bin$$" || true`; \
+	if [ -n "$$others" ]; then \
+		mkdir -p "$$vol/_firmware"; \
+		echo "Other .bin files were at the card root. The bootloader flashes the"; \
+		echo "first .bin it finds there, so on a shared card that would load the"; \
+		echo "wrong firmware into this module. Moved aside (still on the card):"; \
+		for f in $$others; do \
+			mv "$$f" "$$vol/_firmware/"; \
+			echo "  `basename $$f`  ->  _firmware/`basename $$f`"; \
+		done; \
+		echo "To re-arm one of those, move it back to the card root."; \
+	fi; \
+	cp build/$(TARGET).bin "$$vol/$(TARGET).bin"; \
+	find "$$vol" -maxdepth 1 -name '._*.bin' -delete 2>/dev/null || true; \
+	sync; \
+	echo "Copied $(TARGET).bin -> $$vol"; \
+	echo "Eject the card, put it in the module, and power-cycle."

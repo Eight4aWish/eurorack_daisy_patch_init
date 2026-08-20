@@ -28,9 +28,12 @@ using namespace patch_sm;
 // =============================================================================
 // Grids Drum Sequencer for Daisy Patch.Init
 // 
-// B8 Toggle Switch: Internal synth drums (off) / External triggers (on)
-//   External triggers: B5=Kick, B6=Snare, CV_OUT_1=HiHat
-//   Flipping External -> Internal rolls a fresh randomized kit.
+// B8 Toggle Switch: rolls a fresh randomized kit on the return flip (the
+//   toggle's position means nothing; only the edge does, so the gesture is
+//   flip-out-and-back). The internal kit and the trigger outputs both run all
+//   the time - B5=Kick, B6=Snare, CV_OUT_1=HiHat play the same pattern as the
+//   audio outs, so an external module can be driven alongside the internal
+//   voices rather than instead of them.
 //
 // B10 (Gate In 1): External clock input - rising edge advances step
 // B9  (Gate In 2): Reset input - rising edge resets pattern to step 0
@@ -104,7 +107,7 @@ static Switch   s_mode_btn;       // B7 - momentary, cycles sub-modes
 static Switch   s_output_sw;      // B8 - toggle, internal vs external output
 static uint8_t  g_sub_mode = 0;   // 0=Pattern, 1=EditKick, 2=EditSnare, 3=EditHat
 static constexpr uint8_t kNumSubModes = 4;
-static bool     g_external_output = false;  // false=internal synth, true=external triggers
+static bool     g_b8_prev = false;  // B8's position last block, for reroll edge detection
 static uint32_t g_led_ctr     = 0;
 
 // Per-drum pan parameters (pan: 0=left, 0.5=center, 1=right)
@@ -140,6 +143,15 @@ static constexpr float kCatchEps = 0.03f;
 static uint32_t g_rand_flash = 0;
 static constexpr uint32_t kFlashSamples = 8000;  // ~0.17s at 48kHz
 
+// Bar indicator. With no screen this is the only way to see whether the
+// detected clock ratio is right: if the LED pulses in time with the bar you
+// are hearing, the division is correct. Long on the phrase start (step 0),
+// short on the second bar (step 16), so "ONE two" is distinguishable.
+static uint32_t g_bar_flash = 0;
+static constexpr uint32_t kBarFlashLong  = 3800;  // ~0.08s at 48kHz
+static constexpr uint32_t kBarFlashShort = 1400;  // ~0.03s at 48kHz
+static constexpr uint8_t  kStepsPerBar   = 16;    // 32-step pattern = 2 bars of 4/4
+
 // B7 press lockout: after a mode change, ignore further press edges for a
 // short window so contact bounce / electrical noise can't advance the mode
 // more than once per physical press. ~200ms is well above any bounce but
@@ -154,12 +166,16 @@ static constexpr float kOutputDrive = 3.5f;
 
 // Lightweight xorshift RNG for kit randomization.
 static uint32_t g_rng = 0x1234567u;
-static inline float RandF01()
+static inline uint32_t RngNext()
 {
     g_rng ^= g_rng << 13;
     g_rng ^= g_rng >> 17;
     g_rng ^= g_rng << 5;
-    return static_cast<float>(g_rng & 0xFFFFFFu) / static_cast<float>(0x1000000);
+    return g_rng;
+}
+static inline float RandF01()
+{
+    return static_cast<float>(RngNext() & 0xFFFFFFu) / static_cast<float>(0x1000000);
 }
 
 static constexpr float kLedVoltsOn = 5.0f;
@@ -169,21 +185,126 @@ static constexpr float kLedVoltsOn = 5.0f;
 // Manual edge detection with state tracking for reliability
 // Clock multiplier: external clock is assumed to be quarter notes (1 ppqn)
 // We multiply by 8 to get 8 steps per quarter note (32 steps per bar for Grids)
-// Once external clock is detected, it stays latched (reset only resets position)
+// External clock is used while it keeps arriving; if it stops for ~4 beats
+// (2 s floor) the module falls back to its internal clock. Reset only moves the
+// pattern position and does not change the clock source.
 // -----------------------------------------------------------------------------
 static bool g_ext_clk_state = false;  // Current clock state
 static bool g_ext_rst_state = false;  // Current reset state
 static bool g_use_ext_clock = false;  // True if external clock mode (latches on first edge)
 static bool g_awaiting_first_clock = false; // After reset, suppress sub-ticks until next clock edge
 
-// Clock multiplier state (8× to convert quarter notes to 32nd-note Grids steps)
-// Grids has 32 steps per bar = 8 steps per quarter note, so 1 ppqn × 8 = 32 steps/bar
-static constexpr uint8_t kClockMultiplier = 8;
+// Sample count at the last clock edge, used only for the drop-out timeout.
+// Deliberately separate from g_ext_clk_last_edge, which reset() clears to
+// suppress a stale period recompute; this one must survive a reset so a reset
+// is never mistaken for the clock going away.
+static uint32_t g_ext_clk_last_seen = 0;
+
+// -----------------------------------------------------------------------------
+// Clock rate detection
+//
+// A Grids step is a 16th note, which is what the internal clock runs at
+// (8 ticks/sec = 4 per quarter at 120 BPM). Incoming clocks vary wildly by
+// source, so rather than assume a resolution we measure the pulse period and
+// work it out. Each candidate resolution is at least double the next, so within
+// any single octave of tempo their period bands do not overlap. The window is
+// 88-176 BPM, chosen to cover the usual electronic range (including 174):
+//
+//   24 ppqn (raw MIDI tick)  14-28 ms   -> one step per 6 pulses
+//    8 ppqn (32nd notes)     43-85 ms   -> one step per 2 pulses
+//    4 ppqn (16th notes)     85-171 ms  -> one step per pulse
+//    2 ppqn (8th notes)     171-341 ms  -> 2 steps per pulse
+//    1 ppqn (quarter notes) 341-682 ms  -> 4 steps per pulse
+//
+// Outside that window a sub-quarter-note clock can be misread by a factor of
+// two (a quarter-note clock stays correct far slower, since it falls in the
+// catch-all band). The bar LED makes that visible immediately, and the Time
+// page's manual ratio will override it. 12 and 16 ppqn sources are ambiguous
+// against 8 ppqn and are deliberately not candidates.
+//
+// Multiplying means predicting where the intermediate steps fall from the last
+// measured period, so it is only as steady as the incoming clock. Dividing and
+// 1:1 are driven by real edges and cannot drift.
+// -----------------------------------------------------------------------------
+struct ClockRatio
+{
+    uint8_t mult;  // steps emitted per pulse
+    uint8_t div;   // pulses required per step
+};
+
+// Upper period bound (ms) for each candidate, ordered fastest first. The last
+// entry is the catch-all for anything slower.
+struct ClockBand
+{
+    uint16_t   max_ms;
+    ClockRatio ratio;
+};
+static constexpr ClockBand kClockBands[] = {
+    {  35, {1, 6}},   // 24 ppqn
+    {  85, {1, 2}},   //  8 ppqn
+    { 171, {1, 1}},   //  4 ppqn - the native step rate
+    { 341, {2, 1}},   //  2 ppqn
+    {1500, {4, 1}},   //  1 ppqn
+};
+static constexpr uint8_t kNumClockBands
+    = sizeof(kClockBands) / sizeof(kClockBands[0]);
+
+// Detection has to be sticky: a single jittery period must not change the
+// ratio mid-pattern, so a new band has to be seen this many times in a row.
+static constexpr uint8_t kRatioConfirmCount = 3;
+
+static ClockRatio g_clk_ratio        = {1, 1};  // live ratio (1:1 until measured)
+static uint8_t    g_clk_pending_band = 2;       // band index awaiting confirmation
+static uint8_t    g_clk_pending_hits = 0;       // consecutive sightings of it
+static uint8_t    g_clk_div_count    = 0;       // pulses seen toward the next step
+
 static uint32_t g_ext_clk_period = 0;     // Samples between last two clock edges
 static uint32_t g_ext_clk_last_edge = 0;  // Sample count at last clock edge
 static uint32_t g_ext_clk_counter = 0;    // Counter for generating multiplied ticks
-static uint8_t  g_ext_clk_mult_phase = 0; // Which of the 8 sub-ticks we're on
+static uint8_t  g_ext_clk_mult_phase = 0; // Which sub-tick of the current pulse
 static uint32_t g_sample_counter = 0;     // Global sample counter
+
+// Map a measured pulse period to a clock ratio, with hysteresis.
+static inline void DetectClockRatio(uint32_t period_samples, float sample_rate_hz)
+{
+    if(period_samples == 0 || sample_rate_hz < 1.0f)
+        return;
+
+    const float period_ms
+        = (static_cast<float>(period_samples) * 1000.0f) / sample_rate_hz;
+
+    uint8_t band = kNumClockBands - 1;
+    for(uint8_t i = 0; i < kNumClockBands; ++i)
+    {
+        if(period_ms < static_cast<float>(kClockBands[i].max_ms))
+        {
+            band = i;
+            break;
+        }
+    }
+
+    if(band == g_clk_pending_band)
+    {
+        if(g_clk_pending_hits < kRatioConfirmCount)
+            g_clk_pending_hits++;
+    }
+    else
+    {
+        g_clk_pending_band = band;
+        g_clk_pending_hits = 1;
+    }
+
+    if(g_clk_pending_hits >= kRatioConfirmCount)
+    {
+        const ClockRatio next = kClockBands[band].ratio;
+        if(next.mult != g_clk_ratio.mult || next.div != g_clk_ratio.div)
+        {
+            g_clk_ratio       = next;
+            g_clk_div_count   = 0;
+            g_ext_clk_mult_phase = 0;
+        }
+    }
+}
 
 // -----------------------------------------------------------------------------
 // External Trigger Outputs (Mode 1)
@@ -205,10 +326,14 @@ static inline void SetPanelLed(bool on)
     patch.WriteCvOut(CV_OUT_2, on ? kLedVoltsOn : 0.0f);
 }
 
+// Length of one LED pulse-train cycle, in seconds. The phase counter is
+// wrapped to this so it stays small enough for float32 to resolve.
+static constexpr float kLedCycleSeconds = 2.0f;
+
 static inline bool LedPulseState(uint8_t count, float t)
 {
     // Pulse train: short pulses separated by gaps, repeated cyclically
-    constexpr float kCycleLen  = 2.0f;
+    constexpr float kCycleLen  = kLedCycleSeconds;
     constexpr float kPulseOn   = 0.15f;
     constexpr float kPulseGap  = 0.12f;
     float cyc = fmodf(t, kCycleLen);
@@ -362,7 +487,7 @@ static inline bool EditModeClockTick(float sample_rate_hz, size_t block_size)
 
 // -----------------------------------------------------------------------------
 // Audio Callback
-// Mode 0: Internal synth drums | Mode 1: External triggers
+// Renders the internal kit and drives the trigger outputs, every block.
 // -----------------------------------------------------------------------------
 static void AudioCallback(AudioHandle::InputBuffer  in,
                           AudioHandle::OutputBuffer out,
@@ -388,6 +513,14 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
     s_mode_btn.Debounce();
     s_output_sw.Debounce();
 
+    // Advance the kit RNG every block, whether or not anything reads it.
+    // System::GetNow() is only ~480 ms at seed time on every boot (the LED
+    // self-test dominates), so the seed alone is near-constant and the kit
+    // sequence used to repeat identically after each power-up. Free-running
+    // here means the state when B8 is flipped depends on how long the user
+    // waited, which at ~1 ms per block is real entropy.
+    RngNext();
+
     // B7 momentary button: press cycles sub-modes (pattern + 3 edit modes).
     // A lockout after each accepted press rejects contact bounce/noise so one
     // physical press advances the mode exactly once.
@@ -402,27 +535,42 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
         g_btn_lockout  = kBtnLockoutSamples;
     }
 
-    // B8 toggle switch selects internal synth vs external triggers.
-    // Flipping the toggle INTO internal mode (external -> internal) rolls a
-    // fresh kit. In external mode the internal voices are silent, so this is
-    // a natural "give me a new kit" gesture without overloading B7.
-    const bool ext_now = s_output_sw.Pressed();
-    if(g_external_output && !ext_now)  // external -> internal transition
+    // B8 toggle rolls a fresh kit on the return flip. The toggle no longer
+    // selects an output mode - audio and trigger outputs both run all the time -
+    // so its position carries no meaning; only the edge does. Deliberately kept
+    // one-directional: flip out and back is the gesture, and the double flip is
+    // more satisfying to play than a single throw.
+    const bool b8_now = s_output_sw.Pressed();
+    if(g_b8_prev && !b8_now)
     {
         RandomizeContext(0);  // reroll all three drums
     }
-    g_external_output = ext_now;
+    g_b8_prev = b8_now;
 
     // Update LED - pulse count indicates sub-mode.
     // Default/drum mode (sub_mode 0) shows no flash; edit modes flash 1-3 times.
     // A randomize gesture briefly lights the LED solid as confirmation.
+    // Wrap at one LED cycle so t never grows large enough for float32 to
+    // quantise the pulse windows (it used to drift after a few hours up).
     g_led_ctr += size;
+    const uint32_t led_cycle_samples
+        = static_cast<uint32_t>(kLedCycleSeconds * patch.AudioSampleRate());
+    if(led_cycle_samples > 0 && g_led_ctr >= led_cycle_samples)
+        g_led_ctr -= led_cycle_samples;
     float t = static_cast<float>(g_led_ctr) / patch.AudioSampleRate();
     bool  led_on;
+    if(g_bar_flash > 0)
+        g_bar_flash = (g_bar_flash > size) ? g_bar_flash - size : 0;
+
     if(g_rand_flash > 0)
     {
         led_on       = true;
         g_rand_flash = (g_rand_flash > size) ? g_rand_flash - size : 0;
+    }
+    else if(g_sub_mode == 0)
+    {
+        // Home page has no mode pulses, so the LED is free to mark the bar.
+        led_on = g_bar_flash > 0;
     }
     else
     {
@@ -462,6 +610,7 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
         grids.Reset();
         g_ext_clk_mult_phase = 0;
         g_ext_clk_counter = 0;
+        g_clk_div_count = 0;  // realign the divider group with the bar
         g_internal_clk_samples = 0;  // Align internal clock phase on reset too
         g_awaiting_first_clock = true;
 
@@ -484,6 +633,8 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
         if(g_ext_clk_last_edge > 0)
         {
             g_ext_clk_period = now - g_ext_clk_last_edge;
+            // Work out what resolution the source is sending from the period.
+            DetectClockRatio(g_ext_clk_period, sr);
         }
         g_ext_clk_last_edge = now;
         g_ext_clk_counter = 0;
@@ -491,28 +642,71 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
 
         g_use_ext_clock = true;
         g_awaiting_first_clock = false;  // Clock arrived, resume normal operation
+        g_ext_clk_last_seen = now;
     }
 
-    // Generate multiplied clock ticks (8× for Grids steps from quarter notes)
+    // Clock drop-out: if the external clock stops, fall back to the internal
+    // clock instead of latching until power-cycle. The window scales with the
+    // measured period (4 beats) so slow clocks aren't mistaken for a drop-out,
+    // with a 2 s floor for the case where no period is known yet.
+    if(g_use_ext_clock)
+    {
+        const uint32_t floor_samples = static_cast<uint32_t>(2.0f * sr);
+        const uint32_t timeout       = static_cast<uint32_t>(
+            fmaxf(static_cast<float>(floor_samples),
+                  static_cast<float>(g_ext_clk_period) * 4.0f));
+        if((g_sample_counter - g_ext_clk_last_seen) > timeout)
+        {
+            g_use_ext_clock        = false;
+            g_ext_clk_period       = 0;
+            g_ext_clk_last_edge    = 0;
+            g_ext_clk_counter      = 0;
+            g_ext_clk_mult_phase   = 0;
+            g_awaiting_first_clock = false;
+            g_internal_clk_samples = 0;
+            // Forget the detected ratio: the next clock may be a different
+            // source at a different resolution.
+            g_clk_ratio        = {1, 1};
+            g_clk_div_count    = 0;
+            g_clk_pending_hits = 0;
+        }
+    }
+
+    // Turn incoming pulses into Grids steps at the detected ratio. mult and div
+    // are mutually exclusive - a ratio either divides or multiplies, never both.
     bool ext_tick = false;
     if(g_use_ext_clock)
     {
-        // Always generate a tick on the clock edge itself (sub-tick 0 of 8).
-        // This works even on the very first edge before period is known.
         if(ext_clk_rising)
         {
-            ext_tick = true;
-        }
-        else if(g_ext_clk_period > 0 && !g_awaiting_first_clock)
-        {
-            // Generate interpolated sub-ticks at 1/8, 2/8, ..., 7/8 of the period.
-            // Suppressed after reset until the next real clock edge arrives,
-            // so stale-period sub-ticks don't consume steps before the clock.
-            g_ext_clk_counter += size;
-            uint32_t tick_interval = g_ext_clk_period / kClockMultiplier;
-            if(tick_interval > 0 && g_ext_clk_mult_phase < (kClockMultiplier - 1))
+            if(g_clk_ratio.div > 1)
             {
-                uint32_t next_tick_at = (g_ext_clk_mult_phase + 1) * tick_interval;
+                // Divide: only every div-th pulse advances a step. Every step
+                // is driven by a real edge, so this cannot drift.
+                if(++g_clk_div_count >= g_clk_ratio.div)
+                {
+                    g_clk_div_count = 0;
+                    ext_tick        = true;
+                }
+            }
+            else
+            {
+                // 1:1 or multiply - the edge is always step 0 of the group.
+                ext_tick = true;
+            }
+        }
+        else if(g_clk_ratio.mult > 1 && g_ext_clk_period > 0
+                && !g_awaiting_first_clock)
+        {
+            // Multiply: place the intermediate steps by dividing the last
+            // measured period. Suppressed after reset until a real edge
+            // arrives, so a stale period can't consume steps before the clock.
+            g_ext_clk_counter += size;
+            const uint32_t tick_interval = g_ext_clk_period / g_clk_ratio.mult;
+            if(tick_interval > 0 && g_ext_clk_mult_phase < (g_clk_ratio.mult - 1))
+            {
+                const uint32_t next_tick_at
+                    = (g_ext_clk_mult_phase + 1) * tick_interval;
                 if(g_ext_clk_counter >= next_tick_at)
                 {
                     ext_tick = true;
@@ -523,9 +717,9 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
     }
 
     // -----------------------------------------------------------------
-    // Edit modes: All 4 CVs control different params per sub-mode
-    // Mode 0: Pattern (Grids X/Y/Density/Randomness)
-    // Mode 1-3: Drum edit (CV1=Freq, CV2=param, CV3=Pan, CV4=Volume)
+    // Edit modes: knobs control different params per sub-mode
+    // Mode 0: Pattern (CV1=X, CV2=Y, CV3=Density, CV4=Randomness)
+    // Mode 1-3: Drum edit (CV1=Freq, CV2=param, CV3=Pan). CV4 is unused here.
     // -----------------------------------------------------------------
     // On entering an edit mode (or after a randomize) seed the takeover
     // baseline so crossing detection has a valid previous knob value.
@@ -592,27 +786,32 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
             const uint8_t rnd  = static_cast<uint8_t>(rnd_val * 255.0f);
 
             // Get triggers from Grids pattern generator
+            // step() is the index about to play; read it before Tick advances.
+            const uint8_t step_idx = grids.step();
+            if(step_idx == 0)
+                g_bar_flash = kBarFlashLong;
+            else if(step_idx == kStepsPerBar)
+                g_bar_flash = kBarFlashShort;
+
             const auto step = grids.Tick(x, y, dens, dens, dens, rnd);
 
-            if(!g_external_output)
+            // Internal voices and trigger outputs both fire: the audio out
+            // plays the kit while B5/B6/CV_OUT_1 drive external modules from
+            // the same pattern.
+            if(step.bd)
             {
-                // Internal: synthetic drums via audio out
-                if(step.bd)
-                    TrigWithAccent(kick, step.bd_accent, kKickAccentNormal, kKickAccentStrong);
-                if(step.sd)
-                    TrigWithAccent(snare, step.sd_accent, kSnareAccentNormal, kSnareAccentStrong);
-                if(step.hh)
-                    TrigWithAccent(hat, step.hh_accent, kHatAccentNormal, kHatAccentStrong);
+                TrigWithAccent(kick, step.bd_accent, kKickAccentNormal, kKickAccentStrong);
+                g_trig_kick_remaining = kTriggerSamples;
             }
-            else
+            if(step.sd)
             {
-                // External: trigger outputs B5=Kick, B6=Snare, CV_OUT_1=HiHat
-                if(step.bd)
-                    g_trig_kick_remaining = kTriggerSamples;
-                if(step.sd)
-                    g_trig_snare_remaining = kTriggerSamples;
-                if(step.hh)
-                    g_trig_hat_remaining = kTriggerSamples;
+                TrigWithAccent(snare, step.sd_accent, kSnareAccentNormal, kSnareAccentStrong);
+                g_trig_snare_remaining = kTriggerSamples;
+            }
+            if(step.hh)
+            {
+                TrigWithAccent(hat, step.hh_accent, kHatAccentNormal, kHatAccentStrong);
+                g_trig_hat_remaining = kTriggerSamples;
             }
         }
     }
@@ -641,32 +840,22 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
         }
     }
 
-    // Update external trigger outputs (decay the triggers over time)
-    if(g_external_output)
-    {
-        // Set gate outputs high if trigger is active
-        g_gate_kick.Write(g_trig_kick_remaining > 0);
-        g_gate_snare.Write(g_trig_snare_remaining > 0);
-        patch.WriteCvOut(CV_OUT_1, g_trig_hat_remaining > 0 ? kTriggerVolts : 0.0f);
+    // Trigger outputs, always live: an unpatched gate out costs nothing, and
+    // this way the internal kit and an external module can share one pattern.
+    g_gate_kick.Write(g_trig_kick_remaining > 0);
+    g_gate_snare.Write(g_trig_snare_remaining > 0);
+    patch.WriteCvOut(CV_OUT_1, g_trig_hat_remaining > 0 ? kTriggerVolts : 0.0f);
 
-        // Decrement trigger counters
-        if(g_trig_kick_remaining > 0)
-            g_trig_kick_remaining = (g_trig_kick_remaining > size) ? g_trig_kick_remaining - size : 0;
-        if(g_trig_snare_remaining > 0)
-            g_trig_snare_remaining = (g_trig_snare_remaining > size) ? g_trig_snare_remaining - size : 0;
-        if(g_trig_hat_remaining > 0)
-            g_trig_hat_remaining = (g_trig_hat_remaining > size) ? g_trig_hat_remaining - size : 0;
-    }
-    else
-    {
-        // Ensure trigger outputs are off when using internal synth
-        g_gate_kick.Write(false);
-        g_gate_snare.Write(false);
-        patch.WriteCvOut(CV_OUT_1, 0.0f);
-    }
+    // Decrement trigger counters
+    if(g_trig_kick_remaining > 0)
+        g_trig_kick_remaining = (g_trig_kick_remaining > size) ? g_trig_kick_remaining - size : 0;
+    if(g_trig_snare_remaining > 0)
+        g_trig_snare_remaining = (g_trig_snare_remaining > size) ? g_trig_snare_remaining - size : 0;
+    if(g_trig_hat_remaining > 0)
+        g_trig_hat_remaining = (g_trig_hat_remaining > size) ? g_trig_hat_remaining - size : 0;
 
-    // Render audio (internal synth when not using external triggers)
-    if(!g_external_output)
+    // Render audio. The kit always plays, whatever B8's position: the voices
+    // are never left unprocessed, so envelopes can't stall and resume mid-tail.
     {
         for(size_t i = 0; i < size; i++)
         {
@@ -688,15 +877,6 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
             float mix_r = 0.95f * kick_r + 0.70f * snare_r + 1.35f * hat_r;
             out[0][i] = FastSaturate(mix_l * kOutputDrive);
             out[1][i] = FastSaturate(mix_r * kOutputDrive);
-        }
-    }
-    else
-    {
-        // External mode: Silence on audio outputs (external modules make sound)
-        for(size_t i = 0; i < size; i++)
-        {
-            out[0][i] = 0.0f;
-            out[1][i] = 0.0f;
         }
     }
 }
