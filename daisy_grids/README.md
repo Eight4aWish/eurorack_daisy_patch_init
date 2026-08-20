@@ -17,16 +17,19 @@ Based on the **Grids** drum pattern generator by Émilie Gillet (Mutable Instrum
 
 ## Features
 
-- **3 synthetic drum voices**: Kick, Snare, Hi-Hat using DaisySP
-- **Grids pattern generator**: X/Y pattern morphing with density and chaos controls
+- **A pool of drum models**, not three fixed voices: 10 DaisySP models across
+  kick, snare and hat, spanning synthetic, 808-lineage analog and physical-modelling families
+- **Wildness**: one knob setting how far a kit roll may throw — which models are
+  eligible, how far their parameters roam, and whether the three slots match or clash
+- **Grids pattern generator**: X/Y pattern morphing, master density plus per-part trims, and chaos
 - **CV modulation inputs**: CV_5-CV_8 modulate pattern parameters (±50% depth)
 - **Automatic clock detection**: feed it 24/8/4/2/1 ppqn and it works out the division itself
 - **External reset input** for transport sync
 - **Simultaneous outputs**: the internal kit and the B5/B6/CV_OUT_1 triggers run
   from the same pattern at the same time, so external voices layer with the internal ones
 - **Kit roll on B8**: flip the toggle out and back for a fresh randomized kit
-- **Per-drum pan** with stereo output
-- **Edit modes** for sound design with 1 beat/sec auto-audition
+- **Per-drum pan** with stereo output, spread widening with wildness
+- **Bar indicator** on the LED, so the detected clock division can be checked by eye
 
 ## Hardware I/O (Daisy Patch.Init)
 
@@ -34,9 +37,9 @@ Based on the **Grids** drum pattern generator by Émilie Gillet (Mutable Instrum
 
 | Control | Function |
 |---------|----------|
-| **B7** (Momentary) | Cycle through modes (0-3 LED pulses indicate mode) |
+| **B7** (Momentary) | Cycle pages: Home (no flash) → Kit (1 flash) |
 | **B8** (Toggle) | Roll a fresh kit — flip out and back; position is meaningless, only the return edge fires |
-| **B10** (Gate In 1) | External clock input (expects quarter notes) |
+| **B10** (Gate In 1) | Clock input — resolution detected automatically |
 | **B9** (Gate In 2) | Reset input - returns to step 0; clock source unchanged |
 
 ### Outputs
@@ -49,58 +52,167 @@ Based on the **Grids** drum pattern generator by Émilie Gillet (Mutable Instrum
 | **CV_OUT_1** | Hi-Hat trigger out (always live) |
 | **CV_OUT_2** | LED indicator (pulse count = mode) |
 
-## Modes
+## Pages
 
-### Mode 0: Pattern (no LED pulse)
-Grids pattern generator - all 3 drums play sequenced patterns.
+**B7 cycles pages.** The pages differ in the LED's *character*, not a flash
+count: **Home blinks** (marking the bar), **Kit is steady on**. A pulse count is
+unreadable against the bar marker — one intermittent flash looks like any other.
+
+The sequencer keeps running on every page: a settings page borrows the knobs,
+not the transport, so you always hear what you're changing.
+
+### Home (no LED flash)
 
 | Knob | Parameter |
 |------|-----------|
-| CV_1 | X - pattern morph horizontal |
-| CV_2 | Y - pattern morph vertical |
-| CV_3 | Density - trigger density (0-100%) |
-| CV_4 | Chaos - pattern randomness |
+| CV_1 | X — pattern morph horizontal |
+| CV_2 | Y — pattern morph vertical |
+| CV_3 | Master density |
+| CV_4 | Chaos — pattern randomness |
 
-**CV Modulation Inputs** (Pattern mode only):
+Home knobs stay **live**, so performance feel is unaffected. On this page the
+LED marks the bar — see [Bar indicator](#bar-indicator).
+
+**CV modulation** (Home parameters only):
 
 | CV Input | Modulates | Range |
 |----------|-----------|-------|
 | CV_5 | X | ±50% |
 | CV_6 | Y | ±50% |
-| CV_7 | Density | ±50% |
+| CV_7 | Master density | ±50% |
 | CV_8 | Chaos | ±50% |
 
-CV inputs are bipolar (-5V to +5V). At 0V, no modulation is applied. Positive voltage increases the parameter, negative decreases it.
+CV inputs are bipolar (-5V to +5V). At 0V, no modulation is applied.
 
-### Mode 1: Edit Kick (1 LED pulse)
-Sound design for kick drum with 1 beat/sec auto-trigger.
-
-| Knob | Parameter |
-|------|-----------|
-| CV_1 | Frequency (30-150 Hz) |
-| CV_2 | Decay (50-550 ms) |
-| CV_3 | Pan (left-right) |
-| CV_4 | *(unused)* |
-
-### Mode 2: Edit Snare (2 LED pulses)
-Sound design for snare drum with 1 beat/sec auto-trigger.
+### Kit (LED steady on)
 
 | Knob | Parameter |
 |------|-----------|
-| CV_1 | Frequency |
-| CV_2 | Snappiness (noise/tone mix) |
-| CV_3 | Pan (left-right) |
-| CV_4 | *(unused)* |
+| CV_1 | Kick density trim |
+| CV_2 | Snare density trim |
+| CV_3 | Hi-hat density trim |
+| CV_4 | **Wildness** |
 
-### Mode 3: Edit Hi-Hat (3 LED pulses)
-Sound design for hi-hat with 1 beat/sec auto-trigger.
+Kit knobs use **soft-takeover**: a knob only grabs its parameter once it crosses
+the stored value, so arriving on the page never makes anything jump.
 
-| Knob | Parameter |
-|------|-----------|
-| CV_1 | Frequency |
-| CV_2 | Decay |
-| CV_3 | Pan (left-right) |
-| CV_4 | *(unused)* |
+**Density trims are additive** around the Home master:
+
+```
+density_part = clamp(master + (trim - 0.5))
+```
+
+Centred trims behave exactly as a single density did. The master still sweeps
+the whole kit as one gesture — and because it's additive, CV_7's modulation of
+the master sweeps density while preserving the balance you set between the three
+parts.
+
+## Rolling a kit
+
+**Flip B8 out and back.** The toggle's position means nothing; only the return
+edge fires, so the double flip is the gesture. A kit is also rolled at power-up,
+and the LED blips to confirm each roll.
+
+Rolling is deliberately orthogonal to the pattern: it never touches X, Y,
+density, randomness, the step counter or the Grids LFSR. A groove you like
+survives any number of rolls, so you can hear the same pattern through a
+completely different kit.
+
+### What a roll does
+
+Each of the three slots is filled from a pool of models rather than being one
+fixed voice, and **Wildness** controls how far the dice may throw:
+
+- **Which models are eligible.** Every model carries an "exotic" rating; wildness
+  raises the ceiling. At zero you get the safe ones, at full everything.
+- **How far parameters roam.** Every parameter has a tame range and a wild range,
+  and wildness interpolates between them. v1 capped kick dirtiness at 0.40 and
+  defaulted it to 0.03, which is most of why the old kit sounded safe; at full
+  wildness it now reaches the top.
+- **Whether the kit agrees with itself.** One family is picked for the kit, then
+  each slot may defect from it with probability equal to wildness. At zero the
+  three slots match; at full they're chosen independently, so an analog kick can
+  sit under a modal snare and a ring-mod hat.
+- **How wide the stereo spread goes**, though never fully hard-panned.
+
+## Voices
+
+Three slots, each drawn from its own pool of DaisySP models:
+
+| Slot | Models |
+|------|--------|
+| **Kick** | `SyntheticBassDrum` (elec) · `AnalogBassDrum` (analog, 808 lineage) · `ModalVoice` (acoustic) |
+| **Snare** | `SyntheticSnareDrum` (elec) · `AnalogSnareDrum` (analog) · `ModalVoice` (acoustic) · `StringVoice` (acoustic, most exotic) |
+| **Hi-Hat** | `HiHat<SquareNoise, LinearVCA>` (elec, the 808's six-square cluster) · `HiHat<RingModNoise, SwingVCA>` (analog) · `ModalVoice` (acoustic) |
+
+All are Émilie Gillet's drum and physical-modelling models as ported into
+DaisySP, from the same lineage as Peaks and Plaits. Because `HiHat` is a
+template, the noise source and VCA are compile-time choices and one class yields
+several genuinely different hats.
+
+A newly selected model is re-initialised before it's randomized: an unselected
+model is never processed, so its envelope state would otherwise be frozen
+wherever it was left and resume as a click.
+
+### Levels and decay
+
+Two things the models don't give you for free:
+
+- **Output level.** Models differ in natural loudness by several times over, so
+  a roll could bury a voice in the mix. Each model's peak is measured at boot —
+  the cost benchmark already triggers and processes every one — and trimmed
+  toward a common level.
+- **Decay.** DaisySP's `AnalogSnareDrum` rings for *seconds* at every decay
+  setting including zero, and `ModalVoice`/`StringVoice` sustain by design, with
+  damping shaping timbre rather than stopping the ring. Models that can't stop
+  on their own get an output VCA, so their decay parameter means something. No
+  model now rings past 400 ms; several were at 3000 ms.
+
+### Sample rate and CPU budget
+
+Sorrow runs at **32 kHz**, not 48. These models are expensive on the M7: at
+48 kHz the cheapest possible kit cost 53% of a sample period and the most
+expensive cost 112%, so some kits overran the audio callback. That failure mode
+is nastier than it sounds — an overrun starves SysTick, which stops
+`System::GetNow()` advancing, which freezes `Switch::Debounce()`, so the module
+keeps playing while both switches die.
+
+32 kHz doesn't change the work per sample, but each sample has half again as
+long to do it in, taking the cheapest kit to 35% and the most expensive to 75%.
+The trade is a 16 kHz Nyquist, which the hat frequency ranges respect.
+
+On top of that the firmware **benchmarks every model on the target at boot** and
+won't assemble a kit costing more than 72% of a sample period. Measuring beats
+guessing: two desktop benchmarks called `AnalogSnareDrum` cheap when it was the
+one model that hung the panel, because host `libm` makes `powf`/`tanf` far
+cheaper than they are on a Cortex-M7. Measured total audio load runs about 3%
+above the voices alone.
+
+### Diagnostics over USB
+
+`SORROW_LOG_USB` in `src/main.cpp` logs the boot cost table, then a CPU-load
+line every two seconds naming the current kit. Connect by USB and read
+`/dev/tty.usbmodem*`. Non-blocking, so it costs nothing with nothing attached.
+
+```
+=== Sorrow: model cost, pct of one sample period ===
+  kick   synth BD       7 pct
+  ...
+  cheapest possible kit: 35 pct
+cpu avg  73 pct  max  73 pct   kit: modal BD / modal SD / square HH
+```
+
+## Host checks
+
+```bash
+make -C tools/voice_check check
+```
+
+Drives the real `drum_voices.cpp` and the real DaisySP models with a PC
+compiler. Every check exists because it caught a bug that reading the code did
+not — non-finite output, three-second decays, NaN in the render path, and a
+wildness control that gated models instead of ramping them in. It deliberately
+does *not* check CPU cost; only the target can measure that honestly.
 
 ## Clock Behavior
 
@@ -111,7 +223,7 @@ Sound design for hi-hat with 1 beat/sec auto-trigger.
 ### External Clock
 - Connect any clock to B10 — the resolution is **detected automatically**
 - First clock pulse switches to external clock
-- If the external clock stops for ~4 beats (2 s minimum), the internal clock takes over
+- If the external clock stops for ~4 beats (5 s minimum), the internal clock takes over
 
 A Grids step is a 16th note, the same rate the internal clock runs at, so
 internal and external always agree. Sorrow measures the incoming pulse period
@@ -147,16 +259,8 @@ the bar you're hearing, the division is correct.
 ### Transport Control
 1. Power on → internal clock runs
 2. Connect external clock → follows your clock
-3. Stop external clock → after ~4 beats (2 s minimum) it falls back to the internal clock
+3. Stop external clock → after ~4 beats (5 s minimum) it falls back to the internal clock
 4. Press reset (B9) → pattern returns to step 0, clock source unchanged
-
-## Voices
-
-Three synthetic voices using DaisySP:
-
-- **Kick**: `SyntheticBassDrum` - punchy bass drum with variable frequency and decay
-- **Snare**: `SyntheticSnareDrum` - snare with adjustable tone/noise balance
-- **Hi-Hat**: `HiHat<>` - metallic hi-hat with frequency and decay control
 
 ## Build & Flash
 

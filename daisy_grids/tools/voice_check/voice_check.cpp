@@ -1,0 +1,222 @@
+// Host-side checks for Sorrow's drum voice pool.
+//
+// Nothing here is built into firmware. It is a PC compiler driving the real
+// drum_voices.cpp and the real DaisySP models, because every one of these
+// checks caught a bug that reading the code did not:
+//
+//   audible   - SyntheticBassDrum returns infinity if processed before its
+//               parameters are set.
+//   decay     - DaisySP's AnalogSnareDrum rings for seconds at *every* decay
+//               setting, and the physical models sustain by design. Both needed
+//               an output VCA before they were usable as drums.
+//   soak      - the full render path, hunting for a kit that produces NaN.
+//   spread    - model selection was a cliff, not a ramp: the modal models went
+//               from never appearing to a third of all rolls across 0.1 of
+//               wildness, leaving most of the pool unreachable.
+//
+// What it cannot check is CPU cost. Two desktop benchmarks called AnalogSnare
+// cheap when it was the one model that hung the panel, because host libm makes
+// powf/tanf far cheaper than they are on a Cortex-M7. The firmware measures
+// that on the target at boot instead.
+//
+// License: GPL-3.0-or-later - see daisy_grids/LICENSE.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+#include "drum_voices.h"
+
+#include <cmath>
+#include <cstdint>
+#include <cstdarg>
+#include <cstdio>
+
+namespace
+{
+uint32_t g_rng = 0x1234567u;
+float    Rnd()
+{
+    g_rng ^= g_rng << 13;
+    g_rng ^= g_rng >> 17;
+    g_rng ^= g_rng << 5;
+    return static_cast<float>(g_rng & 0xFFFFFFu) / static_cast<float>(0x1000000);
+}
+
+constexpr float kSampleRate = 32000.0f;   // matches the firmware
+int             g_failures  = 0;
+
+void Fail(const char* fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    printf("  FAIL: ");
+    vprintf(fmt, ap);
+    printf("\n");
+    va_end(ap);
+    ++g_failures;
+}
+
+// Every model, every wildness: finite and actually audible.
+void CheckAudible()
+{
+    printf("audible: every model produces finite, audible output\n");
+    for(float w = 0.0f; w <= 1.001f; w += 0.125f)
+        for(int roll = 0; roll < 80; ++roll)
+        {
+            sorrow::VoicesRoll(w, Rnd);
+            for(int sl = 0; sl < 3; ++sl)
+            {
+                const auto slot = static_cast<sorrow::Slot>(sl);
+                sorrow::VoiceTrig(slot, 0.8f);
+                float peak = 0.0f;
+                bool  bad  = false;
+                for(int i = 0; i < static_cast<int>(kSampleRate); ++i)
+                {
+                    const float v = sorrow::VoiceProcess(slot);
+                    if(!std::isfinite(v))
+                    {
+                        bad = true;
+                        break;
+                    }
+                    peak = std::fmax(peak, std::fabs(v));
+                }
+                if(bad)
+                    Fail("w=%.3f %s produced a non-finite sample", w,
+                         sorrow::VoiceModelName(slot));
+                else if(peak < 1e-3f)
+                    Fail("w=%.3f %s is silent (peak %.6f)", w,
+                         sorrow::VoiceModelName(slot), peak);
+            }
+        }
+}
+
+// A 16th note at 120 BPM is 125 ms. Anything ringing much past 400 ms smears.
+void CheckDecay()
+{
+    printf("decay: no model rings past 400 ms\n");
+    const int   kMax = static_cast<int>(kSampleRate * 3.0f);
+    static float buf[96000];
+    for(float w = 0.0f; w <= 1.001f; w += 0.25f)
+        for(int roll = 0; roll < 60; ++roll)
+        {
+            sorrow::VoicesRoll(w, Rnd);
+            for(int sl = 0; sl < 3; ++sl)
+            {
+                const auto slot = static_cast<sorrow::Slot>(sl);
+                sorrow::VoiceTrig(slot, 0.8f);
+                float peak = 0.0f;
+                for(int i = 0; i < kMax; ++i)
+                {
+                    buf[i] = sorrow::VoiceProcess(slot);
+                    peak   = std::fmax(peak, std::fabs(buf[i]));
+                }
+                int last = 0;
+                for(int i = 0; i < kMax; ++i)
+                    if(std::fabs(buf[i]) > peak * 0.01f)
+                        last = i;
+                const float ms = 1000.0f * last / kSampleRate;
+                if(ms > 400.0f)
+                    Fail("w=%.2f %s rings %.0f ms", w,
+                         sorrow::VoiceModelName(slot), ms);
+            }
+        }
+}
+
+// The full render path from main.cpp: pan, mix, drive, saturate.
+void CheckSoak()
+{
+    printf("soak: 400 kits through the render path without NaN\n");
+    const int step_samples = static_cast<int>(kSampleRate / 8.0f);
+    for(int roll = 0; roll < 400; ++roll)
+    {
+        const float w = (roll % 9) / 8.0f;
+        sorrow::VoicesRoll(w, Rnd);
+        const float kp = sorrow::VoicePan(sorrow::Slot::Kick);
+        const float sp = sorrow::VoicePan(sorrow::Slot::Snare);
+        const float hp = sorrow::VoicePan(sorrow::Slot::Hat);
+        for(int step = 0; step < 32; ++step)
+        {
+            if(step % 4 == 0)
+                sorrow::VoiceTrig(sorrow::Slot::Kick, 0.55f);
+            if(step % 8 == 4)
+                sorrow::VoiceTrig(sorrow::Slot::Snare, 0.45f);
+            if(step % 2 == 0)
+                sorrow::VoiceTrig(sorrow::Slot::Hat, 0.55f);
+            for(int i = 0; i < step_samples; ++i)
+            {
+                const float k = sorrow::VoiceProcess(sorrow::Slot::Kick);
+                const float s = sorrow::VoiceProcess(sorrow::Slot::Snare);
+                const float h = sorrow::VoiceProcess(sorrow::Slot::Hat);
+                const float l = 0.95f * k * std::sqrt(1 - kp)
+                                + 0.70f * s * std::sqrt(1 - sp)
+                                + 1.35f * h * std::sqrt(1 - hp);
+                const float out = (l * 3.5f) / (1.0f + std::fabs(l * 3.5f));
+                if(!std::isfinite(out))
+                {
+                    Fail("w=%.3f kit %s / %s / %s produced NaN", w,
+                         sorrow::VoiceModelName(sorrow::Slot::Kick),
+                         sorrow::VoiceModelName(sorrow::Slot::Snare),
+                         sorrow::VoiceModelName(sorrow::Slot::Hat));
+                    return;
+                }
+            }
+        }
+    }
+}
+
+// Wildness must fade models in, not switch them on.
+void CheckSpread()
+{
+    printf("spread: wildness ramps model choice rather than gating it\n");
+    const char* slot_name[3] = {"kick", "snare", "hat"};
+    for(float w = 0.0f; w <= 1.001f; w += 0.25f)
+    {
+        int count[3][8] = {};
+        const int N     = 3000;
+        for(int i = 0; i < N; ++i)
+        {
+            sorrow::VoicesRoll(w, Rnd);
+            for(int s = 0; s < 3; ++s)
+                count[s][sorrow::VoiceModelIndex(static_cast<sorrow::Slot>(s))]++;
+        }
+        printf("   w=%.2f", w);
+        for(int s = 0; s < 3; ++s)
+        {
+            printf("  %s", slot_name[s]);
+            const auto slot = static_cast<sorrow::Slot>(s);
+            for(uint8_t m = 0; m < sorrow::VoiceModelCount(slot); ++m)
+                printf(" %2d%%", 100 * count[s][m] / N);
+        }
+        printf("\n");
+    }
+    // At full wildness every model must be reachable.
+    int count[3][8] = {};
+    for(int i = 0; i < 3000; ++i)
+    {
+        sorrow::VoicesRoll(1.0f, Rnd);
+        for(int s = 0; s < 3; ++s)
+            count[s][sorrow::VoiceModelIndex(static_cast<sorrow::Slot>(s))]++;
+    }
+    for(int s = 0; s < 3; ++s)
+    {
+        const auto slot = static_cast<sorrow::Slot>(s);
+        for(uint8_t m = 0; m < sorrow::VoiceModelCount(slot); ++m)
+            if(count[s][m] == 0)
+                Fail("%s model '%s' is unreachable even at full wildness",
+                     slot_name[s], sorrow::VoiceModelNameAt(slot, m));
+    }
+}
+} // namespace
+
+int main()
+{
+    // No MicrosFn: cost measurement is a target-only concern, so every model
+    // reads as free here and the cost budget never excludes anything.
+    sorrow::VoicesInit(kSampleRate);
+
+    CheckAudible();
+    CheckDecay();
+    CheckSoak();
+    CheckSpread();
+
+    printf("\n%s\n", g_failures ? "FAILURES ABOVE" : "all voice checks passed");
+    return g_failures ? 1 : 0;
+}
