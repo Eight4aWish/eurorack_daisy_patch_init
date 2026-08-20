@@ -4,7 +4,7 @@ Plan for the next revision of **Sorrow** (`daisy_grids/`): more drum-model
 variety, more pattern variety, opened-up randomisation, two settings pages, and
 a later SD-sample path.
 
-Status: **Phase 0 complete.** Written 2026-08-20.
+Status: **Phases 0-4 complete and confirmed on hardware.** Written 2026-08-20.
 
 > **Design intent.** Sorrow is a dice machine, not an editable drum synth. The
 > B8 toggle rolls a new kit; that gesture is the instrument. There is
@@ -180,7 +180,69 @@ Verified against a host-side sweep: correct for all five resolutions at 90, 100,
 The Time page's manual ratio (Phase 5) becomes the override for sources outside
 the window; it sets the same variable the detector does.
 
-### Phase 2 — Voice pool
+### Phase 2 — Voice pool ✅ (with Phases 3 and 4 folded in)
+
+Delivered together, because they are not separable in practice: a pool needs a
+selection rule, the selection rule *is* wildness, and wildness needs a knob.
+
+`src/drum_voices.{h,cpp}` holds a `Voice` interface over per-model adapters,
+three slots, and a pool per slot tagged by family and by an "exotic" rating. A
+`ModelVoice<Model>` template carries the shared Init/Trig/Process plumbing, so
+each concrete model only supplies its own `Randomize()` — which is where the
+per-parameter tame and wild ranges live.
+
+Ten models: `SyntheticBassDrum`, `AnalogBassDrum`, `ModalVoice` (kick);
+`SyntheticSnareDrum`, `AnalogSnareDrum`, `ModalVoice`, `StringVoice` (snare);
+`HiHat<SquareNoise, LinearVCA>`, `HiHat<RingModNoise, SwingVCA>`, `ModalVoice`
+(hat). All in DaisySP's MIT `Source/` tree.
+
+Wildness drives four things at once: the exotic ceiling, per-parameter range
+width, the probability a slot defects from the kit's family, and pan spread.
+
+The edit pages are gone, as intended — they were incoherent once a slot could be
+any model. B7 now cycles Home → Kit. **The sequencer runs on every page**: a
+settings page borrows the knobs, not the transport, so density changes are
+audible as they are made. Home knobs stay live, Kit knobs use soft-takeover.
+
+Per-part density landed here too, as additive trims around the Home master.
+
+Cost: SRAM 101,664 → 124,500 B (25% of 480 KB). That is +22.8 KB for ten models,
+which would have left about 7 KB of headroom under the old BOOT_NONE build.
+
+Gotcha worth remembering: an unselected model is never processed, so its envelope
+state stays frozen wherever it was left and resumes as a click when selected
+again. Newly selected models are re-initialised before being randomized.
+
+#### What bench testing changed
+
+Five things that reading the code would never have surfaced:
+
+1. **`AnalogSnareDrum` hangs the panel.** It recomputes two `powf` calls and five
+   `Svf` `SetFreq`/`SetRes` pairs — each a `tanf` — per sample. That overruns the
+   audio callback, which starves SysTick, which stops `System::GetNow()`
+   advancing, which freezes `Switch::Debounce()` — so the module plays on while
+   both switches die. Dropped from the pool. Every one of those computations
+   depends only on parameters that change once per roll, so a forked,
+   coefficient-hoisted version would be cheap and would earn it back.
+2. **48 kHz was not affordable.** Measured on target: cheapest kit 53% of a
+   sample period, most expensive 112%. Now 32 kHz, taking those to 35% and 75%,
+   plus FPU flush-to-zero, which libDaisy never enables.
+3. **Costs must be measured on the target.** Two desktop benchmarks called
+   `AnalogSnareDrum` cheap, because host `libm` makes `powf`/`tanf` far cheaper
+   than an M7 does. The firmware now benchmarks every model at boot and refuses
+   kits over 72% of a sample period.
+4. **The exotic rating gated instead of ramping.** Models went from never
+   appearing to a third of all rolls across 0.1 of wildness travel, leaving most
+   of the pool unreachable. Replaced with a weighted ramp.
+5. **Models sustain.** `AnalogSnareDrum` rang for seconds at *every* decay
+   setting; the physical models sustain by design. Both needed an output VCA.
+   Worst case is now 400 ms, down from 3000 ms.
+
+Also: per-model level normalisation from the same boot benchmark, a bar-marker
+LED, USB telemetry, and `tools/voice_check` — a host harness whose every check
+corresponds to one of the bugs above.
+
+### Superseded plan for Phase 2
 
 A thin `DrumVoice` interface (`Init / Trig / Process / Randomize`) over
 per-model adapters, with three slots (kick / snare / hat), each holding a pool
@@ -201,7 +263,7 @@ drop into the existing `TrigWithAccent` template with no adapter. The `HiHat`
 template alone yields 8 distinct hats (`SquareNoise`/`RingModNoise` ×
 `LinearVCA`/`SwingVCA` × resonance).
 
-### Phase 3 — Sound wildness
+### Phase 3 — Sound wildness ✅ (landed with Phase 2)
 
 One scalar that widens every roll:
 
@@ -216,9 +278,9 @@ One scalar that widens every roll:
 step counter or the Grids LFSR. Pattern and kit stay orthogonal, so a groove you
 like survives any number of rerolls.
 
-### Phase 4 — Kit page
+### Phase 4 — Kit page ✅
 
-Per-part density trims + sound wildness, per the control map above.
+Landed with Phase 2 above.
 
 ### Phase 5 — Time page and pattern wildness
 

@@ -16,6 +16,7 @@
 #include "daisy_patch_sm.h"
 #include "daisysp.h"
 
+#include "drum_voices.h"
 #include "grids_port.h"
 
 #include <cmath>
@@ -35,33 +36,68 @@ using namespace patch_sm;
 //   audio outs, so an external module can be driven alongside the internal
 //   voices rather than instead of them.
 //
-// B10 (Gate In 1): External clock input - rising edge advances step
+// B10 (Gate In 1): Clock input - resolution detected automatically
 // B9  (Gate In 2): Reset input - rising edge resets pattern to step 0
 //
-// B7 Momentary Button: press cycles sub-modes
-//   (LED flashes = mode index; Pattern = no flash)
-//     Mode 0 (no flash): Pattern - CV1=X, CV2=Y, CV3=Density, CV4=Randomness
-//     Mode 1 (1 pulse):  Edit Kick  - CV1=Freq, CV2=Decay, CV3=Pan
-//     Mode 2 (2 pulses): Edit Snare - CV1=Freq, CV2=Snappy, CV3=Pan
-//     Mode 3 (3 pulses): Edit HiHat - CV1=Freq, CV2=Decay, CV3=Pan
-//   Edit knobs use soft-takeover: a knob only grabs its parameter once it
-//   crosses the stored value, so entering a mode never makes params jump.
+// B7 Momentary Button: press cycles pages (LED flash count = page)
+//     Home (no flash): CV1=X, CV2=Y, CV3=Density, CV4=Randomness
+//     Kit  (1 pulse):  CV1/2/3 = kick/snare/hat density trim, CV4 = Wildness
+//   The sequencer keeps running on every page - the Kit page borrows the knobs,
+//   not the transport. Home knobs stay live; Kit knobs use soft-takeover, so a
+//   knob only grabs its parameter once it crosses the stored value and nothing
+//   jumps when you arrive.
+//
+//   On the Home page the LED marks the bar: long flash on step 0, short on
+//   step 16. That is how the detected clock ratio gets checked without a screen.
 //
 // A fresh kit is also rolled at power-up. The LED blips to confirm each roll.
+//
+// Kit and pattern are orthogonal: rolling never touches x/y, density,
+// randomness, the step counter or the Grids LFSR, so a groove survives any
+// number of rolls and you can hear the same pattern through a different kit.
 // =============================================================================
 
 namespace
 {
 
 DaisyPatchSM patch;
+
+// -----------------------------------------------------------------------------
+// Diagnostics (set each to 0 for normal operation)
+// -----------------------------------------------------------------------------
+// Switch diagnostic. Set to 1 to bypass all page/roll logic and drive the LED
+// straight from the raw debounced switch state:
+//   B7 held      -> LED solid, full brightness
+//   B8 "pressed" -> LED solid, dim
+// That isolates whether the switches are being read at all from whether the
+// logic acting on them is right. Set back to 0 for normal operation.
+#define SORROW_SWITCH_DIAG 0
+
+// Blink out the rolled kit at boot, before audio starts. Lets a kit that hangs
+// the firmware be identified on a module with no screen.
+#define SORROW_REPORT_KIT 0
+
+// Log measured model costs over USB serial at boot. Far better than blink
+// codes: connect the module by USB and read /dev/tty.usbmodem*. Non-blocking,
+// so it costs nothing when nothing is listening.
+#define SORROW_LOG_USB 1
+
+// Report audio CPU load on the LED. This is the one diagnostic that still works
+// when the switches are dead: Switch::Debounce() only advances when
+// System::GetNow() does, so if the audio callback starves SysTick the switches
+// freeze permanently while audio and the LED - both driven by sample counts
+// inside the callback - carry on as if nothing were wrong. That is exactly the
+// reported symptom, and it is kit-dependent because some models cost more.
+#define SORROW_REPORT_CPU 1
+static constexpr float kCpuAlarmLoad = 0.85f;
+
 daisy_grids::grids_port::GridsDrumGenerator grids;
 
 // -----------------------------------------------------------------------------
-// Drum Voices - Synthetic kit for internal mode
+// Drum voices. The three slots are played by whichever models the last roll
+// selected - see drum_voices.h. Nothing here knows or cares which they are.
 // -----------------------------------------------------------------------------
-SyntheticBassDrum  kick;
-SyntheticSnareDrum snare;
-HiHat<>            hat;
+using sorrow::Slot;
 
 // Accent levels for Grids triggers
 static constexpr float kKickAccentNormal  = 0.55f;
@@ -71,14 +107,12 @@ static constexpr float kSnareAccentStrong = 1.00f;
 static constexpr float kHatAccentNormal   = 0.55f;
 static constexpr float kHatAccentStrong   = 1.00f;
 
-template <typename Drum>
-static inline void TrigWithAccent(Drum& drum,
+static inline void TrigWithAccent(Slot  slot,
                                   bool  accent,
                                   float normal_level,
                                   float strong_level)
 {
-    drum.SetAccent(accent ? strong_level : normal_level);
-    drum.Trig();
+    sorrow::VoiceTrig(slot, accent ? strong_level : normal_level);
 }
 
 // -----------------------------------------------------------------------------
@@ -104,39 +138,53 @@ static inline float FastSaturate(float x)
 // UI State
 // -----------------------------------------------------------------------------
 static Switch   s_mode_btn;       // B7 - momentary, cycles sub-modes
-static Switch   s_output_sw;      // B8 - toggle, internal vs external output
-static uint8_t  g_sub_mode = 0;   // 0=Pattern, 1=EditKick, 2=EditSnare, 3=EditHat
-static constexpr uint8_t kNumSubModes = 4;
+static Switch   s_output_sw;      // B8 - toggle, rolls a new kit on the return flip
+static uint8_t  g_sub_mode = 0;   // 0=Home (pattern), 1=Kit (densities + wildness)
+static constexpr uint8_t kNumSubModes = 2;
 static bool     g_b8_prev = false;  // B8's position last block, for reroll edge detection
 static uint32_t g_led_ctr     = 0;
 
-// Per-drum pan parameters (pan: 0=left, 0.5=center, 1=right)
-// Equal-power gains precomputed at control rate: L = sqrt(1-pan), R = sqrt(pan)
-static float g_kick_pan  = 0.5f;
-static float g_kick_gl   = 0.707f, g_kick_gr   = 0.707f;
-static float g_snare_pan = 0.5f;
-static float g_snare_gl  = 0.707f, g_snare_gr  = 0.707f;
-static float g_hat_pan   = 0.5f;
-static float g_hat_gl    = 0.707f, g_hat_gr    = 0.707f;
+#if SORROW_REPORT_CPU
+static CpuLoadMeter g_cpu_meter;
+#endif
+
+// Equal-power pan gains, recomputed from the pool whenever the kit is rolled:
+// L = sqrt(1-pan), R = sqrt(pan).
+static float g_kick_gl  = 0.707f, g_kick_gr  = 0.707f;
+static float g_snare_gl = 0.707f, g_snare_gr = 0.707f;
+static float g_hat_gl   = 0.707f, g_hat_gr   = 0.707f;
 
 // -----------------------------------------------------------------------------
-// Editable macro parameters (normalized 0..1) per drum.
-// p1/p2 map to the two knob-controlled params; pan reuses the g_*_pan globals.
-// Defaults match the engine Init() values below so boot sound is unchanged.
-//   Kick:  p1=freq(30..150Hz),  p2=decay(0.05..0.55)
-//   Snare: p1=freq(100..400Hz), p2=snappy(0..1)
-//   Hat:   p1=freq(4k..16kHz),  p2=decay(0.02..0.82)
+// Kit page parameters.
+//
+// Per-part density is an additive trim around the Home page's master density:
+//     density_part = clamp(master + (trim - 0.5))
+// Centred trims reproduce the single-density behaviour exactly, so the master
+// still sweeps the whole kit as one gesture while the trims set the balance.
+//
+// Wildness scales how far a kit roll may go - which models are eligible, how
+// far their parameters roam, and how willing the three slots are to come from
+// different families.
 // -----------------------------------------------------------------------------
-static float g_kick_p1  = 0.208f, g_kick_p2  = 0.34f;
-static float g_snare_p1 = 0.283f, g_snare_p2 = 0.75f;
-static float g_hat_p1   = 0.333f, g_hat_p2   = 0.6625f;
+// Home page parameters. Live while Home is showing, held while a settings page
+// borrows the knobs. Home stays live rather than soft-takeover so performance
+// feel is unaffected, matching the house convention in docs/PANEL.md.
+static float g_home_x    = 0.5f;
+static float g_home_y    = 0.5f;
+static float g_home_dens = 0.5f;
+static float g_home_rnd  = 0.0f;
+
+static float g_dens_kick  = 0.5f;
+static float g_dens_snare = 0.5f;
+static float g_dens_hat   = 0.5f;
+static float g_wildness   = 0.35f;
 
 // Soft-takeover state: a knob only grabs its parameter once it crosses the
-// stored value, so entering an edit mode (or rolling a new kit) doesn't make
-// params jump to the knob's current physical position. Indices: 0=k1,1=k2,2=k3.
-static bool  g_tk_caught[3] = {false, false, false};
-static float g_tk_prev[3]   = {0.0f, 0.0f, 0.0f};
-static bool  g_tk_init      = true;   // reset prev[] on next edit-mode callback
+// stored value, so entering the Kit page doesn't make params jump to the knob's
+// current physical position. Indices: 0=k1, 1=k2, 2=k3, 3=k4.
+static bool  g_tk_caught[4] = {false, false, false, false};
+static float g_tk_prev[4]   = {0.0f, 0.0f, 0.0f, 0.0f};
+static bool  g_tk_init      = true;   // reset prev[] on next Kit-page callback
 static constexpr float kCatchEps = 0.03f;
 
 // Brief LED confirmation flash after a randomize gesture.
@@ -178,7 +226,17 @@ static inline float RandF01()
     return static_cast<float>(RngNext() & 0xFFFFFFu) / static_cast<float>(0x1000000);
 }
 
-static constexpr float kLedVoltsOn = 5.0f;
+// Panel LED drive. CV_OUT_2 feeds the LED through a series resistor, so this
+// sets brightness as well as on/off, and the relationship is steep: subtract
+// the LED's forward drop (~2 V for red) and 3.0 V passes barely a third of the
+// current 5.0 V does, with the rest of the range disappearing fast below that.
+//
+// Two levels rather than one. Confirmations - the boot signature and a kit roll
+// - drive full scale so they are never in doubt, because those are exactly the
+// events you look at the LED to check. The repeating indicators run dimmer,
+// since they are on most of the time and were what felt too bright.
+static constexpr float kLedVoltsFull = 5.0f;
+static constexpr float kLedVoltsDim  = 3.4f;
 
 // -----------------------------------------------------------------------------
 // External Clock & Reset (B10, B9)
@@ -253,6 +311,10 @@ static constexpr uint8_t kNumClockBands
 // ratio mid-pattern, so a new band has to be seen this many times in a row.
 static constexpr uint8_t kRatioConfirmCount = 3;
 
+// How long the external clock may go quiet before the internal clock takes
+// over. Also floors the adaptive window, which is 4 measured beats.
+static constexpr float kClockDropoutSeconds = 5.0f;
+
 static ClockRatio g_clk_ratio        = {1, 1};  // live ratio (1:1 until measured)
 static uint8_t    g_clk_pending_band = 2;       // band index awaiting confirmation
 static uint8_t    g_clk_pending_hits = 0;       // consecutive sightings of it
@@ -320,51 +382,18 @@ static uint32_t g_trig_kick_remaining  = 0;
 static uint32_t g_trig_snare_remaining = 0;
 static uint32_t g_trig_hat_remaining   = 0;
 
-static inline void SetPanelLed(bool on)
+
+
+static inline void SetPanelLed(bool on, float volts)
 {
     // Panel LED on Patch.Init is driven via CV_OUT_2
-    patch.WriteCvOut(CV_OUT_2, on ? kLedVoltsOn : 0.0f);
+    patch.WriteCvOut(CV_OUT_2, on ? volts : 0.0f);
 }
 
-// Length of one LED pulse-train cycle, in seconds. The phase counter is
-// wrapped to this so it stays small enough for float32 to resolve.
+// Length of one LED cycle, in seconds. The phase counter is wrapped to this so
+// it stays small enough for float32 to resolve.
 static constexpr float kLedCycleSeconds = 2.0f;
 
-static inline bool LedPulseState(uint8_t count, float t)
-{
-    // Pulse train: short pulses separated by gaps, repeated cyclically
-    constexpr float kCycleLen  = kLedCycleSeconds;
-    constexpr float kPulseOn   = 0.15f;
-    constexpr float kPulseGap  = 0.12f;
-    float cyc = fmodf(t, kCycleLen);
-    for(uint8_t i = 0; i < count; i++)
-    {
-        float s = i * (kPulseOn + kPulseGap);
-        float e = s + kPulseOn;
-        if(cyc >= s && cyc < e)
-            return true;
-    }
-    return false;
-}
-
-// -----------------------------------------------------------------------------
-// Macro application - map normalized p1/p2 to each engine's parameters.
-// -----------------------------------------------------------------------------
-static inline void ApplyKick()
-{
-    kick.SetFreq(30.0f + g_kick_p1 * 120.0f);
-    kick.SetDecay(0.05f + g_kick_p2 * 0.50f);
-}
-static inline void ApplySnare()
-{
-    snare.SetFreq(100.0f + g_snare_p1 * 300.0f);
-    snare.SetSnappy(g_snare_p2);
-}
-static inline void ApplyHat()
-{
-    hat.SetFreq(4000.0f + g_hat_p1 * 12000.0f);
-    hat.SetDecay(0.02f + g_hat_p2 * 0.80f);
-}
 
 // Soft-takeover: update `stored` from `knob` only after the knob has caught up
 // (crossed the stored value, or landed within kCatchEps). `prev` is the knob's
@@ -383,64 +412,29 @@ static inline void SoftTakeover(float& stored, float knob, bool& caught, float& 
 }
 
 // -----------------------------------------------------------------------------
-// Kit randomization - roll fresh, range-bounded macros so it always lands
-// somewhere musical. Each randomize also reaches the "hidden" engine params
-// that have no knob, then applies the result immediately.
+// Roll a fresh kit: new models in the three slots, new parameters for each, at
+// whatever reach wildness currently allows. Pan gains are recomputed here so
+// the audio loop never has to.
+//
+// Deliberately touches nothing the sequencer owns - not x/y, not density, not
+// the step counter, not the Grids LFSR. A groove you like survives any number
+// of rolls, which is the whole point of separating kit from pattern.
 // -----------------------------------------------------------------------------
-static inline void RandomizeKick()
+static inline void RollKit()
 {
-    g_kick_p1  = 0.05f + RandF01() * 0.45f;
-    g_kick_p2  = 0.25f + RandF01() * 0.65f;
-    g_kick_pan = 0.25f + RandF01() * 0.50f;
-    kick.SetTone(0.10f + RandF01() * 0.50f);
-    kick.SetDirtiness(RandF01() * 0.40f);
-    kick.SetFmEnvelopeAmount(RandF01() * 0.50f);
-    kick.SetFmEnvelopeDecay(0.05f + RandF01() * 0.35f);
-    ApplyKick();
-    g_kick_gl = sqrtf(1.0f - g_kick_pan);
-    g_kick_gr = sqrtf(g_kick_pan);
-}
-static inline void RandomizeSnare()
-{
-    g_snare_p1  = 0.10f + RandF01() * 0.60f;
-    g_snare_p2  = 0.30f + RandF01() * 0.65f;
-    g_snare_pan = 0.25f + RandF01() * 0.50f;
-    snare.SetFmAmount(RandF01() * 0.60f);
-    snare.SetDecay(0.04f + RandF01() * 0.16f);
-    ApplySnare();
-    g_snare_gl = sqrtf(1.0f - g_snare_pan);
-    g_snare_gr = sqrtf(g_snare_pan);
-}
-static inline void RandomizeHat()
-{
-    g_hat_p1  = 0.20f + RandF01() * 0.70f;
-    g_hat_p2  = 0.20f + RandF01() * 0.65f;
-    g_hat_pan = 0.25f + RandF01() * 0.50f;
-    hat.SetTone(0.40f + RandF01() * 0.50f);
-    hat.SetNoisiness(0.70f + RandF01() * 0.30f);
-    ApplyHat();
-    g_hat_gl = sqrtf(1.0f - g_hat_pan);
-    g_hat_gr = sqrtf(g_hat_pan);
-}
+    sorrow::VoicesRoll(g_wildness, RandF01);
 
-// Context-aware: in an edit mode reroll just that drum; in Pattern mode (0)
-// reroll the whole kit. Resets soft-takeover so knobs must re-catch the new kit.
-static inline void RandomizeContext(uint8_t mode)
-{
-    switch(mode)
-    {
-        case 1: RandomizeKick();  break;
-        case 2: RandomizeSnare(); break;
-        case 3: RandomizeHat();   break;
-        default:
-            RandomizeKick();
-            RandomizeSnare();
-            RandomizeHat();
-            break;
-    }
-    g_tk_caught[0] = g_tk_caught[1] = g_tk_caught[2] = false;
-    g_tk_init      = true;
-    g_rand_flash   = kFlashSamples;
+    const float kp = sorrow::VoicePan(Slot::Kick);
+    const float sp = sorrow::VoicePan(Slot::Snare);
+    const float hp = sorrow::VoicePan(Slot::Hat);
+    g_kick_gl  = sqrtf(1.0f - kp);
+    g_kick_gr  = sqrtf(kp);
+    g_snare_gl = sqrtf(1.0f - sp);
+    g_snare_gr = sqrtf(sp);
+    g_hat_gl   = sqrtf(1.0f - hp);
+    g_hat_gr   = sqrtf(hp);
+
+    g_rand_flash = kFlashSamples;
 }
 
 // -----------------------------------------------------------------------------
@@ -465,27 +459,6 @@ static inline bool InternalGridsClockTick(float sample_rate_hz, size_t block_siz
 }
 
 // -----------------------------------------------------------------------------
-// Edit Mode Clock - 1 beat per second for drum parameter editing
-// -----------------------------------------------------------------------------
-static uint32_t g_edit_clk_samples = 0;
-
-static inline bool EditModeClockTick(float sample_rate_hz, size_t block_size)
-{
-    constexpr float kTicksPerSec = 1.0f;  // 1 beat per second
-    const float     sr           = fmaxf(sample_rate_hz, 1.0f);
-    const uint32_t  samples_per_tick
-        = static_cast<uint32_t>((sr / kTicksPerSec) + 0.5f);
-
-    g_edit_clk_samples += static_cast<uint32_t>(block_size);
-    if(g_edit_clk_samples >= samples_per_tick)
-    {
-        g_edit_clk_samples -= samples_per_tick;
-        return true;
-    }
-    return false;
-}
-
-// -----------------------------------------------------------------------------
 // Audio Callback
 // Renders the internal kit and drives the trigger outputs, every block.
 // -----------------------------------------------------------------------------
@@ -496,6 +469,10 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
     (void)in;
 
     // -----------------------------------------------------------------
+#if SORROW_REPORT_CPU
+    g_cpu_meter.OnBlockStart();
+#endif
+
     // Read gate inputs FIRST, before any other processing
     // This ensures we catch short pulses reliably
     // -----------------------------------------------------------------
@@ -530,7 +507,7 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
     if(s_mode_btn.RisingEdge() && g_btn_lockout == 0)
     {
         g_sub_mode = (g_sub_mode + 1) % kNumSubModes;
-        g_tk_caught[0] = g_tk_caught[1] = g_tk_caught[2] = false;
+        g_tk_caught[0] = g_tk_caught[1] = g_tk_caught[2] = g_tk_caught[3] = false;
         g_tk_init      = true;
         g_btn_lockout  = kBtnLockoutSamples;
     }
@@ -543,7 +520,7 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
     const bool b8_now = s_output_sw.Pressed();
     if(g_b8_prev && !b8_now)
     {
-        RandomizeContext(0);  // reroll all three drums
+        RollKit();
     }
     g_b8_prev = b8_now;
 
@@ -557,26 +534,50 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
         = static_cast<uint32_t>(kLedCycleSeconds * patch.AudioSampleRate());
     if(led_cycle_samples > 0 && g_led_ctr >= led_cycle_samples)
         g_led_ctr -= led_cycle_samples;
-    float t = static_cast<float>(g_led_ctr) / patch.AudioSampleRate();
     bool  led_on;
+    float led_volts = kLedVoltsDim;
     if(g_bar_flash > 0)
         g_bar_flash = (g_bar_flash > size) ? g_bar_flash - size : 0;
 
     if(g_rand_flash > 0)
     {
+        // Kit roll confirmation: full brightness, so a flip that did register
+        // is never mistaken for one that didn't.
         led_on       = true;
+        led_volts    = kLedVoltsFull;
         g_rand_flash = (g_rand_flash > size) ? g_rand_flash - size : 0;
     }
     else if(g_sub_mode == 0)
     {
-        // Home page has no mode pulses, so the LED is free to mark the bar.
+        // Home: brief flashes marking the bar.
         led_on = g_bar_flash > 0;
     }
     else
     {
-        led_on = LedPulseState(static_cast<uint8_t>(g_sub_mode), t);
+        // Settings pages: steady, not flashing. A pulse count was unreadable
+        // against the bar marker - one intermittent flash looks like any other -
+        // so the pages differ in character instead. Home blinks, Kit is solid.
+        led_on = true;
     }
-    SetPanelLed(led_on);
+#if SORROW_SWITCH_DIAG
+    // Raw switch state wins over everything, so a dead switch and dead logic
+    // can be told apart.
+    if(s_mode_btn.Pressed())
+    {
+        led_on    = true;
+        led_volts = kLedVoltsFull;
+    }
+    else if(s_output_sw.Pressed())
+    {
+        led_on    = true;
+        led_volts = kLedVoltsDim;
+    }
+    else
+    {
+        led_on = false;
+    }
+#endif
+    SetPanelLed(led_on, led_volts);
 
     // Read knobs - CV_1..CV_4 pots return approximately 0..1 when nothing is patched
     // (The bipolar -1..+1 range only applies when external CV is connected)
@@ -648,10 +649,12 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
     // Clock drop-out: if the external clock stops, fall back to the internal
     // clock instead of latching until power-cycle. The window scales with the
     // measured period (4 beats) so slow clocks aren't mistaken for a drop-out,
-    // with a 2 s floor for the case where no period is known yet.
+    // with a floor for the case where no period is known yet. The floor is long
+    // enough that a deliberate pause reads as a pause rather than a stop.
     if(g_use_ext_clock)
     {
-        const uint32_t floor_samples = static_cast<uint32_t>(2.0f * sr);
+        const uint32_t floor_samples
+            = static_cast<uint32_t>(kClockDropoutSeconds * sr);
         const uint32_t timeout       = static_cast<uint32_t>(
             fmaxf(static_cast<float>(floor_samples),
                   static_cast<float>(g_ext_clk_period) * 4.0f));
@@ -717,73 +720,66 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
     }
 
     // -----------------------------------------------------------------
-    // Edit modes: knobs control different params per sub-mode
-    // Mode 0: Pattern (CV1=X, CV2=Y, CV3=Density, CV4=Randomness)
-    // Mode 1-3: Drum edit (CV1=Freq, CV2=param, CV3=Pan). CV4 is unused here.
+    // Kit page (1 LED pulse): per-part density trims + wildness.
+    // Home page (no pulse): all four knobs belong to Grids.
+    //
+    // On entering the page, seed the takeover baseline so crossing detection
+    // has a valid previous knob value and nothing jumps.
     // -----------------------------------------------------------------
-    // On entering an edit mode (or after a randomize) seed the takeover
-    // baseline so crossing detection has a valid previous knob value.
     if(g_tk_init && g_sub_mode != 0)
     {
         g_tk_prev[0] = k1;
         g_tk_prev[1] = k2;
         g_tk_prev[2] = k3;
+        g_tk_prev[3] = k4;
         g_tk_init    = false;
     }
 
-    switch(g_sub_mode)
+    if(g_sub_mode == 1)
     {
-        case 1: // Edit Kick - CV1=Freq, CV2=Decay, CV3=Pan (soft-takeover)
-            SoftTakeover(g_kick_p1,  k1, g_tk_caught[0], g_tk_prev[0]);
-            SoftTakeover(g_kick_p2,  k2, g_tk_caught[1], g_tk_prev[1]);
-            SoftTakeover(g_kick_pan, k3, g_tk_caught[2], g_tk_prev[2]);
-            ApplyKick();
-            g_kick_gl = sqrtf(1.0f - g_kick_pan);
-            g_kick_gr = sqrtf(g_kick_pan);
-            break;
-        case 2: // Edit Snare - CV1=Freq, CV2=Snappy, CV3=Pan (soft-takeover)
-            SoftTakeover(g_snare_p1,  k1, g_tk_caught[0], g_tk_prev[0]);
-            SoftTakeover(g_snare_p2,  k2, g_tk_caught[1], g_tk_prev[1]);
-            SoftTakeover(g_snare_pan, k3, g_tk_caught[2], g_tk_prev[2]);
-            ApplySnare();
-            g_snare_gl = sqrtf(1.0f - g_snare_pan);
-            g_snare_gr = sqrtf(g_snare_pan);
-            break;
-        case 3: // Edit HiHat - CV1=Freq, CV2=Decay, CV3=Pan (soft-takeover)
-            SoftTakeover(g_hat_p1,  k1, g_tk_caught[0], g_tk_prev[0]);
-            SoftTakeover(g_hat_p2,  k2, g_tk_caught[1], g_tk_prev[1]);
-            SoftTakeover(g_hat_pan, k3, g_tk_caught[2], g_tk_prev[2]);
-            ApplyHat();
-            g_hat_gl = sqrtf(1.0f - g_hat_pan);
-            g_hat_gr = sqrtf(g_hat_pan);
-            break;
-        default: // Mode 0: Pattern mode - all 4 knobs for Grids
-            break;
+        SoftTakeover(g_dens_kick,  k1, g_tk_caught[0], g_tk_prev[0]);
+        SoftTakeover(g_dens_snare, k2, g_tk_caught[1], g_tk_prev[1]);
+        SoftTakeover(g_dens_hat,   k3, g_tk_caught[2], g_tk_prev[2]);
+        SoftTakeover(g_wildness,   k4, g_tk_caught[3], g_tk_prev[3]);
+    }
+    else
+    {
+        g_home_x    = k1;
+        g_home_y    = k2;
+        g_home_dens = k3;
+        g_home_rnd  = k4;
     }
 
     // -----------------------------------------------------------------
-    // Trigger logic depends on mode:
-    // Pattern mode (0): Use Grids pattern with external or internal clock
-    // Edit modes (1-3): Single drum at 1 beat per second
+    // The sequencer runs on every page. The Kit page borrows the knobs, not
+    // the transport - you have to hear the densities you are setting.
     // -----------------------------------------------------------------
-    if(g_sub_mode == 0)
     {
-        // Pattern mode: use external clock (4× multiplied) if present, else internal 120 BPM
-        bool tick = g_use_ext_clock ? ext_tick : InternalGridsClockTick(sr, size);
+        const bool tick
+            = g_use_ext_clock ? ext_tick : InternalGridsClockTick(sr, size);
 
         if(tick)
         {
             // Grids parameters from pots + CV modulation
             // CV_5-CV_8 add ±50% modulation to the pot values
-            const float x_val    = Clamp01f(k1 + cv5_mod);
-            const float y_val    = Clamp01f(k2 + cv6_mod);
-            const float dens_val = Clamp01f(k3 + cv7_mod);
-            const float rnd_val  = Clamp01f(k4 + cv8_mod);
+            const float x_val    = Clamp01f(g_home_x + cv5_mod);
+            const float y_val    = Clamp01f(g_home_y + cv6_mod);
+            const float dens_val = Clamp01f(g_home_dens + cv7_mod);
+            const float rnd_val  = Clamp01f(g_home_rnd + cv8_mod);
 
-            const uint8_t x    = static_cast<uint8_t>(x_val * 255.0f);
-            const uint8_t y    = static_cast<uint8_t>(y_val * 255.0f);
-            const uint8_t dens = static_cast<uint8_t>(dens_val * 255.0f);
-            const uint8_t rnd  = static_cast<uint8_t>(rnd_val * 255.0f);
+            // Per-part density is an additive trim around the master, so
+            // centred trims behave exactly as the single density did, and the
+            // master still sweeps all three while preserving their balance.
+            const float dk = Clamp01f(dens_val + (g_dens_kick - 0.5f));
+            const float ds = Clamp01f(dens_val + (g_dens_snare - 0.5f));
+            const float dh = Clamp01f(dens_val + (g_dens_hat - 0.5f));
+
+            const uint8_t x       = static_cast<uint8_t>(x_val * 255.0f);
+            const uint8_t y       = static_cast<uint8_t>(y_val * 255.0f);
+            const uint8_t rnd     = static_cast<uint8_t>(rnd_val * 255.0f);
+            const uint8_t dens_bd = static_cast<uint8_t>(dk * 255.0f);
+            const uint8_t dens_sd = static_cast<uint8_t>(ds * 255.0f);
+            const uint8_t dens_hh = static_cast<uint8_t>(dh * 255.0f);
 
             // Get triggers from Grids pattern generator
             // step() is the index about to play; read it before Tick advances.
@@ -793,49 +789,25 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
             else if(step_idx == kStepsPerBar)
                 g_bar_flash = kBarFlashShort;
 
-            const auto step = grids.Tick(x, y, dens, dens, dens, rnd);
+            const auto step = grids.Tick(x, y, dens_bd, dens_sd, dens_hh, rnd);
 
             // Internal voices and trigger outputs both fire: the audio out
             // plays the kit while B5/B6/CV_OUT_1 drive external modules from
             // the same pattern.
             if(step.bd)
             {
-                TrigWithAccent(kick, step.bd_accent, kKickAccentNormal, kKickAccentStrong);
+                TrigWithAccent(Slot::Kick, step.bd_accent, kKickAccentNormal, kKickAccentStrong);
                 g_trig_kick_remaining = kTriggerSamples;
             }
             if(step.sd)
             {
-                TrigWithAccent(snare, step.sd_accent, kSnareAccentNormal, kSnareAccentStrong);
+                TrigWithAccent(Slot::Snare, step.sd_accent, kSnareAccentNormal, kSnareAccentStrong);
                 g_trig_snare_remaining = kTriggerSamples;
             }
             if(step.hh)
             {
-                TrigWithAccent(hat, step.hh_accent, kHatAccentNormal, kHatAccentStrong);
+                TrigWithAccent(Slot::Hat, step.hh_accent, kHatAccentNormal, kHatAccentStrong);
                 g_trig_hat_remaining = kTriggerSamples;
-            }
-        }
-    }
-    else
-    {
-        // Edit mode: trigger only the selected drum at 1 beat per second
-        bool edit_tick = EditModeClockTick(sr, size);
-
-        if(edit_tick)
-        {
-            switch(g_sub_mode)
-            {
-                case 1: // Edit Kick - trigger kick only
-                    kick.SetAccent(0.8f);
-                    kick.Trig();
-                    break;
-                case 2: // Edit Snare - trigger snare only
-                    snare.SetAccent(0.8f);
-                    snare.Trig();
-                    break;
-                case 3: // Edit HiHat - trigger hat only
-                    hat.SetAccent(0.8f);
-                    hat.Trig();
-                    break;
             }
         }
     }
@@ -860,9 +832,9 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
         for(size_t i = 0; i < size; i++)
         {
             // Process each drum voice
-            const float kick_out  = kick.Process(false);
-            const float snare_out = snare.Process(false);
-            const float hat_out   = hat.Process(false);
+            const float kick_out  = sorrow::VoiceProcess(Slot::Kick);
+            const float snare_out = sorrow::VoiceProcess(Slot::Snare);
+            const float hat_out   = sorrow::VoiceProcess(Slot::Hat);
 
             // Equal-power pan (gains precomputed at control rate)
             const float kick_l  = kick_out  * g_kick_gl;
@@ -879,6 +851,10 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
             out[1][i] = FastSaturate(mix_r * kOutputDrive);
         }
     }
+
+#if SORROW_REPORT_CPU
+    g_cpu_meter.OnBlockEnd();
+#endif
 }
 
 } // namespace
@@ -890,62 +866,158 @@ int main(void)
 {
     patch.Init();
 
-    // Quick LED self-test
-    for(int i = 0; i < 6; i++)
+    // Flush denormals to zero. libDaisy enables the FPU but never sets FZ, and
+    // this firmware is full of exponentially decaying envelopes and ringing
+    // resonators - exactly the things that trail off into denormal territory
+    // and stay there. Standard practice for audio DSP on Cortex-M.
+    __set_FPSCR(__get_FPSCR() | (1u << 24));
+
+    // 32 kHz, not 48. Measured on this hardware, the cheapest possible kit cost
+    // 53% of a 48 kHz sample period and the cheapest hi-hat alone cost 31%,
+    // which left no room to choose between models and put the callback close
+    // enough to the edge that it intermittently starved SysTick and froze the
+    // panel. The work per sample is unchanged, but each sample now has half as
+    // much again to do it in, so the same kit costs about two thirds as much.
+    // A drum machine does not need 48 kHz; the trade is a 16 kHz Nyquist, which
+    // the hat frequency ranges in drum_voices.cpp are set to respect.
+    patch.SetAudioSampleRate(SaiHandle::Config::SampleRate::SAI_32KHZ);
+
+#if SORROW_LOG_USB
+    patch.StartLog(false);   // non-blocking: runs fine with nothing attached
+#endif
+
+    // Boot signature on the *panel* LED. patch.SetLed() only drives the Daisy's
+    // own on-board LED, which is invisible once the module is racked, so the
+    // old self-test could never answer "did my new firmware actually start?".
+    // Two slow blinks here, clearly distinct from the short bar flashes, is
+    // proof the app is alive before anything else has had a chance to go wrong.
+    for(int i = 0; i < 4; i++)
     {
-        patch.SetLed((i & 1) == 0);
-        System::Delay(80);
+        const bool on = (i & 1) == 0;
+        patch.SetLed(on);
+        SetPanelLed(on, kLedVoltsFull);
+        System::Delay(180);
     }
     patch.SetLed(false);
+    SetPanelLed(false, kLedVoltsFull);
 
     const float sr = patch.AudioSampleRate();
 
-    // Initialize Grids pattern generator
-    grids.Init(static_cast<uint16_t>(System::GetNow() & 0xFFFFu));
+    // Seed from analogue noise, not from the clock.
+    //
+    // System::GetNow() is only ever ~700 ms here - the boot LED signature
+    // dominates and is itself fixed - so seeding from it gave a near-constant
+    // seed and therefore the same kit from every cold boot. Free-running the
+    // RNG in the callback fixes rolls made later, once the user has waited an
+    // unpredictable time, but does nothing for the roll that happens at boot.
+    //
+    // Unpatched CV inputs float, so their ADC readings carry real noise in the
+    // low bits, and the knob positions add whatever the user last left them at.
+    uint32_t seed = System::GetNow();
+    for(int pass = 0; pass < 24; ++pass)
+    {
+        patch.ProcessAllControls();
+        for(int ch = 0; ch < 8; ++ch)
+        {
+            seed = seed * 1664525u + 1013904223u;
+            seed ^= static_cast<uint32_t>(fabsf(patch.GetAdcValue(ch)) * 65535.0f);
+        }
+        System::Delay(2);
+    }
 
-    // Seed the kit-randomization RNG (avoid a zero state).
-    g_rng = System::GetNow() | 1u;
+    g_rng = seed | 1u;
+    grids.Init(static_cast<uint16_t>(((seed >> 16) ^ seed) & 0xFFFFu));
 
-    // Initialize synthetic drum voices with tamed defaults
-    kick.Init(sr);
-    kick.SetFreq(55.0f);
-    kick.SetDecay(0.22f);
-    kick.SetTone(0.25f);
-    kick.SetDirtiness(0.03f);
-    kick.SetFmEnvelopeAmount(0.10f);
-    kick.SetFmEnvelopeDecay(0.10f);
+    // Construct every model in the pool, then boot with a rolled kit.
+    sorrow::VoicesInit(sr, []() -> uint32_t { return System::GetUs(); });
+    RollKit();
 
-    snare.Init(sr);
-    snare.SetFreq(185.0f);
-    snare.SetDecay(0.06f);
-    snare.SetFmAmount(0.00f);
-    snare.SetSnappy(0.75f);
+#if SORROW_LOG_USB
+    // Dump what the boot benchmark measured, so the cost budget is set from
+    // numbers rather than inference. Two desktop benchmarks misled me about
+    // which models were expensive; the target measuring itself does not.
+    static const char* const kSlotNames[3] = {"kick", "snare", "hat"};
+    patch.PrintLine("");
+    patch.PrintLine("=== Sorrow: model cost, pct of one sample period ===");
+    for(uint8_t slot = 0; slot < 3; ++slot)
+    {
+        const Slot sl = static_cast<Slot>(slot);
+        for(uint8_t m = 0; m < sorrow::VoiceModelCount(sl); ++m)
+        {
+            patch.PrintLine("  %-6s %-12s %3d pct",
+                            kSlotNames[slot],
+                            sorrow::VoiceModelNameAt(sl, m),
+                            static_cast<int>(sorrow::VoiceCostAt(sl, m) * 100.0f + 0.5f));
+            System::Delay(12);   // don't outrun the USB CDC buffer
+        }
+    }
+    patch.PrintLine("  cheapest possible kit: %d pct",
+                    static_cast<int>(sorrow::VoiceCheapestKitCost() * 100.0f + 0.5f));
+    patch.PrintLine("");
+#endif
 
-    hat.Init(sr);
-    hat.SetFreq(8000.0f);
-    hat.SetDecay(0.55f);
-    hat.SetTone(0.70f);
-    hat.SetNoisiness(0.95f);
-
-    // Boot with a fresh randomized kit (overrides the tuned defaults above).
-    RandomizeKick();
-    RandomizeSnare();
-    RandomizeHat();
+#if SORROW_REPORT_KIT
+    // Blink out which models the boot roll selected, before audio starts, so
+    // the report always completes even if the running firmware then misbehaves.
+    // Per slot: (index + 1) short blinks, then a gap. Kick, snare, hat.
+    //   Kick : 1=synth BD  2=analog BD  3=modal BD
+    //   Snare: 1=synth SD  2=analog SD  3=modal SD  4=string SD
+    //   Hat  : 1=square HH 2=ringmod HH 3=modal HH
+    for(int repeat = 0; repeat < 2; ++repeat)
+    {
+        for(uint8_t slot = 0; slot < 3; ++slot)
+        {
+            const uint8_t n
+                = sorrow::VoiceModelIndex(static_cast<Slot>(slot)) + 1;
+            for(uint8_t b = 0; b < n; ++b)
+            {
+                SetPanelLed(true, kLedVoltsFull);
+                System::Delay(120);
+                SetPanelLed(false, kLedVoltsFull);
+                System::Delay(200);
+            }
+            System::Delay(700);   // gap between slots
+        }
+        System::Delay(1200);      // gap between repeats
+    }
+#endif
 
     // Initialize UI switches
     s_mode_btn.Init(patch.B7, sr, Switch::TYPE_MOMENTARY, Switch::POLARITY_INVERTED);  // Cycles sub-modes
-    s_output_sw.Init(patch.B8, sr, Switch::TYPE_TOGGLE, Switch::POLARITY_NORMAL);      // Internal/External
+    s_output_sw.Init(patch.B8, sr, Switch::TYPE_TOGGLE, Switch::POLARITY_NORMAL);      // Rolls the kit
 
     // Initialize external trigger gate outputs (B5, B6)
     g_gate_kick.Init(patch.B5, GPIO::Mode::OUTPUT);
     g_gate_snare.Init(patch.B6, GPIO::Mode::OUTPUT);
 
+#if SORROW_REPORT_CPU
+    g_cpu_meter.Init(sr, patch.AudioBlockSize());
+#endif
+
     // Start audio
     patch.StartAudio(AudioCallback);
 
-    // Main loop - just keep running (all work done in callback)
+    // Main loop. All audio work happens in the callback; this only reports.
+    uint32_t next_report = 0;
     while(1)
     {
         System::Delay(10);
+
+#if SORROW_LOG_USB && SORROW_REPORT_CPU
+        // Total audio load, measured rather than inferred. The per-model costs
+        // only cover the three voices; this includes the sequencer, clock,
+        // panel and mix, which is what actually decides a safe kit budget.
+        const uint32_t now = System::GetNow();
+        if(now >= next_report)
+        {
+            next_report = now + 2000;
+            patch.PrintLine("cpu avg %3d pct  max %3d pct   kit: %s / %s / %s",
+                            static_cast<int>(g_cpu_meter.GetAvgCpuLoad() * 100.0f + 0.5f),
+                            static_cast<int>(g_cpu_meter.GetMaxCpuLoad() * 100.0f + 0.5f),
+                            sorrow::VoiceModelName(Slot::Kick),
+                            sorrow::VoiceModelName(Slot::Snare),
+                            sorrow::VoiceModelName(Slot::Hat));
+        }
+#endif
     }
 }

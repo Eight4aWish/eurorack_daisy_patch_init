@@ -20,6 +20,7 @@ USE_DAISY_PATCH_SM = 1
 
 CPP_SOURCES = \
 	src/main.cpp \
+	src/drum_voices.cpp \
 	src/grids_port.cpp \
 	src/grids_nodes.cpp
 
@@ -129,8 +130,14 @@ flash: program-dfu-local
 # Requires a BOOT_SRAM/BOOT_QSPI build — a BOOT_NONE .bin on the card makes the
 # bootloader blink SOS.
 #
+# The copy is verified and the card is then ejected automatically: macOS buffers
+# writes to removable media, and `sync` alone does not reliably flush them, so
+# pulling the card without ejecting can leave a truncated .bin on it - which the
+# bootloader will happily flash.
+#
 #   make card                            # copy to the single mounted FAT volume
 #   make card SD_VOLUME=/Volumes/DAISY   # or name it explicitly
+#   make card NO_EJECT=1                 # copy but leave the card mounted
 #   make card-list                       # show candidate volumes
 
 SD_VOLUME ?=
@@ -191,5 +198,16 @@ card: build/$(TARGET).bin
 	cp build/$(TARGET).bin "$$vol/$(TARGET).bin"; \
 	find "$$vol" -maxdepth 1 -name '._*.bin' -delete 2>/dev/null || true; \
 	sync; \
-	echo "Copied $(TARGET).bin -> $$vol"; \
-	echo "Eject the card, put it in the module, and power-cycle."
+	if ! cmp -s build/$(TARGET).bin "$$vol/$(TARGET).bin"; then \
+		echo "Verify FAILED: the copy on the card does not match the build."; \
+		exit 1; \
+	fi; \
+	echo "Copied and verified $(TARGET).bin -> $$vol"; \
+	if [ -z "$(NO_EJECT)" ] && command -v diskutil >/dev/null 2>&1; then \
+		diskutil eject "$$vol" >/dev/null 2>&1 \
+			&& echo "Card ejected - safe to remove." \
+			|| echo "Could not eject automatically; eject before removing the card."; \
+	else \
+		echo "Eject before removing the card ('sync' alone does not flush removable media)."; \
+	fi; \
+	echo "Put it in the module and power-cycle."
