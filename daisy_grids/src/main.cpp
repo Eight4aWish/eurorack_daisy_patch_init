@@ -319,6 +319,19 @@ static constexpr uint8_t kRatioConfirmCount = 3;
 // over. Also floors the adaptive window, which is 4 measured beats.
 static constexpr float kClockDropoutSeconds = 5.0f;
 
+// Hard ceiling on that window, and on the measured period that scales it.
+//
+// The period is simply the gap between two consecutive rising edges, so any
+// stray pair - patching a cable, a clock started and then stopped, a noise
+// glitch - can measure an arbitrarily long "period". Unbounded, a 60 s gap set
+// a four-minute drop-out window: the sequencer stopped, nothing triggered, and
+// the module sat silent while still burning full CPU processing untriggered
+// voices, before apparently curing itself. Nothing above the slowest detection
+// band (1500 ms) is a musical clock, so the period is clamped there and the
+// window is capped outright.
+static constexpr float kMaxClockPeriodSeconds  = 2.0f;
+static constexpr float kMaxClockDropoutSeconds = 8.0f;
+
 static ClockRatio g_clk_ratio        = {1, 1};  // live ratio (1:1 until measured)
 static uint8_t    g_clk_pending_band = 2;       // band index awaiting confirmation
 static uint8_t    g_clk_pending_hits = 0;       // consecutive sightings of it
@@ -638,7 +651,12 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
         uint32_t now = g_sample_counter;
         if(g_ext_clk_last_edge > 0)
         {
-            g_ext_clk_period = now - g_ext_clk_last_edge;
+            const uint32_t measured = now - g_ext_clk_last_edge;
+            const uint32_t max_period
+                = static_cast<uint32_t>(kMaxClockPeriodSeconds * sr);
+            // A gap longer than any musical clock is not a period; it is two
+            // unrelated edges. Clamp rather than believe it.
+            g_ext_clk_period = measured < max_period ? measured : max_period;
             // Work out what resolution the source is sending from the period.
             DetectClockRatio(g_ext_clk_period, sr);
         }
@@ -660,9 +678,13 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
     {
         const uint32_t floor_samples
             = static_cast<uint32_t>(kClockDropoutSeconds * sr);
-        const uint32_t timeout       = static_cast<uint32_t>(
+        const uint32_t ceiling_samples
+            = static_cast<uint32_t>(kMaxClockDropoutSeconds * sr);
+        uint32_t timeout = static_cast<uint32_t>(
             fmaxf(static_cast<float>(floor_samples),
                   static_cast<float>(g_ext_clk_period) * 4.0f));
+        if(timeout > ceiling_samples)
+            timeout = ceiling_samples;
         if((g_sample_counter - g_ext_clk_last_seen) > timeout)
         {
             g_use_ext_clock        = false;
