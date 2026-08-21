@@ -120,7 +120,7 @@ Banks of 25 nodes, cycled by holding B7, each announcing itself:
 | 0 | "Original patterns" | Émilie Gillet's Grids map |
 | 1 | "Club patterns" | Lakh MIDI Dataset, selected by **rhythmic signature** |
 | 2 | "Traditional patterns" | Groove MIDI Dataset — human drummers, rock through jazz |
-| 3 | "User patterns" | Optional, generated locally — see [user_bank.h](include/user_bank.h) |
+| 3 | "User patterns" | Parked — see [user_bank.h](include/user_bank.h) |
 
 All are 25 × 96 bytes with the same per-lane value distribution, so density,
 accent and everything downstream behave identically.
@@ -140,17 +140,27 @@ kick under offbeat hats *is* the house vocabulary.
 
 ### Your own bank
 
-The best corpus for you is probably one you already own and can't redistribute.
-`src/user_bank.cpp` is gitignored and compiled in only when present, so:
+The best corpus for you is probably one you already own and can't redistribute:
 
 ```bash
 python3 tools/groove_nodes/extract.py ~/your/midi patterns.npy
 python3 tools/groove_nodes/som.py
 ```
 
-gives a fourth bank from your own library. Nothing is redistributed — the output
-is 25 centroids, and no source pattern survives in it. See
-[tools/groove_nodes/](tools/groove_nodes/).
+gives a bank from your own library, as both a C++ table and `sorrow_bank.dat`.
+Nothing is redistributed — the output is 25 centroids over thousands of
+patterns, and no source pattern survives in it.
+
+Loading that file off the SD card at boot is **parked**: it mounts, then every
+read ends in `FR_DISK_ERR` after the driver's full 30-second timeout, and the
+cause isn't found yet. [user_bank.h](include/user_bank.h) records what was ruled
+out. The sample player will need that path working, so it's worth returning to.
+Until then a personal bank has to be compiled in.
+
+Derived from a personal EZdrummer library — 916 patterns from its 808, 606,
+RY-30 and HR-16 folders — it produced the most coherent map of the lot at 44%
+against Club's 35%. Purpose-programmed machine patterns beat sixty thousand rock
+ones filtered by shape, which was not the expected result.
 
 ### Why it speaks
 

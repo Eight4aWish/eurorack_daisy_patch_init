@@ -19,6 +19,7 @@
 #include "drum_voices.h"
 #include "grids_port.h"
 #include "speech_data.h"
+#include "user_bank.h"
 
 #include <cmath>
 #include <cstdint>
@@ -587,7 +588,7 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
             // Hold: next drum-map bank.
             const uint8_t next
                 = (daisy_grids::grids_port::GetBank() + 1)
-                  % daisy_grids::grids_port::kNumBanks;
+                  % daisy_grids::grids_port::BankCount();
             daisy_grids::grids_port::SetBank(next);
             switch(next)
             {
@@ -1091,9 +1092,26 @@ int main(void)
     kMinPressSamples   = static_cast<uint32_t>(kMinPressSeconds * sr);
 
 
+    // Reading a user bank off the card is parked - see include/user_bank.h for
+    // what is wrong and how far the diagnosis got. Enable with
+    // SORROW_SD_USER_BANK=1 when picking it back up; three banks otherwise.
+#if SORROW_SD_USER_BANK
+    const uint32_t sd_t0 = System::GetNow();
+    sorrow::LoadUserBankFromSd();
+    const uint32_t sd_ms = System::GetNow() - sd_t0;
+#endif
+
     // Construct every model in the pool, then boot with a rolled kit.
     sorrow::VoicesInit(sr, []() -> uint32_t { return System::GetUs(); });
     RollKit();
+
+#if SORROW_LOG_USB && SORROW_SD_USER_BANK
+    patch.PrintLine("user bank: %s (%d ms)  sd=%d fs=%d mount=%d path=%s",
+                    sorrow::UserBankStatus(), static_cast<int>(sd_ms),
+                    sorrow::UserBankSdResult(), sorrow::UserBankFsResult(),
+                    sorrow::UserBankMountResult(), sorrow::UserBankPath());
+    patch.PrintLine("           open=%d", sorrow::UserBankOpenResult());
+#endif
 
 #if SORROW_LOG_USB
     // Dump what the boot benchmark measured, so the cost budget is set from
@@ -1101,7 +1119,13 @@ int main(void)
     // which models were expensive; the target measuring itself does not.
     static const char* const kSlotNames[3] = {"kick", "snare", "hat"};
     patch.PrintLine("");
-    patch.PrintLine("=== Sorrow: model cost, pct of one sample period ===");
+    patch.PrintLine("=== Sorrow v%s ===", SORROW_VERSION);
+    patch.PrintLine("pattern banks: %d%s",
+                    daisy_grids::grids_port::BankCount(),
+                    daisy_grids::grids_port::BankCount() > 3
+                        ? " (user bank loaded from SD)"
+                        : " (no user bank on card)");
+    patch.PrintLine("model cost, pct of one sample period:");
     for(uint8_t slot = 0; slot < 3; ++slot)
     {
         const Slot sl = static_cast<Slot>(slot);

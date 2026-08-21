@@ -13,14 +13,19 @@ namespace daisy_grids::grids_port {
 //   1  Club      - Lakh, selected by rhythmic signature (four-to-floor, breaks,
 //                  half-time) rather than by genre label
 //   2  Traditional - Groove MIDI, human drummers
-//   3  User      - optional, generated locally, gitignored (see user_bank.h)
+//   3  User      - optional, read from the SD card at boot (see user_bank.h)
 // All three are 25 nodes of 96 bytes sharing the same per-lane value
 // distribution, so everything downstream is unaffected by the choice.
-#if SORROW_USER_BANK
-constexpr uint8_t kNumBanks = 4;   // ...plus a locally generated one
-#else
-constexpr uint8_t kNumBanks = 3;
-#endif
+// Three compiled in, plus one optional slot filled at boot from the SD card.
+constexpr uint8_t kNumFactoryBanks = 3;
+constexpr uint8_t kMaxBanks        = 4;
+
+// Point the fourth bank at 25*96 bytes of node data and make it selectable.
+// Passing nullptr removes it again.
+void SetUserBank(const uint8_t* nodes);
+
+// How many banks are actually available - 3, or 4 once a user bank is loaded.
+uint8_t BankCount();
 
 void    SetBank(uint8_t bank);
 uint8_t GetBank();

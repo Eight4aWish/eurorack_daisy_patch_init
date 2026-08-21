@@ -58,6 +58,17 @@ for lane in range(3):
     shaped[:, sl] = out.reshape(25, 32)
 np.save('som_nodes.npy', shaped)
 
+# Also write the card format: raw bytes, 25 nodes of 96, row-major across the
+# 5x5 map. Drop this on the SD card root and the firmware picks it up at boot as
+# a fourth bank - no rebuild, and nothing personal in a distributed binary.
+#
+# Not .bin, deliberately: the Daisy bootloader flashes the first .bin it finds in
+# the card root, so a bank file under that name could be written to QSPI as
+# firmware. See daisy_grids/include/user_bank.h.
+shaped.astype(np.uint8).tofile('sorrow_bank.dat')
+print("wrote sorrow_bank.dat (%d bytes) - copy to the SD card root"
+      % (25 * 96))
+
 A = shaped
 print(f"\nderived tables: zeros {(A==0).mean()*100:.1f}%  nonzero mean {A[A>0].mean():.0f}")
 for i, lane in enumerate(("kick","snare","hat")):

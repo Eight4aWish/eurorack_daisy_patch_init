@@ -18,6 +18,9 @@ include $(COMMON_MK)
 # Board selection
 USE_DAISY_PATCH_SM = 1
 
+# FatFS, for reading a user drum-map bank off the SD card at boot.
+USE_FATFS = $(SORROW_SD_USER_BANK)
+
 CPP_SOURCES = \
 	src/main.cpp \
 	src/drum_voices.cpp \
@@ -27,11 +30,18 @@ CPP_SOURCES = \
 	src/grids_nodes_club.cpp \
 	src/speech_data.cpp
 
-# Optional locally generated bank - see include/user_bank.h. Gitignored, and
-# compiled in only when present, so a clone without one still builds.
-ifneq ($(wildcard $(_P_DIR)/src/user_bank.cpp),)
+SORROW_VERSION ?= 2.0.0
+C_DEFS += -DSORROW_VERSION=\"$(SORROW_VERSION)\"
+
+# The user bank is read from the SD card at runtime, not compiled in, so there
+# is one binary for everyone - see include/user_bank.h.
+# Reading a user bank off the SD card is parked - it mounts but every read ends
+# in FR_DISK_ERR after the driver's full 30 s timeout, and the cause is not yet
+# found. See include/user_bank.h. Set SORROW_SD_USER_BANK=1 to build it back in.
+SORROW_SD_USER_BANK ?= 0
+C_DEFS += -DSORROW_SD_USER_BANK=$(SORROW_SD_USER_BANK)
+ifeq ($(SORROW_SD_USER_BANK),1)
 CPP_SOURCES += src/user_bank.cpp
-C_DEFS += -DSORROW_USER_BANK=1
 endif
 
 C_INCLUDES += \
@@ -130,6 +140,27 @@ program-dfu-local: build/$(TARGET).bin
 flash: program-dfu-local
 
 #######################################
+# Release
+#######################################
+# Builds the distributable firmware: three factory banks, no user bank, version
+# stamped into the binary and the filename. Distributing this is distributing a
+# GPL-3.0-or-later work, so the corresponding source has to be available - tag
+# the commit you build from and publish the tag alongside the binary.
+#
+#   make release                     # -> build/sorrow-v2.0.0.bin
+#   make release SORROW_VERSION=2.1.0
+
+.PHONY: release
+release:
+	@$(MAKE) clean >/dev/null
+	@$(MAKE) SORROW_VERSION=$(SORROW_VERSION) >/dev/null
+	@cp build/$(TARGET).bin build/$(TARGET)-v$(SORROW_VERSION).bin
+	@echo "build/$(TARGET)-v$(SORROW_VERSION).bin  ($$(stat -f%z build/$(TARGET)-v$(SORROW_VERSION).bin) bytes)"
+	@echo "  three factory banks; a sorrow_bank.bin on the card adds a fourth"
+	@echo "  requires the Daisy bootloader on the target: make program-boot"
+	@echo "  tag the source before publishing: git tag sorrow-v$(SORROW_VERSION)"
+
+#######################################
 # SD card flashing
 #######################################
 # With the Daisy bootloader installed, the most convenient way to load a build
@@ -145,7 +176,14 @@ flash: program-dfu-local
 # pulling the card without ejecting can leave a truncated .bin on it - which the
 # bootloader will happily flash.
 #
+# BANK=<file> also copies a user drum-map bank to the card root, as
+# sorrow_bank.dat. The extension matters: the bootloader flashes the first .bin
+# it finds in the root, so anything that is not firmware must not be named .bin.
+# The AppleDouble companions macOS leaves behind are removed for the same reason
+# - ._something.bin is a .bin as far as a directory scan is concerned.
+#
 #   make card                            # copy to the single mounted FAT volume
+#   make card BANK=~/sorrow_bank.dat     # firmware plus a user bank
 #   make card SD_VOLUME=/Volumes/DAISY   # or name it explicitly
 #   make card NO_EJECT=1                 # copy but leave the card mounted
 #   make card-list                       # show candidate volumes
@@ -193,12 +231,13 @@ card: build/$(TARGET).bin
 		vol="$$cands"; \
 	fi; \
 	if [ ! -d "$$vol" ]; then echo "Not a mounted volume: $$vol"; exit 2; fi; \
-	others=`ls "$$vol"/*.bin 2>/dev/null | grep -v "/$(TARGET).bin$$" || true`; \
+	others=`ls "$$vol"/*.bin 2>/dev/null \
+		| grep -v "/$(TARGET).bin$$" || true`; \
 	if [ -n "$$others" ]; then \
 		mkdir -p "$$vol/_firmware"; \
-		echo "Other .bin files were at the card root. The bootloader flashes the"; \
-		echo "first .bin it finds there, so on a shared card that would load the"; \
-		echo "wrong firmware into this module. Moved aside (still on the card):"; \
+		echo "Other firmware .bin files were at the card root. The bootloader"; \
+		echo "flashes the first .bin it finds, so on a shared card that would load"; \
+		echo "the wrong firmware into this module. Moved aside (still on card):"; \
 		for f in $$others; do \
 			mv "$$f" "$$vol/_firmware/"; \
 			echo "  `basename $$f`  ->  _firmware/`basename $$f`"; \
@@ -206,7 +245,12 @@ card: build/$(TARGET).bin
 		echo "To re-arm one of those, move it back to the card root."; \
 	fi; \
 	cp build/$(TARGET).bin "$$vol/$(TARGET).bin"; \
-	find "$$vol" -maxdepth 1 -name '._*.bin' -delete 2>/dev/null || true; \
+	if [ -n "$(BANK)" ]; then \
+		if [ ! -f "$(BANK)" ]; then echo "No such bank file: $(BANK)"; exit 2; fi; \
+		cp "$(BANK)" "$$vol/sorrow_bank.dat"; \
+		echo "Copied `basename $(BANK)` -> $$vol/sorrow_bank.dat"; \
+	fi; \
+	find "$$vol" -maxdepth 1 -name '._*' -delete 2>/dev/null || true; \
 	sync; \
 	if ! cmp -s build/$(TARGET).bin "$$vol/$(TARGET).bin"; then \
 		echo "Verify FAILED: the copy on the card does not match the build."; \
