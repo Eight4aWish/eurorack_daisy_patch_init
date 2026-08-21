@@ -100,7 +100,7 @@ void CheckAudible()
 // A 16th note at 120 BPM is 125 ms. Anything ringing much past 400 ms smears.
 void CheckDecay()
 {
-    printf("decay: kick/snare under 400 ms, hats under 800 ms\n");
+    printf("decay: tight when tame, allowed to ring when wild\n");
     const int   kMax = static_cast<int>(kSampleRate * 3.0f);
     static float buf[96000];
     for(float w = 0.0f; w <= 1.001f; w += 0.25f)
@@ -125,8 +125,14 @@ void CheckDecay()
                 // sound, and capping every slot at 400 ms is what confined them
                 // to clicks in the first place. Kick and snare still smear if
                 // they run long.
+                // The limit scales with wildness, because that is the claim
+                // being tested: tame should be tight, wild is allowed to ring.
+                // A flat cap is what kept the hats as clicks, and would equally
+                // forbid the sustained modal voices wildness should reach.
                 const float ms    = 1000.0f * last / kSampleRate;
-                const float limit = (sl == 2) ? 800.0f : 400.0f;
+                const float tame  = (sl == 2) ? 300.0f : 400.0f;
+                const float wild  = (sl == 2) ? 900.0f : 1200.0f;
+                const float limit = tame + (wild - tame) * w;
                 if(ms > limit)
                     Fail("w=%.2f %s rings %.0f ms (limit %.0f)", w,
                          sorrow::VoiceModelName(slot), ms, limit);

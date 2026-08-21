@@ -22,7 +22,9 @@ CPP_SOURCES = \
 	src/main.cpp \
 	src/drum_voices.cpp \
 	src/grids_port.cpp \
-	src/grids_nodes.cpp
+	src/grids_nodes.cpp \
+	src/grids_nodes_groove.cpp \
+	src/speech_data.cpp
 
 C_INCLUDES += \
 	-I$(_P_DIR)/include \

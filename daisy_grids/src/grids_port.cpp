@@ -16,19 +16,48 @@
 #include "grids_port.h"
 
 #include "grids_nodes.h"
+#include "grids_nodes_groove.h"
 
 namespace daisy_grids::grids_port {
 
 namespace {
-// This mapping matches the upstream Grids drum_map[][] pointer table.
-const uint8_t* const drum_map[5][5] = {
+// This mapping matches the upstream Grids drum_map[][] pointer table. The order
+// is deliberately not sequential: neighbouring cells are musically related, and
+// X/Y interpolates between adjacent cells, so the arrangement is as much a part
+// of the design as the patterns.
+const uint8_t* const drum_map_grids[5][5] = {
     {node_10, node_8, node_0, node_9, node_11},
     {node_15, node_7, node_13, node_12, node_6},
     {node_18, node_14, node_4, node_5, node_3},
     {node_23, node_16, node_21, node_1, node_2},
     {node_24, node_19, node_17, node_20, node_22},
 };
+
+// The Groove bank needs no such table: it comes off a self-organising map, so
+// the grid position *is* the arrangement and row-major order is already
+// topology-preserving.
+const uint8_t* const drum_map_groove[5][5] = {
+    {groove_node_0, groove_node_1, groove_node_2, groove_node_3, groove_node_4},
+    {groove_node_5, groove_node_6, groove_node_7, groove_node_8, groove_node_9},
+    {groove_node_10, groove_node_11, groove_node_12, groove_node_13, groove_node_14},
+    {groove_node_15, groove_node_16, groove_node_17, groove_node_18, groove_node_19},
+    {groove_node_20, groove_node_21, groove_node_22, groove_node_23, groove_node_24},
+};
+
+using MapRow = const uint8_t* const (*)[5];
+const MapRow kBanks[kNumBanks] = {drum_map_grids, drum_map_groove};
+uint8_t      s_bank            = 0;
 } // namespace
+
+void SetBank(uint8_t bank)
+{
+    s_bank = bank < kNumBanks ? bank : 0;
+}
+
+uint8_t GetBank()
+{
+    return s_bank;
+}
 
 void GridsDrumGenerator::Init(uint16_t seed)
 {
@@ -68,10 +97,11 @@ uint8_t GridsDrumGenerator::ReadDrumMap(uint8_t step, uint8_t instrument, uint8_
     const uint8_t i = x >> 6; // 0..3
     const uint8_t j = y >> 6; // 0..3
 
-    const uint8_t* const a_map = drum_map[i][j];
-    const uint8_t* const b_map = drum_map[i + 1][j];
-    const uint8_t* const c_map = drum_map[i][j + 1];
-    const uint8_t* const d_map = drum_map[i + 1][j + 1];
+    const MapRow         map   = kBanks[s_bank];
+    const uint8_t* const a_map = map[i][j];
+    const uint8_t* const b_map = map[i + 1][j];
+    const uint8_t* const c_map = map[i][j + 1];
+    const uint8_t* const d_map = map[i + 1][j + 1];
 
     const uint8_t offset = static_cast<uint8_t>(instrument * 32u + step);
 
