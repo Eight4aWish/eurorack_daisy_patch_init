@@ -113,17 +113,44 @@ parts.
 
 ## Pattern banks
 
-Two banks of 25 nodes, switched by holding B7:
+Banks of 25 nodes, cycled by holding B7, each announcing itself:
 
 | Bank | Announced | Source |
 |------|-----------|--------|
-| 0 | "E D M patterns" | Émilie Gillet's original Grids map, derived from electronic music |
-| 1 | "Traditional patterns" | Derived here from the Groove MIDI Dataset — human drummers, rock through jazz |
+| 0 | "Original patterns" | Émilie Gillet's Grids map |
+| 1 | "Club patterns" | Lakh MIDI Dataset, selected by **rhythmic signature** |
+| 2 | "Traditional patterns" | Groove MIDI Dataset — human drummers, rock through jazz |
+| 3 | "User patterns" | Optional, generated locally — see [user_bank.h](include/user_bank.h) |
 
-Both are 25 × 96 bytes with the same per-lane value distribution, so density,
-accent and everything downstream behave identically. See
-[tools/groove_nodes/](tools/groove_nodes/) for how the second one is made and
-what other corpora would suit the same treatment.
+All are 25 × 96 bytes with the same per-lane value distribution, so density,
+accent and everything downstream behave identically.
+
+### Selecting by rhythm rather than by genre
+
+The Club bank is the interesting one. There is no openly licensed corpus that is
+modern, timed and large — WaivOps has the genres but its JSON carries no onset
+times, Pocket Operations has the genres but not a redistributable licence, and
+Lakh has scale but is overwhelmingly rock and pop by artist.
+
+So it doesn't use genre labels at all. Of Lakh's 736,402 two-bar patterns,
+73,674 are four-on-the-floor with offbeat hats, 42,447 are breakbeat-flavoured
+and 29,854 are half-time — whoever happened to play them. Those three make the
+corners of the map. It doesn't matter that Genesis played it: a four-to-the-floor
+kick under offbeat hats *is* the house vocabulary.
+
+### Your own bank
+
+The best corpus for you is probably one you already own and can't redistribute.
+`src/user_bank.cpp` is gitignored and compiled in only when present, so:
+
+```bash
+python3 tools/groove_nodes/extract.py ~/your/midi patterns.npy
+python3 tools/groove_nodes/som.py
+```
+
+gives a fourth bank from your own library. Nothing is redistributed — the output
+is 25 centroids, and no source pattern survives in it. See
+[tools/groove_nodes/](tools/groove_nodes/).
 
 ### Why it speaks
 

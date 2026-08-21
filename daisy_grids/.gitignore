@@ -1,0 +1,6 @@
+# Locally generated drum-map bank — see include/user_bank.h. Deliberately not
+# tracked: the best corpus for a given person is usually one they own and cannot
+# redistribute, so the bank is derived locally and the repo ships the tool.
+src/user_bank.cpp
+
+__pycache__/

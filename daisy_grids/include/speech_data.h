@@ -11,12 +11,20 @@ namespace sorrow {
 
 constexpr float kSpeechRateHz = 11025.0f;
 
-// "E D M patterns"
-extern const uint8_t kSpeechBankEdm[14424];
-constexpr size_t kSpeechBankEdmLen = 14424;
+// "Original patterns"
+extern const uint8_t kSpeechBankOriginal[13988];
+constexpr size_t kSpeechBankOriginalLen = 13988;
+
+// "Club patterns"
+extern const uint8_t kSpeechBankClub[11397];
+constexpr size_t kSpeechBankClubLen = 11397;
 
 // "Traditional patterns"
 extern const uint8_t kSpeechBankTrad[15041];
 constexpr size_t kSpeechBankTradLen = 15041;
+
+// "User patterns"
+extern const uint8_t kSpeechBankUser[11931];
+constexpr size_t kSpeechBankUserLen = 11931;
 
 } // namespace sorrow

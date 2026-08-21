@@ -16,8 +16,10 @@ VOICE = "Daniel"
 RATE  = 11025
 
 PHRASES = [
-    ("kSpeechBankEdm",  "E D M patterns"),
-    ("kSpeechBankTrad", "Traditional patterns"),
+    ("kSpeechBankOriginal", "Original patterns"),
+    ("kSpeechBankClub",     "Club patterns"),
+    ("kSpeechBankTrad",     "Traditional patterns"),
+    ("kSpeechBankUser",     "User patterns"),
 ]
 
 OUT_CPP = pathlib.Path("src/speech_data.cpp")

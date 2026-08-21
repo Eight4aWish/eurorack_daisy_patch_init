@@ -16,6 +16,8 @@
 #include "grids_port.h"
 
 #include "grids_nodes.h"
+#include "grids_nodes_club.h"
+#include "user_bank.h"
 #include "grids_nodes_groove.h"
 
 namespace daisy_grids::grids_port {
@@ -44,8 +46,35 @@ const uint8_t* const drum_map_groove[5][5] = {
     {groove_node_20, groove_node_21, groove_node_22, groove_node_23, groove_node_24},
 };
 
+// Same story as the Groove bank: off a self-organising map, so row-major order
+// is already the arrangement.
+const uint8_t* const drum_map_club[5][5] = {
+    {club_node_0, club_node_1, club_node_2, club_node_3, club_node_4},
+    {club_node_5, club_node_6, club_node_7, club_node_8, club_node_9},
+    {club_node_10, club_node_11, club_node_12, club_node_13, club_node_14},
+    {club_node_15, club_node_16, club_node_17, club_node_18, club_node_19},
+    {club_node_20, club_node_21, club_node_22, club_node_23, club_node_24},
+};
+
 using MapRow = const uint8_t* const (*)[5];
-const MapRow kBanks[kNumBanks] = {drum_map_grids, drum_map_groove};
+#if SORROW_USER_BANK
+const uint8_t* const drum_map_user[5][5] = {
+    {user_node_0, user_node_1, user_node_2, user_node_3, user_node_4},
+    {user_node_5, user_node_6, user_node_7, user_node_8, user_node_9},
+    {user_node_10, user_node_11, user_node_12, user_node_13, user_node_14},
+    {user_node_15, user_node_16, user_node_17, user_node_18, user_node_19},
+    {user_node_20, user_node_21, user_node_22, user_node_23, user_node_24},
+};
+#endif
+
+const MapRow kBanks[kNumBanks] = {
+    drum_map_grids,
+    drum_map_club,
+    drum_map_groove,
+#if SORROW_USER_BANK
+    drum_map_user,
+#endif
+};
 uint8_t      s_bank            = 0;
 } // namespace
 
