@@ -245,7 +245,18 @@ class HatVoice : public ModelVoice<Hat>
         // about 11 kHz to stay under a 16 kHz Nyquist, which costs the hats
         // their top octave.
         this->model_.SetFreq(RndW(r, w, 6000.f, 10000.f, 2500.f, 16000.f));
-        this->model_.SetDecay(RndW(r, w, 0.20f, 0.50f, 0.02f, 0.95f));
+        // HiHat::SetDecay maps its argument through decay*1.7-1.2, so anything
+        // below about 0.71 goes negative and the envelope collapses in a few
+        // milliseconds. Measured: 0.20 gives a 6 ms tick, 0.50 gives 17 ms -
+        // the previous range lived entirely in click territory, which is why
+        // every hat sounded the same and abrupt. The argument is not clamped at
+        // 1.0 either, and above it is where open hats live:
+        //
+        //   0.65 ->  32 ms   0.90 ->  96 ms   1.10 -> 307 ms
+        //   0.80 ->  63 ms   1.00 -> 172 ms   1.20 -> 590 ms
+        //
+        // Tame is closed-hat variety; wild reaches from a tick to an open hat.
+        this->model_.SetDecay(RndW(r, w, 0.70f, 0.95f, 0.60f, 1.15f));
         // Capped at 0.92, not 1.0: measured on the host, both HiHat variants go
         // non-finite at tone >= 0.98 - the filter loses stability up there - and
         // a NaN reaching the mix takes the whole output with it. Predates the

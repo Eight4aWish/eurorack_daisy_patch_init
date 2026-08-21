@@ -100,7 +100,7 @@ void CheckAudible()
 // A 16th note at 120 BPM is 125 ms. Anything ringing much past 400 ms smears.
 void CheckDecay()
 {
-    printf("decay: no model rings past 400 ms\n");
+    printf("decay: kick/snare under 400 ms, hats under 800 ms\n");
     const int   kMax = static_cast<int>(kSampleRate * 3.0f);
     static float buf[96000];
     for(float w = 0.0f; w <= 1.001f; w += 0.25f)
@@ -121,10 +121,15 @@ void CheckDecay()
                 for(int i = 0; i < kMax; ++i)
                     if(std::fabs(buf[i]) > peak * 0.01f)
                         last = i;
-                const float ms = 1000.0f * last / kSampleRate;
-                if(ms > 400.0f)
-                    Fail("w=%.2f %s rings %.0f ms", w,
-                         sorrow::VoiceModelName(slot), ms);
+                // Hats are allowed to ring: an open hi-hat is a legitimate
+                // sound, and capping every slot at 400 ms is what confined them
+                // to clicks in the first place. Kick and snare still smear if
+                // they run long.
+                const float ms    = 1000.0f * last / kSampleRate;
+                const float limit = (sl == 2) ? 800.0f : 400.0f;
+                if(ms > limit)
+                    Fail("w=%.2f %s rings %.0f ms (limit %.0f)", w,
+                         sorrow::VoiceModelName(slot), ms, limit);
             }
         }
 }
