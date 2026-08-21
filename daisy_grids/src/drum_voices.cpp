@@ -161,11 +161,23 @@ class ModalKick : public ModelVoice<ModalVoice>
   public:
     void Randomize(float w, RandFn r) override
     {
+        // ModalVoice's "damping" runs the opposite way to the name: higher
+        // values ring *longer*. Measured at 220 Hz: 0.02 gives 59 ms, 0.12
+        // gives 118 ms, 0.32 gives 457 ms, and 0.45 upward sustains for a
+        // second or more. The ranges here used to sit at 0.25-0.60, so the
+        // voice was a sustained pitched tone that only stopped because the VCA
+        // cut it - which is exactly why it read as a pipe rather than a drum.
+        // Structure matters too: low is less tonal (autocorrelation 0.56 at
+        // 0.0 against 0.74 at 0.8), so the ranges lean low.
         model_.SetFreq(RndW(r, w, 50.f, 90.f, 35.f, 170.f));
-        model_.SetStructure(RndW(r, w, 0.15f, 0.40f, 0.00f, 0.85f));
+        model_.SetStructure(RndW(r, w, 0.10f, 0.35f, 0.00f, 0.70f));
         model_.SetBrightness(RndW(r, w, 0.20f, 0.50f, 0.05f, 0.95f));
-        model_.SetDamping(RndW(r, w, 0.35f, 0.60f, 0.30f, 0.95f));
-        SetEnvDecay(RndW(r, w, 0.12f, 0.30f, 0.06f, 0.70f));
+        model_.SetDamping(RndW(r, w, 0.08f, 0.22f, 0.03f, 0.55f));
+        // Tame is percussive; wild reaches back up into the sustained,
+        // pitched region deliberately - that ringing "pipe" is a good sound, it
+        // just should not be the only thing a modal voice can be. The VCA is a
+        // backstop now rather than the thing that stops the note.
+        SetEnvDecay(RndW(r, w, 0.20f, 0.45f, 0.10f, 1.10f));
     }
 };
 
@@ -206,10 +218,10 @@ class ModalSnare : public ModelVoice<ModalVoice>
     void Randomize(float w, RandFn r) override
     {
         model_.SetFreq(RndW(r, w, 180.f, 300.f, 120.f, 600.f));
-        model_.SetStructure(RndW(r, w, 0.25f, 0.55f, 0.00f, 0.95f));
+        model_.SetStructure(RndW(r, w, 0.15f, 0.45f, 0.00f, 0.80f));
         model_.SetBrightness(RndW(r, w, 0.35f, 0.65f, 0.05f, 1.00f));
-        model_.SetDamping(RndW(r, w, 0.30f, 0.55f, 0.30f, 0.90f));
-        SetEnvDecay(RndW(r, w, 0.09f, 0.25f, 0.05f, 0.60f));
+        model_.SetDamping(RndW(r, w, 0.05f, 0.18f, 0.02f, 0.50f));
+        SetEnvDecay(RndW(r, w, 0.15f, 0.35f, 0.08f, 0.95f));
     }
 };
 
@@ -272,10 +284,10 @@ class ModalHat : public ModelVoice<ModalVoice>
     void Randomize(float w, RandFn r) override
     {
         model_.SetFreq(RndW(r, w, 2200.f, 5000.f, 900.f, 9000.f));
-        model_.SetStructure(RndW(r, w, 0.30f, 0.60f, 0.00f, 0.95f));
+        model_.SetStructure(RndW(r, w, 0.20f, 0.50f, 0.00f, 0.85f));
         model_.SetBrightness(RndW(r, w, 0.45f, 0.75f, 0.10f, 1.00f));
-        model_.SetDamping(RndW(r, w, 0.25f, 0.45f, 0.25f, 0.85f));
-        SetEnvDecay(RndW(r, w, 0.05f, 0.20f, 0.02f, 0.50f));
+        model_.SetDamping(RndW(r, w, 0.03f, 0.14f, 0.02f, 0.45f));
+        SetEnvDecay(RndW(r, w, 0.10f, 0.25f, 0.05f, 0.85f));
     }
 };
 

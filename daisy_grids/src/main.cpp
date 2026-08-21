@@ -18,6 +18,7 @@
 
 #include "drum_voices.h"
 #include "grids_port.h"
+#include "speech_data.h"
 
 #include <cmath>
 #include <cstdint>
@@ -39,7 +40,8 @@ using namespace patch_sm;
 // B10 (Gate In 1): Clock input - resolution detected automatically
 // B9  (Gate In 2): Reset input - rising edge resets pattern to step 0
 //
-// B7 Momentary Button: press cycles pages (LED flash count = page)
+// B7 Momentary Button: short press cycles pages, hold cycles drum-map bank
+//     (bank change blinks its number: 1 = Grids, 2 = Groove)
 //     Home (no flash): CV1=X, CV2=Y, CV3=Density, CV4=Randomness
 //     Kit  (1 pulse):  CV1/2/3 = kick/snare/hat density trim, CV4 = Wildness
 //   The sequencer keeps running on every page - the Kit page borrows the knobs,
@@ -202,6 +204,35 @@ static constexpr float kBarFlashShortSeconds = 0.03f;
 static uint32_t        kBarFlashLong         = 3800;  // set from sample rate
 static uint32_t        kBarFlashShort        = 1400;  // set from sample rate
 static constexpr uint8_t  kStepsPerBar   = 16;    // 32-step pattern = 2 bars of 4/4
+
+// B7 gestures. Short press (on release) cycles the page; press and hold cycles
+// the drum-map bank. Page change fires on release rather than on the edge so a
+// long press does not also change the page on its way past.
+static uint32_t g_btn_held      = 0;      // samples held, 0 when open
+static bool     g_btn_long_done = false;  // long action already fired this hold
+static constexpr float kLongPressSeconds = 0.80f;
+static constexpr float kMinPressSeconds  = 0.02f;
+static uint32_t kLongPressSamples = 38400;
+static uint32_t kMinPressSamples  = 960;
+
+// Spoken announcements. The LED is already busy marking the bar, and a second
+// visual signal competing with it is genuinely hard to read - that is what
+// happened to the button and to the bank blink code. Speech puts state changes
+// on an uncontested channel, and lets the LED go back to doing one job.
+static const uint8_t* g_speech     = nullptr;
+static size_t         g_speech_len = 0;
+static float          g_speech_pos = 0.0f;
+
+static inline void Announce(const uint8_t* pcm, size_t len)
+{
+    g_speech     = pcm;
+    g_speech_len = len;
+    g_speech_pos = 0.0f;
+}
+
+// Level of the announcement, and how far the kit ducks under it.
+static constexpr float kSpeechLevel = 0.70f;
+static constexpr float kSpeechDuck  = 0.35f;
 
 // B7 press lockout: after a mode change, ignore further press edges for a
 // short window so contact bounce / electrical noise can't advance the mode
@@ -548,12 +579,37 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
     if(g_btn_lockout > 0)
         g_btn_lockout = (g_btn_lockout > size) ? g_btn_lockout - size : 0;
 
-    if(s_mode_btn.RisingEdge() && g_btn_lockout == 0)
+    if(s_mode_btn.Pressed())
     {
-        g_sub_mode = (g_sub_mode + 1) % kNumSubModes;
-        g_tk_caught[0] = g_tk_caught[1] = g_tk_caught[2] = g_tk_caught[3] = false;
-        g_tk_init      = true;
-        g_btn_lockout  = kBtnLockoutSamples;
+        g_btn_held += size;
+        if(!g_btn_long_done && g_btn_held >= kLongPressSamples)
+        {
+            // Hold: next drum-map bank.
+            const uint8_t next
+                = (daisy_grids::grids_port::GetBank() + 1)
+                  % daisy_grids::grids_port::kNumBanks;
+            daisy_grids::grids_port::SetBank(next);
+            if(next == 0)
+                Announce(sorrow::kSpeechBankEdm, sorrow::kSpeechBankEdmLen);
+            else
+                Announce(sorrow::kSpeechBankTrad, sorrow::kSpeechBankTradLen);
+            g_btn_long_done = true;
+        }
+    }
+    else
+    {
+        // Released. A short press cycles the page; a long one already acted.
+        if(g_btn_held >= kMinPressSamples && !g_btn_long_done
+           && g_btn_lockout == 0)
+        {
+            g_sub_mode = (g_sub_mode + 1) % kNumSubModes;
+            g_tk_caught[0] = g_tk_caught[1] = g_tk_caught[2] = g_tk_caught[3]
+                = false;
+            g_tk_init     = true;
+            g_btn_lockout = kBtnLockoutSamples;
+        }
+        g_btn_held      = 0;
+        g_btn_long_done = false;
     }
 
     // B8 toggle rolls a fresh kit on the return flip. The toggle no longer
@@ -900,8 +956,36 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
             // Mix, drive, and saturate (drive lifts level and adds punch)
             float mix_l = kMixKick * kick_l + kMixSnare * snare_l + kMixHat * hat_l;
             float mix_r = kMixKick * kick_r + kMixSnare * snare_r + kMixHat * hat_r;
-            out[0][i] = FastSaturate(mix_l * kOutputDrive);
-            out[1][i] = FastSaturate(mix_r * kOutputDrive);
+            float l     = FastSaturate(mix_l * kOutputDrive);
+            float r     = FastSaturate(mix_r * kOutputDrive);
+
+            // Spoken announcement over the top, with the kit ducked under it.
+            // Linear interpolation because the source is 11 kHz against a
+            // 48 kHz output and nearest-neighbour would alias audibly on
+            // speech, which is all transients and formants.
+            if(g_speech)
+            {
+                const size_t idx = static_cast<size_t>(g_speech_pos);
+                if(idx + 1 >= g_speech_len)
+                {
+                    g_speech = nullptr;
+                }
+                else
+                {
+                    const float frac = g_speech_pos - static_cast<float>(idx);
+                    const float a    = (static_cast<float>(g_speech[idx]) - 128.0f)
+                                    / 128.0f;
+                    const float b    = (static_cast<float>(g_speech[idx + 1]) - 128.0f)
+                                    / 128.0f;
+                    const float v    = (a + (b - a) * frac) * kSpeechLevel;
+                    g_speech_pos += sorrow::kSpeechRateHz / sr;
+                    l = l * kSpeechDuck + v;
+                    r = r * kSpeechDuck + v;
+                }
+            }
+
+            out[0][i] = l;
+            out[1][i] = r;
         }
     }
 
@@ -991,6 +1075,9 @@ int main(void)
     kBarFlashShort     = static_cast<uint32_t>(kBarFlashShortSeconds * sr);
     kBtnLockoutSamples = static_cast<uint32_t>(kBtnLockoutSeconds * sr);
     kTriggerSamples    = static_cast<uint32_t>(kTriggerSeconds * sr);
+    kLongPressSamples  = static_cast<uint32_t>(kLongPressSeconds * sr);
+    kMinPressSamples   = static_cast<uint32_t>(kMinPressSeconds * sr);
+
 
     // Construct every model in the pool, then boot with a rolled kit.
     sorrow::VoicesInit(sr, []() -> uint32_t { return System::GetUs(); });
