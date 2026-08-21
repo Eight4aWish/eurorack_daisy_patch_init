@@ -15,8 +15,16 @@ reproducible.
 
 ## The method
 
-    python3 extract.py groove.zip patterns.npy   # parse the corpus
+    python3 extract.py groove.zip patterns.npy   # a zip...
+    python3 extract.py ~/midi/techno patterns.npy   # ...or any folder of MIDI
     python3 som.py                               # train the map, emit the table
+
+`extract.py` takes a zip, a directory tree, or a single file. The directory case
+is the useful one for a personal corpus: export patterns out of whatever
+produced them, one folder per genre, and the parent directory becomes the label.
+Nothing is redistributed, so deriving a bank from commercially licensed content
+is fine — it just cannot be shipped, and does not need to be. The bank is 2.4 KB
+of centroids over thousands of patterns; no source pattern survives in it.
 
 **Corpus.** The [Groove MIDI Dataset](https://magenta.withgoogle.com/datasets/groove)
 — 1,150 files, 13.6 hours of human drumming across rock, funk, afrobeat, hiphop,
