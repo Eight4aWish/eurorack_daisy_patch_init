@@ -216,6 +216,32 @@ static uint32_t           kBtnLockoutSamples = 9600;  // set from sample rate
 // punch while still limiting peaks below full scale.
 static constexpr float kOutputDrive = 3.5f;
 
+// Per-slot mix balance, applied after each model's boot-measured level trim.
+//
+// These were 0.95 / 0.70 / 1.35, tuned by ear for v1's three fixed voices where
+// the hi-hat was naturally quiet and needed lifting. Boot-time normalisation now
+// brings every model to a common peak already, so that 1.35 became a second
+// correction stacked on the first: the hat arrived at the saturator around 3.3
+// where the snare arrived at 1.7, making it both the loudest voice and the most
+// compressed. Roughly twice as much drive as anything else, for no reason
+// beyond history.
+//
+// The trim upstream equalises *peak*, which is the wrong measure for balancing
+// percussion: a hat is over in milliseconds, so at equal peak it carries far
+// less energy and sounds much quieter. Measured across 300 rolls, rms/peak is
+// 0.168 for the kick, 0.106 for the snare and 0.048 for the hat - so simply
+// matching the kick's energy needs 1.00 / 1.36 / 3.41.
+//
+// These set a musical balance on top of that: snare about 3 dB under the kick,
+// hat about 8 dB under. Flattening them toward 1.0 buries the hat, which is the
+// mistake that produced this comment.
+//
+// Worth noting the hat figure lands within a whisker of the 0.95/0.70/1.35 that
+// was tuned purely by ear for v1 - the ear and the arithmetic agree here.
+static constexpr float kMixKick  = 1.00f;
+static constexpr float kMixSnare = 0.95f;
+static constexpr float kMixHat   = 1.30f;
+
 // Lightweight xorshift RNG for kit randomization.
 static uint32_t g_rng = 0x1234567u;
 static inline uint32_t RngNext()
@@ -872,8 +898,8 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
             const float hat_r   = hat_out   * g_hat_gr;
 
             // Mix, drive, and saturate (drive lifts level and adds punch)
-            float mix_l = 0.95f * kick_l + 0.70f * snare_l + 1.35f * hat_l;
-            float mix_r = 0.95f * kick_r + 0.70f * snare_r + 1.35f * hat_r;
+            float mix_l = kMixKick * kick_l + kMixSnare * snare_l + kMixHat * hat_l;
+            float mix_r = kMixKick * kick_r + kMixSnare * snare_r + kMixHat * hat_r;
             out[0][i] = FastSaturate(mix_l * kOutputDrive);
             out[1][i] = FastSaturate(mix_r * kOutputDrive);
         }
