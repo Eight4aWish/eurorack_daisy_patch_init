@@ -26,11 +26,20 @@
 
 #include <cmath>
 #include <cstdint>
+#include <chrono>
 #include <cstdarg>
 #include <cstdio>
 
 namespace
 {
+uint32_t HostMicros()
+{
+    return static_cast<uint32_t>(
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now().time_since_epoch())
+            .count());
+}
+
 uint32_t g_rng = 0x1234567u;
 float    Rnd()
 {
@@ -219,9 +228,12 @@ void CheckSpread()
 
 int main()
 {
-    // No MicrosFn: cost measurement is a target-only concern, so every model
-    // reads as free here and the cost budget never excludes anything.
-    sorrow::VoicesInit(kSampleRate);
+    // Pass a micros function so the pool measures levels and applies its output
+    // trims - otherwise the checks run on unnormalised voices and cannot see the
+    // gain staging the firmware actually ships. The cost numbers that come out
+    // of it are host speeds and therefore meaningless, but they are uniformly
+    // tiny, so the kit budget excludes nothing and model choice is unaffected.
+    sorrow::VoicesInit(kSampleRate, HostMicros);
 
     CheckAudible();
     CheckDecay();

@@ -433,6 +433,39 @@ uint8_t PickModel(uint8_t         slot,
 
 namespace
 {
+// Peak of one triggered hit at a given wildness, used to calibrate output level.
+// The window is long enough to catch a slow attack, not just the first
+// milliseconds. Uses its own deterministic generator so boot is repeatable.
+constexpr float   kTargetPeak = 0.60f;
+constexpr uint8_t kLevelDraws = 5;
+
+float MeasurePeak(Voice* v, float sample_rate, float wildness)
+{
+    static uint32_t seed = 0x9E3779B9u;
+    auto            det  = []() -> float {
+        seed ^= seed << 13;
+        seed ^= seed >> 17;
+        seed ^= seed << 5;
+        return static_cast<float>(seed & 0xFFFFFFu) / static_cast<float>(0x1000000);
+    };
+
+    v->Init(sample_rate);
+    v->SetOutputGain(1.0f);
+    v->Randomize(wildness, det);
+    v->Trig(1.0f);
+
+    const int   n    = static_cast<int>(sample_rate * 0.12f);
+    float       peak = 0.0f;
+    for(int i = 0; i < n; ++i)
+    {
+        const float a = v->Process();
+        const float m = a < 0.0f ? -a : a;
+        if(m > peak)
+            peak = m;
+    }
+    return peak;
+}
+
 // Time one model over a burst of samples and express it as a fraction of one
 // sample period. Deterministic parameters so the measurement is repeatable.
 float MeasureCost(Voice* v, float sample_rate, MicrosFn micros, float* peak_out)
@@ -451,7 +484,7 @@ float MeasureCost(Voice* v, float sample_rate, MicrosFn micros, float* peak_out)
 
     v->Init(sample_rate);
     v->Randomize(0.5f, det);
-    v->Trig(0.8f);
+    v->Trig(1.0f);
 
     // Warm up so first-call effects don't land in the measurement.
     for(int i = 0; i < 64; ++i)
@@ -499,18 +532,35 @@ void VoicesInit(float sample_rate, MicrosFn micros)
                                ? MeasureCost(s.models[m].voice, sample_rate, micros, &peak)
                                : 0.0f;
 
-            // Normalise each model towards a common peak. Clamped so a model
-            // that measured unusually quiet or loud on this one benchmark
-            // stroke can't be scaled to something absurd.
-            constexpr float kTargetPeak = 0.70f;
-            float           gain        = 1.0f;
+            // One draw is not enough to calibrate a level. The first attempt
+            // measured a single mid-wildness randomize, but a model's loudness
+            // varies enormously with its parameters, so kits routinely came out
+            // five or six times full scale and the output saturator spent its
+            // life acting as a hard limiter - which flattened the mix balance
+            // into meaninglessness. Sample several draws across the wildness
+            // range and trim to the loudest.
+            if(micros)
+            {
+                for(uint8_t pass = 0; pass < kLevelDraws; ++pass)
+                {
+                    const float w = static_cast<float>(pass)
+                                    / static_cast<float>(kLevelDraws - 1);
+                    const float p = MeasurePeak(s.models[m].voice, sample_rate, w);
+                    if(p > peak)
+                        peak = p;
+                }
+            }
+
+            float gain = 1.0f;
             if(peak > 1.0e-4f)
             {
                 gain = kTargetPeak / peak;
-                if(gain < 0.25f)
-                    gain = 0.25f;
-                if(gain > 4.0f)
-                    gain = 4.0f;
+                // Wide enough to actually tame a loud model. The old floor of
+                // 0.25 could not: a model peaking at 6 stayed at 1.5.
+                if(gain < 0.02f)
+                    gain = 0.02f;
+                if(gain > 8.0f)
+                    gain = 8.0f;
             }
             s_gain[i][m] = gain;
             s.models[m].voice->SetOutputGain(gain);
