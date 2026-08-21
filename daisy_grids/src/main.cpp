@@ -899,15 +899,16 @@ int main(void)
     // and stay there. Standard practice for audio DSP on Cortex-M.
     __set_FPSCR(__get_FPSCR() | (1u << 24));
 
-    // 32 kHz, not 48. Measured on this hardware, the cheapest possible kit cost
-    // 53% of a 48 kHz sample period and the cheapest hi-hat alone cost 31%,
-    // which left no room to choose between models and put the callback close
-    // enough to the edge that it intermittently starved SysTick and froze the
-    // panel. The work per sample is unchanged, but each sample now has half as
-    // much again to do it in, so the same kit costs about two thirds as much.
-    // A drum machine does not need 48 kHz; the trade is a 16 kHz Nyquist, which
-    // the hat frequency ranges in drum_voices.cpp are set to respect.
-    patch.SetAudioSampleRate(SaiHandle::Config::SampleRate::SAI_32KHZ);
+    // Back to 48 kHz. 32 kHz was adopted because the DaisySP drum models were
+    // unaffordable here - the cheapest possible kit cost 53% of a sample period
+    // and the cheapest hi-hat alone 31%, which starved SysTick and froze the
+    // panel. Forking the snare and the hi-hat removed that constraint: the
+    // floor is now 15% at 32 kHz, so roughly 22% here, and the hat frequency
+    // ranges no longer have to duck under a 16 kHz Nyquist.
+    //
+    // Flip this to SAI_32KHZ to A/B; the hat ranges in drum_voices.cpp are the
+    // only thing tied to the choice.
+    patch.SetAudioSampleRate(SaiHandle::Config::SampleRate::SAI_48KHZ);
 
 #if SORROW_LOG_USB
     patch.StartLog(false);   // non-blocking: runs fine with nothing attached

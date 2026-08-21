@@ -240,9 +240,11 @@ class HatVoice : public ModelVoice<Hat>
   public:
     void Randomize(float w, RandFn r) override
     {
-        // Capped for a 32 kHz sample rate: the metallic cluster sits well below
-        // the 16 kHz Nyquist rather than folding back over itself.
-        this->model_.SetFreq(RndW(r, w, 5000.f, 8000.f, 2200.f, 11000.f));
+        // Full range again at 48 kHz: the metallic cluster can reach the top of
+        // the band without folding back. At 32 kHz this has to come down to
+        // about 11 kHz to stay under a 16 kHz Nyquist, which costs the hats
+        // their top octave.
+        this->model_.SetFreq(RndW(r, w, 6000.f, 10000.f, 2500.f, 16000.f));
         this->model_.SetDecay(RndW(r, w, 0.20f, 0.50f, 0.02f, 0.95f));
         // Capped at 0.92, not 1.0: measured on the host, both HiHat variants go
         // non-finite at tone >= 0.98 - the filter loses stability up there - and
@@ -258,7 +260,7 @@ class ModalHat : public ModelVoice<ModalVoice>
   public:
     void Randomize(float w, RandFn r) override
     {
-        model_.SetFreq(RndW(r, w, 2000.f, 4500.f, 900.f, 7500.f));
+        model_.SetFreq(RndW(r, w, 2200.f, 5000.f, 900.f, 9000.f));
         model_.SetStructure(RndW(r, w, 0.30f, 0.60f, 0.00f, 0.95f));
         model_.SetBrightness(RndW(r, w, 0.45f, 0.75f, 0.10f, 1.00f));
         model_.SetDamping(RndW(r, w, 0.25f, 0.45f, 0.25f, 0.85f));
