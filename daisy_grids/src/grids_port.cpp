@@ -57,30 +57,39 @@ const uint8_t* const drum_map_club[5][5] = {
 };
 
 using MapRow = const uint8_t* const (*)[5];
-#if SORROW_USER_BANK
-const uint8_t* const drum_map_user[5][5] = {
-    {user_node_0, user_node_1, user_node_2, user_node_3, user_node_4},
-    {user_node_5, user_node_6, user_node_7, user_node_8, user_node_9},
-    {user_node_10, user_node_11, user_node_12, user_node_13, user_node_14},
-    {user_node_15, user_node_16, user_node_17, user_node_18, user_node_19},
-    {user_node_20, user_node_21, user_node_22, user_node_23, user_node_24},
-};
-#endif
+// The user bank's 5x5 of pointers is built at runtime into the loaded buffer.
+const uint8_t* drum_map_user[5][5] = {};
 
-const MapRow kBanks[kNumBanks] = {
-    drum_map_grids,
-    drum_map_club,
-    drum_map_groove,
-#if SORROW_USER_BANK
-    drum_map_user,
-#endif
-};
-uint8_t      s_bank            = 0;
+const MapRow kFactoryBanks[kNumFactoryBanks]
+    = {drum_map_grids, drum_map_club, drum_map_groove};
+
+uint8_t s_bank       = 0;
+bool    s_have_user  = false;
 } // namespace
+
+void SetUserBank(const uint8_t* nodes)
+{
+    if(nodes == nullptr)
+    {
+        s_have_user = false;
+        if(s_bank >= kNumFactoryBanks)
+            s_bank = 0;
+        return;
+    }
+    for(uint8_t r = 0; r < 5; ++r)
+        for(uint8_t c = 0; c < 5; ++c)
+            drum_map_user[r][c] = nodes + (r * 5 + c) * 96;
+    s_have_user = true;
+}
+
+uint8_t BankCount()
+{
+    return s_have_user ? kMaxBanks : kNumFactoryBanks;
+}
 
 void SetBank(uint8_t bank)
 {
-    s_bank = bank < kNumBanks ? bank : 0;
+    s_bank = bank < BankCount() ? bank : 0;
 }
 
 uint8_t GetBank()
@@ -126,7 +135,9 @@ uint8_t GridsDrumGenerator::ReadDrumMap(uint8_t step, uint8_t instrument, uint8_
     const uint8_t i = x >> 6; // 0..3
     const uint8_t j = y >> 6; // 0..3
 
-    const MapRow         map   = kBanks[s_bank];
+    const MapRow map = (s_bank < kNumFactoryBanks)
+                           ? kFactoryBanks[s_bank]
+                           : static_cast<MapRow>(drum_map_user);
     const uint8_t* const a_map = map[i][j];
     const uint8_t* const b_map = map[i + 1][j];
     const uint8_t* const c_map = map[i][j + 1];
