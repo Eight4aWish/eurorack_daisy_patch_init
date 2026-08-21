@@ -11,7 +11,7 @@ Firmwares offered as finished modules are named after the nursery rhyme
 
 | Name | Firmware | Version | Based on | Licence |
 | --- | --- | --- | --- | --- |
-| **Sorrow** | [`daisy_grids/`](daisy_grids/) | v1.0.1 | Mutable Instruments Grids | **GPL-3.0-or-later** |
+| **Sorrow** | [`daisy_grids/`](daisy_grids/) | v2.0.0 | Mutable Instruments Grids | **GPL-3.0-or-later** |
 | **Joy** | [`daisy_braids_oled/`](daisy_braids_oled/) | v1.4.0 | Mutable Instruments Braids | MIT |
 | **Joy Lite** | [`daisy_joy_lite/`](daisy_joy_lite/) | v1.4.0 | Mutable Instruments Braids | MIT |
 
@@ -85,7 +85,7 @@ make DAISY_ROOT=/path/to/daisy
 ## Projects
 
 - `daisy_multiosc/` – **boot-selectable multi-engine synth** for the Daisy Patch Init: pick a voice at power-up, all sharing one universal panel + OLED legend (`BOOT_QSPI`). Engines: **FM4OP** (4-op FM), **INTVL** (dual interval oscillator), **SCAN** (scanned synthesis), **BYTEBEAT** (dual-voice bytebeat), plus a SINE test voice. See its [README](daisy_multiosc/README.md), the control contract in [docs/PANEL.md](docs/PANEL.md), and [docs/ROADMAP.md](docs/ROADMAP.md).
-- `daisy_grids/` – **Sorrow** — 3 synthetic drum voices + X/Y pattern sequencer, based on Mutable Instruments Grids (**GPL-3.0-or-later**)
+- `daisy_grids/` – **Sorrow** — drum machine: a pool of ten DaisySP drum models rolled by the B8 toggle, three pattern banks (one Grids' own, two derived here from open MIDI corpora via a self-organising map), per-part densities and automatic clock-resolution detection, based on Mutable Instruments Grids (**GPL-3.0-or-later**). Runs `BOOT_SRAM` — needs the Daisy bootloader.
 - `daisy_braids_oled/` – **Joy** — macro oscillator (48 models) with 64x48 OLED menu navigation, based on Mutable Instruments Braids; on-module V/Oct calibration (hold B7 at power-up)
 - `daisy_joy_lite/` – **Joy Lite** — screenless sibling: a curated 16 Braids models (the ones Plaits doesn't cover) in two toggle banks, model number shown by LED blink
 - `daisy_multifx_oled/` – Multi-effect processor with 64x48 OLED: 16 effects in a 4×4 grid (Reverb / Delay / Tone / Misc banks), built on the shared `multifx_core` library (also runs on a bare Daisy Seed with a homebrew front end — see `daisy_multifx_seed/`)

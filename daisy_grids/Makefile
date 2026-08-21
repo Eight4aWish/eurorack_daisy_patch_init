@@ -142,8 +142,8 @@ flash: program-dfu-local
 #######################################
 # Release
 #######################################
-# Builds the distributable firmware: three factory banks, no user bank, version
-# stamped into the binary and the filename. Distributing this is distributing a
+# Builds the distributable firmware: the three factory banks, version stamped
+# into the binary and the filename. Distributing this is distributing a
 # GPL-3.0-or-later work, so the corresponding source has to be available - tag
 # the commit you build from and publish the tag alongside the binary.
 #
@@ -156,7 +156,7 @@ release:
 	@$(MAKE) SORROW_VERSION=$(SORROW_VERSION) >/dev/null
 	@cp build/$(TARGET).bin build/$(TARGET)-v$(SORROW_VERSION).bin
 	@echo "build/$(TARGET)-v$(SORROW_VERSION).bin  ($$(stat -f%z build/$(TARGET)-v$(SORROW_VERSION).bin) bytes)"
-	@echo "  three factory banks; a sorrow_bank.bin on the card adds a fourth"
+	@echo "  three factory banks (Original / Club / Traditional)"
 	@echo "  requires the Daisy bootloader on the target: make program-boot"
 	@echo "  tag the source before publishing: git tag sorrow-v$(SORROW_VERSION)"
 
