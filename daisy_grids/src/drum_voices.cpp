@@ -7,6 +7,7 @@
 #include "drum_voices.h"
 
 #include "analog_snare_fast.h"
+#include "hihat_fast.h"
 #include "daisysp.h"
 
 #include <cmath>
@@ -311,8 +312,8 @@ AnalogSnare s_snare_analog;
 ModalSnare  s_snare_modal;
 StringSnare s_snare_string;
 
-HatVoice<HiHat<SquareNoise, LinearVCA>>  s_hat_square;
-HatVoice<HiHat<RingModNoise, SwingVCA>>  s_hat_ringmod;
+HatVoice<HiHatFast<SquareNoise, LinearVCA>>  s_hat_square;
+HatVoice<HiHatFast<RingModNoise, SwingVCA>>  s_hat_ringmod;
 ModalHat                                 s_hat_modal;
 
 const Entry kKickModels[] = {
