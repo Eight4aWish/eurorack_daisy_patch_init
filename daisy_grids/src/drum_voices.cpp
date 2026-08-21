@@ -6,6 +6,7 @@
 
 #include "drum_voices.h"
 
+#include "analog_snare_fast.h"
 #include "daisysp.h"
 
 #include <cmath>
@@ -183,7 +184,7 @@ class SynthSnare : public ModelVoice<SyntheticSnareDrum>
     }
 };
 
-class AnalogSnare : public ModelVoice<AnalogSnareDrum>
+class AnalogSnare : public ModelVoice<AnalogSnareFast>
 {
   public:
     void Randomize(float w, RandFn r) override
@@ -192,7 +193,8 @@ class AnalogSnare : public ModelVoice<AnalogSnareDrum>
         model_.SetTone(RndW(r, w, 0.30f, 0.70f, 0.00f, 1.00f));
         model_.SetDecay(RndW(r, w, 0.20f, 0.45f, 0.05f, 0.90f));
         model_.SetSnappy(RndW(r, w, 0.40f, 0.80f, 0.05f, 1.00f));
-        // The model itself never stops; the VCA is what makes it a snare.
+        // The model still never stops on its own; the VCA is what makes it a
+        // snare rather than a drone. Unchanged by the fork.
         SetEnvDecay(RndW(r, w, 0.09f, 0.20f, 0.04f, 0.55f));
     }
 };
@@ -241,7 +243,11 @@ class HatVoice : public ModelVoice<Hat>
         // the 16 kHz Nyquist rather than folding back over itself.
         this->model_.SetFreq(RndW(r, w, 5000.f, 8000.f, 2200.f, 11000.f));
         this->model_.SetDecay(RndW(r, w, 0.20f, 0.50f, 0.02f, 0.95f));
-        this->model_.SetTone(RndW(r, w, 0.50f, 0.85f, 0.10f, 1.00f));
+        // Capped at 0.92, not 1.0: measured on the host, both HiHat variants go
+        // non-finite at tone >= 0.98 - the filter loses stability up there - and
+        // a NaN reaching the mix takes the whole output with it. Predates the
+        // pool; it was simply never rolled until the model list changed.
+        this->model_.SetTone(RndW(r, w, 0.50f, 0.85f, 0.10f, 0.92f));
         this->model_.SetNoisiness(RndW(r, w, 0.80f, 1.00f, 0.20f, 1.00f));
     }
 };
@@ -301,6 +307,7 @@ AnalogKick  s_kick_analog;
 ModalKick   s_kick_modal;
 
 SynthSnare  s_snare_synth;
+AnalogSnare s_snare_analog;
 ModalSnare  s_snare_modal;
 StringSnare s_snare_string;
 
@@ -314,19 +321,9 @@ const Entry kKickModels[] = {
     {&s_kick_modal, Family::Acoustic, 0.50f, "modal BD"},
 };
 
-// AnalogSnareDrum is deliberately absent. It sounds right, but DaisySP's port
-// recomputes two powf() calls and five Svf SetFreq/SetRes pairs - each of those
-// a tanf() - on *every sample*. On the M7 that is enough to consume the audio
-// budget, which starves SysTick, which stops System::GetNow() advancing, which
-// freezes Switch::Debounce() - so the module keeps playing while both switches
-// die. Measured on hardware: this model, and only this model, hangs the panel.
-//
-// Every one of those computations depends solely on parameters that change once
-// per roll, so a forked, coefficient-hoisted version would be cheap and would
-// earn the 808 snare its place back. Until then the Analog family has no snare
-// of its own and PickModel's fallback supplies one from elsewhere.
 const Entry kSnareModels[] = {
     {&s_snare_synth, Family::Elec, 0.00f, "synth SD"},
+    {&s_snare_analog, Family::Analog, 0.10f, "analog SD"},
     {&s_snare_modal, Family::Acoustic, 0.45f, "modal SD"},
     {&s_snare_string, Family::Acoustic, 0.80f, "string SD"},
 };
@@ -349,7 +346,7 @@ float s_sample_rate = 48000.0f;
 
 SlotState s_slots[static_cast<uint8_t>(Slot::kCount)] = {
     {kKickModels, 3, 0, 0.5f},
-    {kSnareModels, 3, 0, 0.5f},
+    {kSnareModels, 4, 0, 0.5f},
     {kHatModels, 3, 0, 0.5f},
 };
 

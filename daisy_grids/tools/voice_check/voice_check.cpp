@@ -142,19 +142,30 @@ void CheckSoak()
                 sorrow::VoiceTrig(sorrow::Slot::Hat, 0.55f);
             for(int i = 0; i < step_samples; ++i)
             {
-                const float k = sorrow::VoiceProcess(sorrow::Slot::Kick);
-                const float s = sorrow::VoiceProcess(sorrow::Slot::Snare);
-                const float h = sorrow::VoiceProcess(sorrow::Slot::Hat);
-                const float l = 0.95f * k * std::sqrt(1 - kp)
-                                + 0.70f * s * std::sqrt(1 - sp)
-                                + 1.35f * h * std::sqrt(1 - hp);
+                const float v[3] = {sorrow::VoiceProcess(sorrow::Slot::Kick),
+                                    sorrow::VoiceProcess(sorrow::Slot::Snare),
+                                    sorrow::VoiceProcess(sorrow::Slot::Hat)};
+                // Name the offending voice, not just the kit: a kit is three
+                // models and reporting all three sends you hunting the wrong one.
+                for(int sl = 0; sl < 3; ++sl)
+                    if(!std::isfinite(v[sl]))
+                    {
+                        Fail("w=%.3f %s produced NaN at step %d (kit %s / %s / %s)",
+                             w,
+                             sorrow::VoiceModelName(static_cast<sorrow::Slot>(sl)),
+                             step,
+                             sorrow::VoiceModelName(sorrow::Slot::Kick),
+                             sorrow::VoiceModelName(sorrow::Slot::Snare),
+                             sorrow::VoiceModelName(sorrow::Slot::Hat));
+                        return;
+                    }
+                const float l = 0.95f * v[0] * std::sqrt(1 - kp)
+                                + 0.70f * v[1] * std::sqrt(1 - sp)
+                                + 1.35f * v[2] * std::sqrt(1 - hp);
                 const float out = (l * 3.5f) / (1.0f + std::fabs(l * 3.5f));
                 if(!std::isfinite(out))
                 {
-                    Fail("w=%.3f kit %s / %s / %s produced NaN", w,
-                         sorrow::VoiceModelName(sorrow::Slot::Kick),
-                         sorrow::VoiceModelName(sorrow::Slot::Snare),
-                         sorrow::VoiceModelName(sorrow::Slot::Hat));
+                    Fail("w=%.3f mix produced NaN from finite voices", w);
                     return;
                 }
             }

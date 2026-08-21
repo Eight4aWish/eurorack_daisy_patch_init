@@ -189,15 +189,18 @@ static constexpr float kCatchEps = 0.03f;
 
 // Brief LED confirmation flash after a randomize gesture.
 static uint32_t g_rand_flash = 0;
-static constexpr uint32_t kFlashSamples = 8000;  // ~0.17s at 48kHz
+static constexpr float    kFlashSeconds = 0.17f;
+static uint32_t           kFlashSamples = 8000;  // set from sample rate at boot
 
 // Bar indicator. With no screen this is the only way to see whether the
 // detected clock ratio is right: if the LED pulses in time with the bar you
 // are hearing, the division is correct. Long on the phrase start (step 0),
 // short on the second bar (step 16), so "ONE two" is distinguishable.
 static uint32_t g_bar_flash = 0;
-static constexpr uint32_t kBarFlashLong  = 3800;  // ~0.08s at 48kHz
-static constexpr uint32_t kBarFlashShort = 1400;  // ~0.03s at 48kHz
+static constexpr float kBarFlashLongSeconds  = 0.08f;
+static constexpr float kBarFlashShortSeconds = 0.03f;
+static uint32_t        kBarFlashLong         = 3800;  // set from sample rate
+static uint32_t        kBarFlashShort        = 1400;  // set from sample rate
 static constexpr uint8_t  kStepsPerBar   = 16;    // 32-step pattern = 2 bars of 4/4
 
 // B7 press lockout: after a mode change, ignore further press edges for a
@@ -205,7 +208,8 @@ static constexpr uint8_t  kStepsPerBar   = 16;    // 32-step pattern = 2 bars of
 // more than once per physical press. ~200ms is well above any bounce but
 // still allows brisk deliberate presses.
 static uint32_t g_btn_lockout = 0;
-static constexpr uint32_t kBtnLockoutSamples = 9600;  // ~0.20s at 48kHz
+static constexpr float    kBtnLockoutSeconds = 0.20f;
+static uint32_t           kBtnLockoutSamples = 9600;  // set from sample rate
 
 // Output drive into the soft saturator. The saturator (x/(1+|x|)) otherwise
 // pulls a single hit down ~7dB; driving it harder restores level and adds
@@ -377,7 +381,8 @@ static GPIO g_gate_snare;  // B6
 static constexpr float kTriggerVolts = 5.0f;
 
 // Trigger duration in samples (approx 10ms at 48kHz)
-static constexpr uint32_t kTriggerSamples = 480;
+static constexpr float kTriggerSeconds = 0.010f;  // 10 ms, a safe eurorack trigger
+static uint32_t        kTriggerSamples = 480;      // set from sample rate at boot
 static uint32_t g_trig_kick_remaining  = 0;
 static uint32_t g_trig_snare_remaining = 0;
 static uint32_t g_trig_hat_remaining   = 0;
@@ -927,6 +932,16 @@ int main(void)
 
     g_rng = seed | 1u;
     grids.Init(static_cast<uint16_t>(((seed >> 16) ^ seed) & 0xFFFFu));
+
+    // These are all durations, not sample counts. They were written as constants
+    // for 48 kHz, so dropping to 32 kHz silently stretched every one of them by
+    // half - including the trigger output width, which went from 10 ms to 15 ms.
+    // Derive them from the running sample rate instead.
+    kFlashSamples      = static_cast<uint32_t>(kFlashSeconds * sr);
+    kBarFlashLong      = static_cast<uint32_t>(kBarFlashLongSeconds * sr);
+    kBarFlashShort     = static_cast<uint32_t>(kBarFlashShortSeconds * sr);
+    kBtnLockoutSamples = static_cast<uint32_t>(kBtnLockoutSeconds * sr);
+    kTriggerSamples    = static_cast<uint32_t>(kTriggerSeconds * sr);
 
     // Construct every model in the pool, then boot with a rolled kit.
     sorrow::VoicesInit(sr, []() -> uint32_t { return System::GetUs(); });
