@@ -9,7 +9,9 @@ import zipfile, struct, sys, collections, pathlib
 import numpy as np
 
 KICK  = {35, 36}
-SNARE = {37, 38, 40}
+# 39 is hand clap. In electronic music it plays the snare's role - often instead
+# of one - so it belongs in this lane rather than being discarded.
+SNARE = {37, 38, 39, 40}
 HAT   = {42, 44, 46, 51, 59}          # closed, pedal, open, ride, ride bell
 LANES = [KICK, SNARE, HAT]
 
@@ -21,8 +23,14 @@ def varlen(b, i):
         if not c & 0x80:
             return v, i
 
-def note_ons(data):
-    """Yield (tick, note, velocity) plus ticks-per-quarter."""
+def note_ons(data, drum_channel_only=False):
+    """Yield (tick, note, velocity) plus ticks-per-quarter.
+
+    drum_channel_only matters for any corpus of full arrangements rather than
+    drum-only files: GM puts drums on channel 10 (index 9), and melodic parts
+    live squarely in the 35-59 note range this cares about. Without the filter a
+    bassline reads as a kick drum.
+    """
     if data[:4] != b'MThd':
         return [], 0
     _, hlen, fmt, ntrk, div = struct.unpack('>4sIHHH', data[:14])
@@ -50,12 +58,13 @@ def note_ons(data):
                 else:
                     note, vel = data[i], data[i+1]; i += 2
                     if hi == 0x90 and vel > 0:
-                        out.append((tick, note, vel))
+                        if not drum_channel_only or (status & 0x0F) == 9:
+                            out.append((tick, note, vel))
         pos = end
     return out, div
 
-def patterns_from(data):
-    ev, div = note_ons(data)
+def patterns_from(data, drum_channel_only=False):
+    ev, div = note_ons(data, drum_channel_only)
     if not ev or div <= 0:
         return []
     per16 = div / 4.0
@@ -103,9 +112,12 @@ def sources(path):
 
 def main():
     all_pats, styles = [], []
+    # A corpus of full arrangements needs the channel filter; a drum-only one
+    # like Groove MIDI does not and would lose nothing by it either way.
+    drums_only = '--gm-drum-channel' in sys.argv
     for label, data in sources(sys.argv[1]):
         try:
-            pats = patterns_from(data)
+            pats = patterns_from(data, drums_only)
         except Exception:
             continue
         all_pats.extend(pats)

@@ -24,7 +24,15 @@ CPP_SOURCES = \
 	src/grids_port.cpp \
 	src/grids_nodes.cpp \
 	src/grids_nodes_groove.cpp \
+	src/grids_nodes_club.cpp \
 	src/speech_data.cpp
+
+# Optional locally generated bank - see include/user_bank.h. Gitignored, and
+# compiled in only when present, so a clone without one still builds.
+ifneq ($(wildcard $(_P_DIR)/src/user_bank.cpp),)
+CPP_SOURCES += src/user_bank.cpp
+C_DEFS += -DSORROW_USER_BANK=1
+endif
 
 C_INCLUDES += \
 	-I$(_P_DIR)/include \

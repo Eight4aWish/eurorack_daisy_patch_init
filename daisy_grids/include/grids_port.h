@@ -8,11 +8,19 @@ namespace daisy_grids::grids_port {
 // Source reference: deps/mutable/eurorack/grids/pattern_generator.{h,cc}
 // License: GPL-3.0-or-later
 
-// Drum-map banks. Bank 0 is Emilie Gillet's original Grids map; bank 1 is
-// derived from the Groove MIDI Dataset by the same method - see
-// tools/groove_nodes/. Both are 25 nodes of 96 bytes with the same value
+// Drum-map banks, in the order the long-press cycles them:
+//   0  Original  - Emilie Gillet's Grids map
+//   1  Club      - Lakh, selected by rhythmic signature (four-to-floor, breaks,
+//                  half-time) rather than by genre label
+//   2  Traditional - Groove MIDI, human drummers
+//   3  User      - optional, generated locally, gitignored (see user_bank.h)
+// All three are 25 nodes of 96 bytes sharing the same per-lane value
 // distribution, so everything downstream is unaffected by the choice.
-constexpr uint8_t kNumBanks = 2;
+#if SORROW_USER_BANK
+constexpr uint8_t kNumBanks = 4;   // ...plus a locally generated one
+#else
+constexpr uint8_t kNumBanks = 3;
+#endif
 
 void    SetBank(uint8_t bank);
 uint8_t GetBank();

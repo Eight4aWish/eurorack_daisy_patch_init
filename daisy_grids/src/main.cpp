@@ -41,7 +41,7 @@ using namespace patch_sm;
 // B9  (Gate In 2): Reset input - rising edge resets pattern to step 0
 //
 // B7 Momentary Button: short press cycles pages, hold cycles drum-map bank
-//     (bank change blinks its number: 1 = Grids, 2 = Groove)
+//     (the module announces which bank: Original / Club / Traditional)
 //     Home (no flash): CV1=X, CV2=Y, CV3=Density, CV4=Randomness
 //     Kit  (1 pulse):  CV1/2/3 = kick/snare/hat density trim, CV4 = Wildness
 //   The sequencer keeps running on every page - the Kit page borrows the knobs,
@@ -589,10 +589,22 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
                 = (daisy_grids::grids_port::GetBank() + 1)
                   % daisy_grids::grids_port::kNumBanks;
             daisy_grids::grids_port::SetBank(next);
-            if(next == 0)
-                Announce(sorrow::kSpeechBankEdm, sorrow::kSpeechBankEdmLen);
-            else
-                Announce(sorrow::kSpeechBankTrad, sorrow::kSpeechBankTradLen);
+            switch(next)
+            {
+                case 0:
+                    Announce(sorrow::kSpeechBankOriginal,
+                             sorrow::kSpeechBankOriginalLen);
+                    break;
+                case 1:
+                    Announce(sorrow::kSpeechBankClub, sorrow::kSpeechBankClubLen);
+                    break;
+                case 2:
+                    Announce(sorrow::kSpeechBankTrad, sorrow::kSpeechBankTradLen);
+                    break;
+                default:
+                    Announce(sorrow::kSpeechBankUser, sorrow::kSpeechBankUserLen);
+                    break;
+            }
             g_btn_long_done = true;
         }
     }
