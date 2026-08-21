@@ -8,6 +8,7 @@
 
 #include "analog_snare_fast.h"
 #include "hihat_fast.h"
+#include "modal_voice_fast.h"
 #include "daisysp.h"
 
 #include <cmath>
@@ -156,7 +157,7 @@ class AnalogKick : public ModelVoice<AnalogBassDrum>
     }
 };
 
-class ModalKick : public ModelVoice<ModalVoice>
+class ModalKick : public ModelVoice<ModalVoiceFast<12>>
 {
   public:
     void Randomize(float w, RandFn r) override
@@ -212,7 +213,7 @@ class AnalogSnare : public ModelVoice<AnalogSnareFast>
     }
 };
 
-class ModalSnare : public ModelVoice<ModalVoice>
+class ModalSnare : public ModelVoice<ModalVoiceFast<12>>
 {
   public:
     void Randomize(float w, RandFn r) override
@@ -278,7 +279,7 @@ class HatVoice : public ModelVoice<Hat>
     }
 };
 
-class ModalHat : public ModelVoice<ModalVoice>
+class ModalHat : public ModelVoice<ModalVoiceFast<12>>
 {
   public:
     void Randomize(float w, RandFn r) override
