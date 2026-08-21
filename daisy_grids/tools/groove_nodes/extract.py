@@ -1,9 +1,11 @@
-"""Extract 2-bar, 3-lane drum patterns from the Groove MIDI Dataset.
+"""Extract 2-bar, 3-lane drum patterns from a corpus of MIDI.
+
+Takes a zip, a directory tree, or a single file.
 
 Minimal MIDI reader - only note-on events and the header's tick division are
 needed, so there is no reason to pull in a dependency.
 """
-import zipfile, struct, sys, collections
+import zipfile, struct, sys, collections, pathlib
 import numpy as np
 
 KICK  = {35, 36}
@@ -73,18 +75,49 @@ def patterns_from(data):
             out.append(g.reshape(-1))
     return out
 
+def sources(path):
+    """Yield (label, midi bytes) from a zip, a directory tree, or a single file.
+
+    A directory is the useful case for a personal corpus: export patterns out of
+    whatever produced them, drop them in a folder per genre, and the immediate
+    parent directory becomes the label. Nothing is redistributed, so a corpus of
+    commercially licensed content is fine to derive a bank from - it just cannot
+    be shipped, and does not need to be.
+    """
+    p = pathlib.Path(path)
+    if p.is_dir():
+        for f in sorted(p.rglob('*')):
+            if f.is_file() and f.suffix.lower() in ('.mid', '.midi'):
+                yield f.parent.name, f.read_bytes()
+    elif p.suffix.lower() == '.zip':
+        z = zipfile.ZipFile(p)
+        for n in z.namelist():
+            if n.lower().endswith('.mid'):
+                # Groove MIDI encodes style in the filename: 12_funk_81_beat_4-4
+                stem = n.split('/')[-1]
+                label = stem.split('_')[1] if '_' in stem else p.stem
+                yield label, z.read(n)
+    else:
+        yield p.stem, p.read_bytes()
+
+
 def main():
-    z = zipfile.ZipFile(sys.argv[1])
-    names = [n for n in z.namelist() if n.lower().endswith('.mid')]
     all_pats, styles = [], []
-    for n in names:
+    for label, data in sources(sys.argv[1]):
         try:
-            pats = patterns_from(z.read(n))
+            pats = patterns_from(data)
         except Exception:
             continue
-        style = n.split('/')[-1].split('_')[1] if '_' in n.split('/')[-1] else '?'
         all_pats.extend(pats)
-        styles.extend([style] * len(pats))
+        styles.extend([label] * len(pats))
+    if not all_pats:
+        sys.exit(
+            f"No drum patterns found in {sys.argv[1]}.\n"
+            "Looked for note-on events on the GM drum notes (kick 35/36, "
+            "snare 37/38/40, hats 42/44/46/51/59), keeping only 2-bar windows\n"
+            "with at least 8 hits. Melodic MIDI, or drums mapped to other "
+            "notes, will find nothing - see LANES at the top of this file.")
+
     X = np.array(all_pats, dtype=np.float32)
     np.save(sys.argv[2], X)
     print(f"patterns: {X.shape[0]}  vector: {X.shape[1]}")
