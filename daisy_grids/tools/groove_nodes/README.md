@@ -60,8 +60,10 @@ floor; the Y axis from dense to sparse.
 ## Other corpora worth the same treatment
 
 - [WaivOps](https://www.patchbanks.com/waivops/) EDM-HSE, EDM-TR9, EDM-TECH —
-  house, TR-909 and techno, CC BY 4.0. Audio datasets, but each loop ships a
-  paired JSON with MIDI note numbers and tempo, so the rhythm is extractable.
+  house, TR-909 and techno, CC BY 4.0. Tried and abandoned: the paired JSON
+  carries MIDI note numbers and tempo but *no onset times*, so it says which
+  drums are in a loop and never when they hit. Recovering the rhythm would mean
+  onset-detecting 7.6 GB of audio per dataset.
 - [MidiCaps](https://arxiv.org/pdf/2406.02255) — 168k MIDI files with genre
   captions, for filtering to a specific style.
 - Grime, psytrance and liquid DnB have no clean open corpus. Their signatures
