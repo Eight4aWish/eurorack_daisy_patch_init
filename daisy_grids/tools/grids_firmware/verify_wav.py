@@ -8,7 +8,11 @@ grids/bootloader/bootloader.cc checks before it writes a flash page.
 """
 import wave, numpy as np, zlib, sys
 
-ZERO, ONE, PAUSE, PAGE = 8, 16, 64, 128
+# Symbol durations in samples, straight from avr_audio_bootloader/fsk/decoder.h -
+# kZero/kOne/kPause. These are NOT the encoder's defaults (8/16/64); using those
+# produces a file where every zero reads as a one and every one reads as a pause,
+# so nothing ever CRCs. Verified against Mutable's own grids_1.0.wav.
+ZERO, ONE, PAUSE, PAGE = 4, 8, 16, 128
 
 def symbols(path):
     w = wave.open(path); n = w.getnframes()

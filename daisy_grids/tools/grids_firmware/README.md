@@ -66,7 +66,19 @@ deprecated `prog_uint8_t` alive.
     avr-objcopy -I ihex -O binary build/grids/grids.hex grids.bin
     python3 avr_audio_bootloader/fsk/encoder.py \
         --packet_size=128 --page_size=128 --sample_rate=40000 \
+        --zero_period=4 --one_period=8 --pause_period=16 \
         -o grids_<bank>.wav grids.bin
+
+**None of the period flags are optional either, and the encoder's defaults are
+wrong for this bootloader.** `fsk/decoder.h` fixes the symbol durations the
+module listens for:
+
+    const uint16_t kPause = 16;  const uint16_t kOne = 8;  const uint16_t kZero = 4;
+
+and classifies by threshold - `>= 12` is a pause, `>= 6` is a one, else a zero.
+The encoder defaults to 8/16/64, so every zero arrives as a one and every one as
+a pause: nothing ever CRCs and nothing is ever written. Mutable's own
+`grids_1.0.wav` measures 4/8/16, which is how this was pinned down.
 
 **`--packet_size=128` is not optional.** The bootloader reads one FSK packet into
 `rx_buffer[SPM_PAGESIZE + 4]` and flashes it as one page, and `SPM_PAGESIZE` on
@@ -92,6 +104,13 @@ itself.
   checksum passes and the payload matches the compiled firmware.
 
         python3 verify_wav.py
+
+- **The format is pinned to a known-good reference.** The same decoder reads
+  Mutable's own [grids_1.0.wav](https://pichenettes.github.io/mutable-instruments-documentation/modules/grids/downloads/grids_1.0.wav)
+  - the file they publish for reverting a module to stock - and recovers 99 valid
+  packets, 12,672 bytes, zero rejected. That is what makes the encoding claim
+  worth anything: it is checked against a file known to flash real hardware,
+  rather than against our own assumptions.
 
 ## How it gets onto the module
 
