@@ -22,11 +22,15 @@ namespace
 
 // Model families. Rolling at low wildness keeps all three slots in one family
 // so the kit hangs together; wildness is what lets them disagree.
+// Named for the synthesis method, and in the order wildness unlocks them.
+// "Acoustic" was the old name for the third one and it read as the tamest of the
+// three when it is in fact the strangest - a plucked string standing in for a
+// snare is not an acoustic drum, it is physical modelling being pushed.
 enum class Family : uint8_t
 {
-    Elec = 0,   // Mutable's "synthetic" drum models
+    Synth = 0,  // Mutable's "synthetic" drum models - the safe defaults
     Analog,     // the 808-lineage circuit emulations
-    Acoustic,   // struck/plucked physical models
+    Physical,   // struck and plucked physical models - modal, string
     kCount
 };
 
@@ -343,22 +347,22 @@ HatVoice<HiHatFast<RingModNoise, SwingVCA>>  s_hat_ringmod;
 ModalHat                                 s_hat_modal;
 
 const Entry kKickModels[] = {
-    {&s_kick_synth, Family::Elec, 0.00f, "synth BD"},
+    {&s_kick_synth, Family::Synth, 0.00f, "synth BD"},
     {&s_kick_analog, Family::Analog, 0.10f, "analog BD"},
-    {&s_kick_modal, Family::Acoustic, 0.50f, "modal BD"},
+    {&s_kick_modal, Family::Physical, 0.50f, "modal BD"},
 };
 
 const Entry kSnareModels[] = {
-    {&s_snare_synth, Family::Elec, 0.00f, "synth SD"},
+    {&s_snare_synth, Family::Synth, 0.00f, "synth SD"},
     {&s_snare_analog, Family::Analog, 0.10f, "analog SD"},
-    {&s_snare_modal, Family::Acoustic, 0.45f, "modal SD"},
-    {&s_snare_string, Family::Acoustic, 0.80f, "string SD"},
+    {&s_snare_modal, Family::Physical, 0.45f, "modal SD"},
+    {&s_snare_string, Family::Physical, 0.80f, "string SD"},
 };
 
 const Entry kHatModels[] = {
-    {&s_hat_square, Family::Elec, 0.00f, "square HH"},
+    {&s_hat_square, Family::Synth, 0.00f, "square HH"},
     {&s_hat_ringmod, Family::Analog, 0.20f, "ringmod HH"},
-    {&s_hat_modal, Family::Acoustic, 0.60f, "modal HH"},
+    {&s_hat_modal, Family::Physical, 0.60f, "modal HH"},
 };
 
 struct SlotState
