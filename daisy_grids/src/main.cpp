@@ -337,69 +337,35 @@ static bool g_awaiting_first_clock = false; // After reset, suppress sub-ticks u
 static uint32_t g_ext_clk_last_seen = 0;
 
 // -----------------------------------------------------------------------------
-// Clock rate detection
+// Clock in: one pulse, one step, one 16th note. Fixed.
 //
-// A Grids step is a 16th note, which is what the internal clock runs at
-// (8 ticks/sec = 4 per quarter at 120 BPM). Incoming clocks vary wildly by
-// source, so rather than assume a resolution we measure the pulse period and
-// work it out. Each candidate resolution is at least double the next, so within
-// any single octave of tempo their period bands do not overlap. The window is
-// 88-176 BPM, chosen to cover the usual electronic range (including 174):
+// Send Sorrow a 16th-note clock. That is the whole contract. A 32-step pattern
+// is two bars, and the internal clock runs at the same rate (8 ticks/sec = 4 per
+// quarter at 120 BPM) so patched and unpatched behave identically.
 //
-//   24 ppqn (raw MIDI tick)  14-28 ms   -> one step per 6 pulses
-//    8 ppqn (32nd notes)     43-85 ms   -> one step per 2 pulses
-//    4 ppqn (16th notes)     85-171 ms  -> one step per pulse
-//    2 ppqn (8th notes)     171-341 ms  -> 2 steps per pulse
-//    1 ppqn (quarter notes) 341-682 ms  -> 4 steps per pulse
+// Until v2.2.0 this measured the incoming pulse period and guessed the source's
+// resolution - 24, 8, 4, 2 or 1 ppqn - then divided or multiplied to suit. It is
+// gone, and the reasons are worth keeping:
 //
-// Outside that window a sub-quarter-note clock can be misread by a factor of
-// two (a quarter-note clock stays correct far slower, since it falls in the
-// catch-all band). The bar LED makes that visible immediately - but there is
-// NO WAY TO CORRECT IT. There is no Time page and no manual ratio; an earlier
-// version of this comment claimed there was. The only pages are Home and Kit.
-// 12 and 16 ppqn sources are ambiguous against 8 ppqn and are not candidates.
+//   - No way to correct a wrong guess. There is no Time page and no manual
+//     ratio, so a misdetection was uncorrectable. The bar LED showed the player
+//     it was wrong without letting them do anything about it.
+//   - Tempo-dependent. The period bands only separate cleanly between 88 and
+//     176 BPM. Outside that a sub-quarter clock misread by a factor of two, so
+//     the module behaved differently at 80 BPM than at 120.
+//   - Multiplying drifted. Intermediate steps were predicted from the last
+//     measured period rather than driven by edges, so any tempo change smeared
+//     them. Dividing and 1:1 are edge-driven and cannot.
+//   - Swing worked by accident. A swung clock alternates long-short, so half its
+//     pulses measured into the wrong band; it only survived because a new band
+//     needed three consecutive sightings to be accepted, which alternating
+//     readings never gave it. True, but nothing knew it was load-bearing.
 //
-// Multiplying means predicting where the intermediate steps fall from the last
-// measured period, so it is only as steady as the incoming clock. Dividing and
-// 1:1 are driven by real edges and cannot drift.
+// Every clock source can divide - Pam's, Move, Ornament and Crime. Asking for a
+// 16th clock costs the player one setting, once, and buys behaviour that is the
+// same at every tempo and immune to swing, because nothing interprets the clock
+// at all any more.
 // -----------------------------------------------------------------------------
-struct ClockRatio
-{
-    uint8_t mult;  // steps emitted per pulse
-    uint8_t div;   // pulses required per step
-};
-
-// Upper period bound (ms) for each candidate, ordered fastest first. The last
-// entry is the catch-all for anything slower.
-struct ClockBand
-{
-    uint16_t   max_ms;
-    ClockRatio ratio;
-};
-static constexpr ClockBand kClockBands[] = {
-    {  35, {1, 6}},   // 24 ppqn
-    {  85, {1, 2}},   //  8 ppqn
-    { 171, {1, 1}},   //  4 ppqn - the native step rate
-    { 341, {2, 1}},   //  2 ppqn
-    {1500, {4, 1}},   //  1 ppqn
-};
-static constexpr uint8_t kNumClockBands
-    = sizeof(kClockBands) / sizeof(kClockBands[0]);
-
-// Detection has to be sticky: a single jittery period must not change the ratio
-// mid-pattern, so a new band has to be seen this many times in a row.
-//
-// DO NOT LOWER THIS BELOW 2. It is what makes swing work, which is not obvious.
-// A swung clock does not have one period, it alternates long-short: EuroPi Pams
-// splits each pair of notes swing% : (100-swing)%. At 120 BPM with 66% swing a
-// 16th clock delivers 165 ms then 85 ms, and 85 ms lands in the 8 ppqn band -
-// so every other pulse "detects" a ratio twice as fast as the truth.
-//
-// It never takes hold because the wrong reading alternates with a right one and
-// so is never seen twice running, let alone three times. The starting ratio of
-// {1, 1} is already correct for a 16th clock, and swing keeps it there. Drop the
-// count to 1 and a swung clock would flap between ratios every pulse.
-static constexpr uint8_t kRatioConfirmCount = 3;
 
 // How long the external clock may go quiet before the internal clock takes
 // over. Also floors the adaptive window, which is 4 measured beats.
@@ -418,58 +384,11 @@ static constexpr float kClockDropoutSeconds = 5.0f;
 static constexpr float kMaxClockPeriodSeconds  = 2.0f;
 static constexpr float kMaxClockDropoutSeconds = 8.0f;
 
-static ClockRatio g_clk_ratio        = {1, 1};  // live ratio (1:1 until measured)
-static uint8_t    g_clk_pending_band = 2;       // band index awaiting confirmation
-static uint8_t    g_clk_pending_hits = 0;       // consecutive sightings of it
-static uint8_t    g_clk_div_count    = 0;       // pulses seen toward the next step
-
+// The period is still measured, but only to size the drop-out window - never to
+// decide a ratio.
 static uint32_t g_ext_clk_period = 0;     // Samples between last two clock edges
 static uint32_t g_ext_clk_last_edge = 0;  // Sample count at last clock edge
-static uint32_t g_ext_clk_counter = 0;    // Counter for generating multiplied ticks
-static uint8_t  g_ext_clk_mult_phase = 0; // Which sub-tick of the current pulse
 static uint32_t g_sample_counter = 0;     // Global sample counter
-
-// Map a measured pulse period to a clock ratio, with hysteresis.
-static inline void DetectClockRatio(uint32_t period_samples, float sample_rate_hz)
-{
-    if(period_samples == 0 || sample_rate_hz < 1.0f)
-        return;
-
-    const float period_ms
-        = (static_cast<float>(period_samples) * 1000.0f) / sample_rate_hz;
-
-    uint8_t band = kNumClockBands - 1;
-    for(uint8_t i = 0; i < kNumClockBands; ++i)
-    {
-        if(period_ms < static_cast<float>(kClockBands[i].max_ms))
-        {
-            band = i;
-            break;
-        }
-    }
-
-    if(band == g_clk_pending_band)
-    {
-        if(g_clk_pending_hits < kRatioConfirmCount)
-            g_clk_pending_hits++;
-    }
-    else
-    {
-        g_clk_pending_band = band;
-        g_clk_pending_hits = 1;
-    }
-
-    if(g_clk_pending_hits >= kRatioConfirmCount)
-    {
-        const ClockRatio next = kClockBands[band].ratio;
-        if(next.mult != g_clk_ratio.mult || next.div != g_clk_ratio.div)
-        {
-            g_clk_ratio       = next;
-            g_clk_div_count   = 0;
-            g_ext_clk_mult_phase = 0;
-        }
-    }
-}
 
 // -----------------------------------------------------------------------------
 // External Trigger Outputs (Mode 1)
@@ -753,17 +672,12 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
     if(ext_rst_rising)
     {
         grids.Reset();
-        g_ext_clk_mult_phase = 0;
-        g_ext_clk_counter = 0;
-        g_clk_div_count = 0;  // realign the divider group with the bar
         g_internal_clk_samples = 0;  // Align internal clock phase on reset too
         g_awaiting_first_clock = true;
 
         // Clear last-edge timestamp so the first clock after reset does NOT
-        // recompute g_ext_clk_period from the stale pre-reset timestamp.
-        // The old period value (from the previous two clock edges at the
-        // correct tempo) is preserved and used for sub-tick interpolation,
-        // keeping the first quarter note properly subdivided.
+        // recompute g_ext_clk_period from the stale pre-reset timestamp - it
+        // sizes the drop-out window, and a bogus period would mis-size it.
         g_ext_clk_last_edge = 0;
     }
 
@@ -783,12 +697,8 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
             // A gap longer than any musical clock is not a period; it is two
             // unrelated edges. Clamp rather than believe it.
             g_ext_clk_period = measured < max_period ? measured : max_period;
-            // Work out what resolution the source is sending from the period.
-            DetectClockRatio(g_ext_clk_period, sr);
         }
         g_ext_clk_last_edge = now;
-        g_ext_clk_counter = 0;
-        g_ext_clk_mult_phase = 0;
 
         g_use_ext_clock = true;
         g_awaiting_first_clock = false;  // Clock arrived, resume normal operation
@@ -816,61 +726,14 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
             g_use_ext_clock        = false;
             g_ext_clk_period       = 0;
             g_ext_clk_last_edge    = 0;
-            g_ext_clk_counter      = 0;
-            g_ext_clk_mult_phase   = 0;
             g_awaiting_first_clock = false;
             g_internal_clk_samples = 0;
-            // Forget the detected ratio: the next clock may be a different
-            // source at a different resolution.
-            g_clk_ratio        = {1, 1};
-            g_clk_div_count    = 0;
-            g_clk_pending_hits = 0;
         }
     }
 
-    // Turn incoming pulses into Grids steps at the detected ratio. mult and div
-    // are mutually exclusive - a ratio either divides or multiplies, never both.
-    bool ext_tick = false;
-    if(g_use_ext_clock)
-    {
-        if(ext_clk_rising)
-        {
-            if(g_clk_ratio.div > 1)
-            {
-                // Divide: only every div-th pulse advances a step. Every step
-                // is driven by a real edge, so this cannot drift.
-                if(++g_clk_div_count >= g_clk_ratio.div)
-                {
-                    g_clk_div_count = 0;
-                    ext_tick        = true;
-                }
-            }
-            else
-            {
-                // 1:1 or multiply - the edge is always step 0 of the group.
-                ext_tick = true;
-            }
-        }
-        else if(g_clk_ratio.mult > 1 && g_ext_clk_period > 0
-                && !g_awaiting_first_clock)
-        {
-            // Multiply: place the intermediate steps by dividing the last
-            // measured period. Suppressed after reset until a real edge
-            // arrives, so a stale period can't consume steps before the clock.
-            g_ext_clk_counter += size;
-            const uint32_t tick_interval = g_ext_clk_period / g_clk_ratio.mult;
-            if(tick_interval > 0 && g_ext_clk_mult_phase < (g_clk_ratio.mult - 1))
-            {
-                const uint32_t next_tick_at
-                    = (g_ext_clk_mult_phase + 1) * tick_interval;
-                if(g_ext_clk_counter >= next_tick_at)
-                {
-                    ext_tick = true;
-                    g_ext_clk_mult_phase++;
-                }
-            }
-        }
-    }
+    // One rising edge, one step. Every step is driven by a real edge, so the
+    // sequencer cannot drift from the clock and swing passes straight through.
+    const bool ext_tick = g_use_ext_clock && ext_clk_rising;
 
     // -----------------------------------------------------------------
     // Kit page (1 LED pulse): per-part density trims + wildness.
