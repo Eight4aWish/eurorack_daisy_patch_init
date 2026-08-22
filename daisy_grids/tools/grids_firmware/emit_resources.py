@@ -46,6 +46,13 @@ GRIDS_ORDER = [10, 8, 0, 9, 11, 15, 7, 13, 12, 6, 18, 14, 4, 5, 3,
 
 
 def load(bank):
+    # One-bar banks derived for real Grids land as .npy from derive_1bar.py /
+    # derive_club_1bar.py. Those are the ones to ship: the .cpp tables in src/
+    # are Sorrow's, two bars of 16ths, and play at double time here.
+    npy = pathlib.Path(__file__).resolve().parent / f'{bank}_1bar.npy'
+    if npy.exists():
+        import numpy as np
+        return [list(int(v) for v in row) for row in np.load(npy)]
     fn, prefix = BANKS[bank]
     txt = (SRC / fn).read_text()
     nodes = {}
