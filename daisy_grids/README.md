@@ -23,13 +23,13 @@ Based on the **Grids** drum pattern generator by Émilie Gillet (Mutable Instrum
   eligible, how far their parameters roam, and whether the three slots match or clash
 - **Grids pattern generator**: X/Y pattern morphing, master density plus per-part trims, and chaos
 - **CV modulation inputs**: CV_5-CV_8 modulate pattern parameters (±50% depth)
-- **Automatic clock detection**: feed it 24/8/4/2/1 ppqn and it works out the division itself
+- **One pulse, one step**: send it a 16th-note clock and it follows, at any tempo, swung or straight
 - **External reset input** for transport sync
 - **Simultaneous outputs**: the internal kit and the B5/B6/CV_OUT_1 triggers run
   from the same pattern at the same time, so external voices layer with the internal ones
 - **Kit roll on B8**: flip the toggle out and back for a fresh randomized kit
 - **Per-drum pan** with stereo output, spread widening with wildness
-- **Bar indicator** on the LED, so the detected clock division can be checked by eye
+- **Bar indicator** on the LED, so the pattern position can be checked by eye
 
 ## Hardware I/O (Daisy Patch.Init)
 
@@ -39,7 +39,7 @@ Based on the **Grids** drum pattern generator by Émilie Gillet (Mutable Instrum
 |---------|----------|
 | **B7** (Momentary) | Cycle pages: Home (no flash) → Kit (1 flash) |
 | **B8** (Toggle) | Roll a fresh kit — flip out and back; position is meaningless, only the return edge fires |
-| **B10** (Gate In 1) | Clock input — resolution detected automatically |
+| **B10** (Gate In 1) | Clock input — one 16th-note pulse per step |
 | **B9** (Gate In 2) | Reset input - returns to step 0; clock source unchanged |
 
 ### Outputs
@@ -300,46 +300,28 @@ does *not* check CPU cost; only the target can measure that honestly.
 - ~120 BPM (8 ticks/sec for 16th notes)
 
 ### External Clock
-- Connect any clock to B10 — the resolution is **detected automatically**
+- Connect a **16th-note clock** to B10 — one pulse, one step
 - First clock pulse switches to external clock
 - If the external clock stops for ~4 beats (5 s minimum), the internal clock takes over
 
-A Grids step is a 16th note, the same rate the internal clock runs at, so
-internal and external always agree. Sorrow measures the incoming pulse period
-and works out what the source is sending:
+A Grids step is a 16th note, and the internal clock runs at the same rate, so
+internal and external always agree. There is nothing to configure and nothing to
+detect: every step is driven by a real rising edge, so the sequencer cannot drift
+from the clock, and **swing passes straight through** — a swung 16th clock from
+Pam's or similar gives a swung pattern, because nothing is interpreting the
+timing.
 
-| Source sends | Pulse period | What Sorrow does |
-|---|---|---|
-| 24 ppqn (raw MIDI clock) | 14-28 ms | one step per 6 pulses |
-| 8 ppqn (32nd notes) | 43-85 ms | one step per 2 pulses |
-| 4 ppqn (16th notes) | 85-171 ms | one step per pulse |
-| 2 ppqn (8th notes) | 171-341 ms | 2 steps per pulse |
-| 1 ppqn (quarter notes) | 341-682 ms | 4 steps per pulse |
+A 32-step pattern is therefore two bars.
 
-Detection assumes the tempo is in the **88-176 BPM** window — each candidate is
-at least double the next, so within one octave of tempo their period bands can't
-overlap. A new reading has to be seen three times running before the ratio
-changes, so jitter can't flip it mid-pattern. Outside that window a sub-quarter
-clock can be misread by a factor of two; a quarter-note clock stays correct far
-slower, because it lands in the catch-all band. 12 and 16 ppqn are ambiguous
-against 8 ppqn and are not candidates.
-
-Dividing and 1:1 are driven by real clock edges, so they cannot drift. Only the
-multiplying ratios predict intermediate steps from the last measured period, and
-they are only as steady as the incoming clock.
-
-### Bar indicator
-On the Pattern page the LED marks the bar: a **long flash on step 0** (the start
-of the 32-step, two-bar phrase) and a **short flash on step 16**. With no screen
-this is how you confirm the detected ratio is right — if it pulses in time with
-the bar you're hearing, the division is correct.
-- Reset input (B9) resets the pattern position; it does not change the clock source
-
-### Transport Control
-1. Power on → internal clock runs
-2. Connect external clock → follows your clock
-3. Stop external clock → after ~4 beats (5 s minimum) it falls back to the internal clock
-4. Press reset (B9) → pattern returns to step 0, clock source unchanged
+> **Changed in v2.2.0.** Earlier versions measured the pulse period and guessed
+> whether the source was sending 24, 8, 4, 2 or 1 ppqn, then divided or
+> multiplied. That is gone. A wrong guess could not be corrected — there is no
+> manual ratio anywhere — the candidates only separated cleanly between 88 and
+> 176 BPM, multiplication predicted intermediate steps from the last measured
+> period and so drifted, and swing survived it only by accident: a swung clock
+> alternates long-short, so half its pulses measured into the wrong band and were
+> saved only by a three-in-a-row confirmation rule. Every clock source can
+> divide; asking for a 16th clock costs one setting, once.
 
 ## Build & Flash
 
