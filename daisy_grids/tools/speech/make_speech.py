@@ -19,6 +19,7 @@ PHRASES = [
     ("kSpeechBankOriginal", "Original patterns"),
     ("kSpeechBankClub",     "Club patterns"),
     ("kSpeechBankTrad",     "Traditional patterns"),
+    ("kSpeechBankLatin",    "Latin patterns"),
     ("kSpeechBankUser",     "User patterns"),
 ]
 

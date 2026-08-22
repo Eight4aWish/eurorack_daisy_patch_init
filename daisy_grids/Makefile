@@ -28,9 +28,10 @@ CPP_SOURCES = \
 	src/grids_nodes.cpp \
 	src/grids_nodes_groove.cpp \
 	src/grids_nodes_club.cpp \
+	src/grids_nodes_jazzlatin.cpp \
 	src/speech_data.cpp
 
-SORROW_VERSION ?= 2.0.0
+SORROW_VERSION ?= 2.1.0
 C_DEFS += -DSORROW_VERSION=\"$(SORROW_VERSION)\"
 
 # The user bank is read from the SD card at runtime, not compiled in, so there
@@ -142,13 +143,13 @@ flash: program-dfu-local
 #######################################
 # Release
 #######################################
-# Builds the distributable firmware: the three factory banks, version stamped
+# Builds the distributable firmware: the four factory banks, version stamped
 # into the binary and the filename. Distributing this is distributing a
 # GPL-3.0-or-later work, so the corresponding source has to be available - tag
 # the commit you build from and publish the tag alongside the binary.
 #
-#   make release                     # -> build/sorrow-v2.0.0.bin
-#   make release SORROW_VERSION=2.1.0
+#   make release                     # -> build/sorrow-v2.1.0.bin
+#   make release SORROW_VERSION=2.2.0
 
 .PHONY: release
 release:
@@ -156,7 +157,7 @@ release:
 	@$(MAKE) SORROW_VERSION=$(SORROW_VERSION) >/dev/null
 	@cp build/$(TARGET).bin build/$(TARGET)-v$(SORROW_VERSION).bin
 	@echo "build/$(TARGET)-v$(SORROW_VERSION).bin  ($$(stat -f%z build/$(TARGET)-v$(SORROW_VERSION).bin) bytes)"
-	@echo "  three factory banks (Original / Club / Traditional)"
+	@echo "  four factory banks (Original / Club / Traditional / Latin)"
 	@echo "  requires the Daisy bootloader on the target: make program-boot"
 	@echo "  tag the source before publishing: git tag sorrow-v$(SORROW_VERSION)"
 
