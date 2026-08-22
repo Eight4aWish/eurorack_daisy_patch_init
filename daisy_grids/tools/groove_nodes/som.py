@@ -59,8 +59,12 @@ for lane in range(3):
 np.save('som_nodes.npy', shaped)
 
 # Also write the card format: raw bytes, 25 nodes of 96, row-major across the
-# 5x5 map. Drop this on the SD card root and the firmware picks it up at boot as
-# a fourth bank - no rebuild, and nothing personal in a distributed binary.
+# 5x5 map. This is the intended route for a personal bank - no rebuild, and
+# nothing personal in a distributed binary.
+#
+# NOTE: SD loading is PARKED and the build defaults to SORROW_SD_USER_BANK=0, so
+# a card file is not picked up today. See include/user_bank.h for how far the
+# SDMMC debugging got. Until that lands, a derived bank has to be compiled in.
 #
 # Not .bin, deliberately: the Daisy bootloader flashes the first .bin it finds in
 # the card root, so a bank file under that name could be written to QSPI as
