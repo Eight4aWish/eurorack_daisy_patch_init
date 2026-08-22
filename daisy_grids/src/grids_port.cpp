@@ -19,6 +19,7 @@
 #include "grids_nodes_club.h"
 #include "user_bank.h"
 #include "grids_nodes_groove.h"
+#include "grids_nodes_jazzlatin.h"
 
 namespace daisy_grids::grids_port {
 
@@ -56,12 +57,22 @@ const uint8_t* const drum_map_club[5][5] = {
     {club_node_20, club_node_21, club_node_22, club_node_23, club_node_24},
 };
 
+// Same story again: off a self-organising map, so row-major order is already
+// the arrangement. Announced as "Latin"; the corpus is wider than that.
+const uint8_t* const drum_map_jazzlatin[5][5] = {
+    {jazzlatin_node_0, jazzlatin_node_1, jazzlatin_node_2, jazzlatin_node_3, jazzlatin_node_4},
+    {jazzlatin_node_5, jazzlatin_node_6, jazzlatin_node_7, jazzlatin_node_8, jazzlatin_node_9},
+    {jazzlatin_node_10, jazzlatin_node_11, jazzlatin_node_12, jazzlatin_node_13, jazzlatin_node_14},
+    {jazzlatin_node_15, jazzlatin_node_16, jazzlatin_node_17, jazzlatin_node_18, jazzlatin_node_19},
+    {jazzlatin_node_20, jazzlatin_node_21, jazzlatin_node_22, jazzlatin_node_23, jazzlatin_node_24},
+};
+
 using MapRow = const uint8_t* const (*)[5];
 // The user bank's 5x5 of pointers is built at runtime into the loaded buffer.
 const uint8_t* drum_map_user[5][5] = {};
 
 const MapRow kFactoryBanks[kNumFactoryBanks]
-    = {drum_map_grids, drum_map_club, drum_map_groove};
+    = {drum_map_grids, drum_map_club, drum_map_groove, drum_map_jazzlatin};
 
 uint8_t s_bank       = 0;
 bool    s_have_user  = false;

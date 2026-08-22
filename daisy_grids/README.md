@@ -120,10 +120,19 @@ Banks of 25 nodes, cycled by holding B7, each announcing itself:
 | 0 | "Original patterns" | Émilie Gillet's Grids map |
 | 1 | "Club patterns" | Lakh MIDI Dataset, selected by **rhythmic signature** |
 | 2 | "Traditional patterns" | Groove MIDI Dataset — human drummers, rock through jazz |
-| 3 | "User patterns" | Parked — see [user_bank.h](include/user_bank.h) |
+| 3 | "Latin patterns" | Groove MIDI Dataset, filtered to latin, jazz, afro-cuban, afrobeat, New Orleans, reggae and highlife |
+| 4 | "User patterns" | Parked — see [user_bank.h](include/user_bank.h) |
 
 All are 25 × 96 bytes with the same per-lane value distribution, so density,
 accent and everything downstream behave identically.
+
+The Latin bank is the most coherent of the four — neighbouring cells
+differ least, so X/Y morphs most smoothly — because 25 nodes cover one family of
+rhythms far better than they cover eight. Its cells come out recognisably
+single-style: 76% bossa, 67% afrobeat, 55% songo, 51% jazz. It is also the
+smallest corpus of the three derived banks, at 4,793 two-bar patterns against
+11,155 for Traditional, which is the point: past roughly three thousand
+patterns, more source material stops making a better map.
 
 ### Selecting by rhythm rather than by genre
 

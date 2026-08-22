@@ -42,7 +42,7 @@ using namespace patch_sm;
 // B9  (Gate In 2): Reset input - rising edge resets pattern to step 0
 //
 // B7 Momentary Button: short press cycles pages, hold cycles drum-map bank
-//     (the module announces which bank: Original / Club / Traditional)
+//     (the module announces which bank: Original / Club / Traditional / Latin)
 //     Home (no flash): CV1=X, CV2=Y, CV3=Density, CV4=Randomness
 //     Kit  (1 pulse):  CV1/2/3 = kick/snare/hat density trim, CV4 = Wildness
 //   The sequencer keeps running on every page - the Kit page borrows the knobs,
@@ -601,6 +601,9 @@ static void AudioCallback(AudioHandle::InputBuffer  in,
                     break;
                 case 2:
                     Announce(sorrow::kSpeechBankTrad, sorrow::kSpeechBankTradLen);
+                    break;
+                case 3:
+                    Announce(sorrow::kSpeechBankLatin, sorrow::kSpeechBankLatinLen);
                     break;
                 default:
                     Announce(sorrow::kSpeechBankUser, sorrow::kSpeechBankUserLen);

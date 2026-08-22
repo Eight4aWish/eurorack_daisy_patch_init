@@ -23,6 +23,10 @@ constexpr size_t kSpeechBankClubLen = 11397;
 extern const uint8_t kSpeechBankTrad[15041];
 constexpr size_t kSpeechBankTradLen = 15041;
 
+// "Latin patterns"
+extern const uint8_t kSpeechBankLatin[12572];
+constexpr size_t kSpeechBankLatinLen = 12572;
+
 // "User patterns"
 extern const uint8_t kSpeechBankUser[11931];
 constexpr size_t kSpeechBankUserLen = 11931;
