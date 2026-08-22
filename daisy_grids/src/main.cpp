@@ -303,8 +303,24 @@ static constexpr float kLedVoltsDim  = 3.4f;
 // -----------------------------------------------------------------------------
 // External Clock & Reset (B10, B9)
 // Manual edge detection with state tracking for reliability
-// Clock multiplier: external clock is assumed to be quarter notes (1 ppqn)
-// We multiply by 8 to get 8 steps per quarter note (32 steps per bar for Grids)
+// Clock: the incoming rate is detected (see the ratio table below) and turned
+// into steps at 4 steps per quarter note - one step per 16th, matching the
+// internal clock's 8 ticks/sec at 120 BPM. So a 32-step pattern spans TWO bars.
+//
+// This is a deliberate departure from real Grids, which runs kPulsesPerStep = 3
+// at 24 ppqn - 8 steps per quarter, a 32nd-note grid, one bar per pattern.
+//
+// The reason is swing. Swing is a 16th-note feel, so the module has to take its
+// steps from a 16th-note clock for something like Pam's to be able to shuffle
+// them. At Grids' 32nd-note step rate the swing would land between the notes it
+// is meant to displace and do nothing useful.
+//
+// Two consequences worth knowing:
+//   - Emilie's tables still read correctly here, because she writes almost
+//     entirely on the even (16th) slots - 858 of her 907 non-zero values.
+//   - Banks derived FOR this module are 32 sixteenths, i.e. two bars, and have
+//     to be re-derived at one bar before going onto real Grids hardware, or they
+//     play at double time. See tools/grids_firmware/.
 // External clock is used while it keeps arriving; if it stops for ~4 beats
 // (2 s floor) the module falls back to its internal clock. Reset only moves the
 // pattern position and does not change the clock source.
