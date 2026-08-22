@@ -354,9 +354,10 @@ static uint32_t g_ext_clk_last_seen = 0;
 //
 // Outside that window a sub-quarter-note clock can be misread by a factor of
 // two (a quarter-note clock stays correct far slower, since it falls in the
-// catch-all band). The bar LED makes that visible immediately, and the Time
-// page's manual ratio will override it. 12 and 16 ppqn sources are ambiguous
-// against 8 ppqn and are deliberately not candidates.
+// catch-all band). The bar LED makes that visible immediately - but there is
+// NO WAY TO CORRECT IT. There is no Time page and no manual ratio; an earlier
+// version of this comment claimed there was. The only pages are Home and Kit.
+// 12 and 16 ppqn sources are ambiguous against 8 ppqn and are not candidates.
 //
 // Multiplying means predicting where the intermediate steps fall from the last
 // measured period, so it is only as steady as the incoming clock. Dividing and
