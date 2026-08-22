@@ -324,8 +324,8 @@ float s_gain[3][8] = {};
 // load, so everything outside the three voices costs only about 3%. The most
 // expensive possible kit is 75%, which would land near 78% total - survivable,
 // but with no margin for the Time page's trigger scheduler or anything added
-// later. 72% admits 26 of the 27 possible kits and blocks only the single
-// worst combination.
+// later. The pool is 3 kicks x 4 snares x 3 hats, so 36 possible kits; 72%
+// admits all but the most expensive combinations.
 constexpr float kKitCostBudget = 0.72f;
 
 // Model instances. Static storage, no allocation: selection is just an index.
