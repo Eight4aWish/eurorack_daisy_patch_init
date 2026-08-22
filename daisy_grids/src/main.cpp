@@ -385,8 +385,19 @@ static constexpr ClockBand kClockBands[] = {
 static constexpr uint8_t kNumClockBands
     = sizeof(kClockBands) / sizeof(kClockBands[0]);
 
-// Detection has to be sticky: a single jittery period must not change the
-// ratio mid-pattern, so a new band has to be seen this many times in a row.
+// Detection has to be sticky: a single jittery period must not change the ratio
+// mid-pattern, so a new band has to be seen this many times in a row.
+//
+// DO NOT LOWER THIS BELOW 2. It is what makes swing work, which is not obvious.
+// A swung clock does not have one period, it alternates long-short: EuroPi Pams
+// splits each pair of notes swing% : (100-swing)%. At 120 BPM with 66% swing a
+// 16th clock delivers 165 ms then 85 ms, and 85 ms lands in the 8 ppqn band -
+// so every other pulse "detects" a ratio twice as fast as the truth.
+//
+// It never takes hold because the wrong reading alternates with a right one and
+// so is never seen twice running, let alone three times. The starting ratio of
+// {1, 1} is already correct for a 16th clock, and swing keeps it there. Drop the
+// count to 1 and a swung clock would flap between ratios every pulse.
 static constexpr uint8_t kRatioConfirmCount = 3;
 
 // How long the external clock may go quiet before the internal clock takes

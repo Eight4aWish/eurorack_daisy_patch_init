@@ -13,16 +13,23 @@ So ../groove_nodes/ is right for Sorrow and wrong for Grids: it cuts 32-sixteent
 derives the same way but over ONE bar of 16 sixteenths, then writes those 16
 values onto the EVEN slots of the 96-byte node and leaves the odd ones at zero.
 
-Grids' native grid is 32nds, so that is what this quantises to - NOT 16ths. The
-odd slots are not spare: Émilie uses 49 of them across 5 nodes, and they carry
-the two things a 16th grid cannot express.
+Quantised to 16ths and written onto the EVEN slots, leaving the odd ones at zero.
+
+The odd slots are real - Émilie uses 49 of them across 5 nodes, and they carry
+what a 16th grid cannot express:
 
   node_23  hats in equal pairs at 5,7 / 11,13 / 21,23 / 29,31 - 32nd-note ROLLS
-  node_24  kick, snare and hat at 5, 13, 21, 29 with nothing on 4, 12, 20, 28 -
+  node_24  kick, snare and hat at 5, 13, 21, 29 and nothing on 4, 12, 20, 28 -
            every hit a 32nd late, which is SWING written into the grid
 
-Groove MIDI is human drummers, so the source has both. Quantising to 16ths threw
-them away; at 32nds they survive.
+We deliberately do not use them. Groove MIDI is unquantised human drumming, so
+ingesting at 32nds does not capture intent, it captures deviation: a drummer
+20 ms late becomes a note genuinely displaced by a 32nd. Measured, that put 265
+values on odd slots against Émilie's 49 - five times her rate, none of it meant.
+
+A 16th grid with an irregular clock is the better trade. Swing belongs in the
+clock, where a player controls it, not baked into the pattern where they cannot.
+And a Grids owner who wants swing in the pattern still has Grids' own swing mode.
 
     python3 derive_1bar.py groove.zip out_prefix [--filter latin]
 """
@@ -33,7 +40,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / 'groove_nodes'))
 import extract as ex                                   # reuse the MIDI reader
 
-LANES, STEPS_1BAR = 3, 32   # one bar at 32nd-note resolution
+LANES, STEPS_1BAR = 3, 16   # one bar of 16ths; written to the even slots
 FILTERS = {
     'latin': r'^(jazz|latin|afro|neworleans|reggae|highlife|middleeastern)',
     'all':   r'.',
@@ -53,19 +60,19 @@ def one_bar_patterns(path, style_filter):
             continue
         if not evs or div <= 0:
             continue
-        per32 = div / 8.0
+        per16 = div / 4.0
         grids = collections.defaultdict(lambda: np.zeros((LANES, STEPS_1BAR), dtype=np.float32))
         for tick, note, vel in evs:
             lane = next((l for l, s in enumerate(ex.LANES) if note in s), None)
             if lane is None:
                 continue
-            step = int(round(tick / per32))
+            step = int(round(tick / per16))
             bar, off = divmod(step, STEPS_1BAR)
             g = grids[bar]
             g[lane, off] = max(g[lane, off], vel / 127.0)
         for k in sorted(grids):
             g = grids[k]
-            if (g > 0).sum() >= 8:                     # same floor as groove_nodes
+            if (g > 0).sum() >= 4:                     # half the window, so half the floor
                 pats.append(g.reshape(-1)); styles.append(label)
     return np.array(pats, dtype=np.float32), np.array(styles)
 
@@ -89,18 +96,19 @@ def train_som(X, seed=0xA1B2C3, epochs=30):
 
 
 def shape_to_nodes(w, orig96):
-    """Histogram-match per lane against Émilie's whole lane, all 32 slots.
+    """Histogram-match per lane against Émilie's EVEN-slot values, then write to
+    the even slots.
 
-    Rank-for-rank, so we inherit her exact density and dynamics - the same count
-    of non-zeros and the same value distribution - while our own data decides
-    WHERE they land. Steps our source never hit rank lowest and take her zeros."""
+    Matched against her even slots only, not the whole lane: 94% of her odd slots
+    are zero, so matching the lot would drag our distribution toward silence."""
     out = np.zeros((25, 96), dtype=np.float32)
     for lane in range(LANES):
-        target = np.sort(orig96[:, lane * 32:(lane + 1) * 32].reshape(-1))
+        even = orig96[:, lane * 32:(lane + 1) * 32][:, 0::2].reshape(-1)
+        target = np.sort(even)
         flat = w[:, lane * STEPS_1BAR:(lane + 1) * STEPS_1BAR].reshape(-1).copy()
         order = np.argsort(flat, kind='stable')
         buf = np.empty_like(flat); buf[order] = target
-        out[:, lane * 32:(lane + 1) * 32] = buf.reshape(25, STEPS_1BAR)
+        out[:, lane * 32:(lane + 1) * 32:2] = buf.reshape(25, STEPS_1BAR)
     return out.astype(np.uint8)
 
 
