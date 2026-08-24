@@ -91,7 +91,7 @@ def main() -> None:
     ap.add_argument("prefix")
     ap.add_argument("--bars", type=int, default=2, choices=(1, 2))
     ap.add_argument("--per-class", type=int, default=20000)
-    ap.add_argument("--floor", type=float, default=8.0,
+    ap.add_argument("--floor", type=float, default=0.0,
                     help="percentile floor on edge length; 0 disables")
     args = ap.parse_args()
     steps = 32 if args.bars == 2 else 16
@@ -107,8 +107,21 @@ def main() -> None:
 
     # Lakh's four-to-the-floor really does repeat, so a few chosen patterns land
     # close together and the plain arrangement buries them next to each other.
-    # A light floor forbids that. Groove MIDI needs none - human timing keeps
-    # everything distinct on its own.
+    # A light floor forbade that, and the default used to be 8.0 for that reason.
+    #
+    # Groove MIDI needs none - human timing keeps everything distinct on its own -
+    # and measured on it the floor is not merely unnecessary but slightly harmful,
+    # because it trades arrangement quality for movement that is already there:
+    #
+    #     floor   per-edge   edge/map   dead
+    #     off       22.1        81%      0/40
+    #     p8        21.9        80%      0/40
+    #     p12       24.4        91%      0/40
+    #     p25       24.8        93%      0/40
+    #
+    # Every setting clears all forty edges, so there is nothing left to buy. What
+    # rises with the floor is edge/map, and at 100% neighbours differ as much as
+    # distant cells - a shuffle, not a map. Off sits at 81%, next to Grids' own 78%.
     E = arrange(choose(X) * 255.0, floor_pct=args.floor, floor_w=2.0)
     A = shape(E, np.load(pathlib.Path(__file__).resolve().parent / "orig.npy"), steps)
     report(A, "after histogram match")
