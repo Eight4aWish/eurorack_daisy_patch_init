@@ -42,16 +42,32 @@ K, S, H = 0, 1, 2
 
 
 def signature(g: np.ndarray, steps: int) -> str | None:
-    """g is (3, steps). Beats land every steps//4."""
-    q = steps // 4
-    beats = [0, q, 2 * q, 3 * q]
-    offs = [q // 2, q + q // 2, 2 * q + q // 2, 3 * q + q // 2]
+    """Classify a window by what its rhythm IS, not by what genre it is filed under.
+
+    A step is a SIXTEENTH - both cutters use per16 = div / 4.0 - so a quarter note
+    is four steps and a bar is sixteen, whatever the window length. This used to
+    say `q = steps // 4`, which silently assumes the window is exactly four beats.
+    True for a one-bar window and wrong for a two-bar one, where it put the "beats"
+    on half notes and the "offbeat hats" on beats two and four. Every Sorrow Club
+    bank up to v2.3.0 was selected by that: "four-to-the-floor" actually meant kick
+    on one and three with hats on two and four, which is a rock pattern.
+
+    A window has to hold the signature in EVERY bar to count, so a two-bar node is
+    club for its whole length rather than for half of it.
+    """
     on = g > 0
-    if on[K][beats].all() and on[H][offs].sum() >= 3:
+    nbars = max(1, steps // 16)
+
+    def every_bar(test) -> bool:
+        return all(test(b * 16) for b in range(nbars))
+
+    if every_bar(lambda o: on[K][[o, o + 4, o + 8, o + 12]].all()
+                 and on[H][[o + 2, o + 6, o + 10, o + 14]].sum() >= 3):
         return "four_to_the_floor"
-    if on[S][q] and on[S][3 * q] and on[K][0] and on[K][2 * q + 1:3 * q].any():
+    if every_bar(lambda o: on[S][o + 4] and on[S][o + 12] and on[K][o]
+                 and on[K][o + 9:o + 12].any()):
         return "breakbeat"
-    if on[S][2 * q] and not on[S][q] and not on[S][3 * q]:
+    if every_bar(lambda o: on[S][o + 8] and not on[S][o + 4] and not on[S][o + 12]):
         return "half_time"
     return None
 
