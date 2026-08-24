@@ -69,3 +69,48 @@ floor; the Y axis from dense to sparse.
 - Grime, psytrance and liquid DnB have no clean open corpus. Their signatures
   are strong and few, so rule-generated archetypes fed through the same SOM
   would likely beat clustering a noisy corpus.
+
+## Open: the SOM is the wrong tool, and the shipped banks are flat
+
+**Reported by ear first** - "our banks do not move musically, it does not sound
+like much is happening" - and the measurements agree. The number that matters is
+how many steps change state when you move X or Y by one cell, at mid density:
+
+| bank | per-edge | across the map | edge/map | dead edges |
+| --- | ---: | ---: | ---: | ---: |
+| Latin, as shipped | 12.1 | 26.3 | 46% | 3/40 |
+| Traditional, as shipped | 11.7 | 24.4 | 48% | 2/40 |
+| Club, as shipped | 12.0 | 20.8 | 58% | 6/40 |
+| Grids' own | 13.8 | 17.6 | 78% | 0/40 |
+
+*dead edge* = neighbours differing by three steps or fewer, i.e. a knob move you
+cannot hear. Club has six of them.
+
+**Why.** A self-organising map's objective function *is* to minimise the
+difference between neighbouring cells - that is what topology preservation means.
+So the tool was optimising for the property that makes the knob boring. Worse,
+its nodes are cluster centroids: averages of thousands of patterns, which regress
+toward each other. Twenty-five averages are less distinctive than twenty-five
+archetypes, and the coherence score I was reporting as a quality mark was in
+large part measuring that flatness approvingly.
+
+**The fix, tested.** Pick twenty-five *real* patterns from the corpus by
+farthest-point sampling, then arrange them on the 5x5 to minimise total edge
+length - which is what Emilie did by hand:
+
+| method | per-edge | across | edge/map | dead |
+| --- | ---: | ---: | ---: | ---: |
+| SOM centroids (shipped) | 12.1 | 26.3 | 46% | 3/40 |
+| real patterns, unarranged | 37.9 | 35.5 | 106% | 0/40 |
+| **real patterns, arranged** | **29.2** | 37.7 | **78%** | **0/40** |
+
+Unarranged is 106%: neighbours differ more than distant cells, so every move is a
+jump with no sense of travel. Arranging pulls it to 78% - which is Emilie's
+number, arrived at independently. That is worth noticing: 78% looks like what
+"distinct patterns, well arranged" settles at, and she got there by ear in 2011.
+
+The result covers more than twice her range while moving 2.4x as much per knob
+step as the bank we shipped.
+
+**Not done.** Re-deriving means new firmware, new WAVs, new site copy, and the
+call for testers is already live. Decision pending.
