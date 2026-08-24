@@ -17,7 +17,10 @@ this on a real module.
 ## The three banks
 
 Measured with `som.py`'s coherence metric - how much more alike map neighbours
-are than random pairs, which is what decides whether X/Y *morphs* or *jumps*:
+are than random pairs. It is a ratio, and reading it as "how smoothly X/Y morphs"
+is wrong: that is the numerator alone, and every bank here sits within a few per
+cent of every other on it. A high ratio mostly means a *large denominator* - the
+far corners of the map are far apart.
 
 | bank | corpus | patterns | coherence |
 | --- | --- | ---: | ---: |
@@ -26,8 +29,19 @@ are than random pairs, which is what decides whether X/Y *morphs* or *jumps*:
 | `nodes_club.cc` | Lakh, by rhythmic signature - four-to-the-floor, breaks, half-time | 60,000 | 34.9% |
 | *(Grids' own, for reference)* | Emilie's 25 hand-authored patterns | - | 14.8% |
 
-The jazz/latin map is the most coherent because 25 nodes cover one family of
-rhythms far better than they cover eight. Its nodes come out recognisably
+The jazz/latin map scores highest, but not for the reason first written here.
+The claim was that 25 nodes cover one family better than eight, which predicts a
+*small* spread between distant cells - and Latin's is the largest of the four
+(59, against Emilie's 42). What its score actually says is that the SOM ordered a
+wide corpus well: neighbours 34 apart inside a map whose far cells are 59 apart.
+
+Emilie's 14.8% is the other shape entirely. Her neighbours are 36 apart - further
+than Latin's - inside a map whose far cells are only 42 apart, because her 25
+patterns are one tight family by choice. Low here means "closely related set",
+not "badly arranged". Her hand-ordering is worth 9.6 points on its own: the same
+patterns in declaration order score 5.2%.
+
+The rest of this still holds - Its nodes come out recognisably
 single-style - 76% bossa, 67% afrobeat, 55% songo, 51% jazz - where the
 all-styles map is mixed everywhere and spends about half its nodes on rock,
 which is only a quarter of that corpus.
