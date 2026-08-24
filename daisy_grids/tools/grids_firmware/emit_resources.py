@@ -21,10 +21,8 @@ THE PERMUTATION MATTERS. Grids' drum_map[5][5] does not list its nodes in order:
     ...
 
 Emilie arranged the 25 hand-authored patterns by ear so that neighbours are
-musically related - measurably so: her arrangement is 14.8% more similar
-neighbour-to-neighbour than random pairs, against 5.2% for the same patterns in
-file order. Our banks come off a self-organising map, which does that arranging
-automatically, so they are already row-major correct. To leave Grids' source
+musically related. Our banks come off a self-organising map, which does that
+arranging automatically, so they are already row-major correct. To leave Grids' source
 otherwise untouched, this inverts her table: node_k is written with whatever
 belongs in the cell where Grids looks up node_k.
 """

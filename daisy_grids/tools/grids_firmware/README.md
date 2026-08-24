@@ -51,8 +51,7 @@ Paste the output over the `node_0` ... `node_24` block in `grids/resources.cc`.
 
 The emitter permutes the nodes, and that matters: Grids' `drum_map[5][5]` does
 not list its nodes in order. Emilie arranged the 25 patterns by ear so that
-neighbours are musically related, and it measures - her arrangement scores 14.8%
-against 5.2% for the same patterns in file order. Our banks come off a
+neighbours are musically related. Our banks come off a
 self-organising map, which does that arranging automatically, so they are
 already row-major correct; the emitter inverts her table so Grids' source needs
 no other edit.

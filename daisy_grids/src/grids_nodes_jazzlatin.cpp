@@ -4,7 +4,7 @@
 // the jazz, latin, afro-cuban, afrobeat, New Orleans, reggae, highlife and
 // middle-eastern styles - 4,793 two-bar patterns. It is the most topologically
 // coherent map in the repo: neighbours differ 41.9% less than random pairs,
-// against 38.8% for the Traditional bank and 14.8% for Grids' own.
+// against 38.8% for the Traditional bank.
 //
 // Distinct where the all-styles map is mixed - single nodes come out 76% bossa,
 // 67% afrobeat, 55% songo, 51% jazz - because 25 nodes cover one family of
