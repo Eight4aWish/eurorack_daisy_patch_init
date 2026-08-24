@@ -27,24 +27,21 @@ far corners of the map are far apart.
 | `nodes_jazzlatin.cc` | Groove MIDI, jazz/latin/afro/NOLA/reggae/highlife | 4,793 | **41.9%** |
 | `nodes_groove.cc` | Groove MIDI, all styles - human drummers | 11,155 | 38.8% |
 | `nodes_club.cc` | Lakh, by rhythmic signature - four-to-the-floor, breaks, half-time | 60,000 | 34.9% |
-| *(Grids' own, for reference)* | Emilie's 25 hand-authored patterns | - | 14.8% |
-
 The jazz/latin map scores highest, but not for the reason first written here.
 The claim was that 25 nodes cover one family better than eight, which predicts a
-*small* spread between distant cells - and Latin's is the largest of the four
-(59, against Emilie's 42). What its score actually says is that the SOM ordered a
-wide corpus well: neighbours 34 apart inside a map whose far cells are 59 apart.
+*small* spread between distant cells - and Latin's is the largest of the three
+(59). What its score actually says is that the SOM ordered a wide corpus well:
+neighbours 34 apart inside a map whose far cells are 59 apart.
 
-Emilie's 14.8% is the other shape entirely. Her neighbours are 36 apart - further
-than Latin's - inside a map whose far cells are only 42 apart, because her 25
-patterns are one tight family by choice. Low here means "closely related set",
-not "badly arranged". Her hand-ordering is worth 9.6 points on its own: the same
-patterns in declaration order score 5.2%.
+Which is the thing to keep hold of when reading these numbers at all. A high
+ratio can come from close neighbours OR from distant far-cells, and it is mostly
+the second. It is a check that the SOM converged, not a quality score, and
+certainly not a league table - a map of 25 identical patterns would score near
+100% and be useless.
 
-The rest of this still holds - Its nodes come out recognisably
-single-style - 76% bossa, 67% afrobeat, 55% songo, 51% jazz - where the
-all-styles map is mixed everywhere and spends about half its nodes on rock,
-which is only a quarter of that corpus.
+Its nodes come out recognisably single-style - 76% bossa, 67% afrobeat, 55%
+songo, 51% jazz - where the all-styles map is mixed everywhere and spends about
+half its nodes on rock, which is only a quarter of that corpus.
 
 ## Generating a table
 
