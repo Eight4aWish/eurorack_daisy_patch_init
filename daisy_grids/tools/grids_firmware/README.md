@@ -16,34 +16,40 @@ this on a real module.
 
 ## The three banks
 
-Measured with `som.py`'s coherence metric - how much more alike map neighbours
-are than random pairs. It is a ratio, and reading it as "how smoothly X/Y morphs"
-is wrong: that is the numerator alone, and every bank here sits within a few per
-cent of every other on it. A high ratio mostly means a *large denominator* - the
-far corners of the map are far apart.
+Measured as steps that flip between silent and sounding when X or Y moves one cell, at mid
+density. That is the thing you hear, and it is what these banks are built to maximise.
 
-| bank | corpus | patterns | coherence |
-| --- | --- | ---: | ---: |
-| `nodes_jazzlatin.cc` | Groove MIDI, jazz/latin/afro/NOLA/reggae/highlife | 4,793 | **41.9%** |
-| `nodes_groove.cc` | Groove MIDI, all styles - human drummers | 11,155 | 38.8% |
-| `nodes_club.cc` | Lakh, by rhythmic signature - four-to-the-floor, breaks, half-time | 60,000 | 34.9% |
-The jazz/latin map scores highest, but not for the reason first written here.
-The claim was that 25 nodes cover one family better than eight, which predicts a
-*small* spread between distant cells - and Latin's is the largest of the three
-(59). What its score actually says is that the SOM ordered a wide corpus well:
-neighbours 34 apart inside a map whose far cells are 59 apart.
+| bank | corpus | one-bar windows | per cell move | dead edges |
+| --- | --- | ---: | ---: | ---: |
+| `nodes_jazzlatin.cc` | Groove MIDI, jazz/latin/afro/NOLA/reggae/highlife | 9,458 | 17.0 | 0/40 |
+| `nodes_groove.cc` | Groove MIDI, all styles - human drummers | 21,945 | 18.1 | 0/40 |
+| `nodes_club.cc` | Groove MIDI, by rhythmic signature | 3,663 | 16.4 | 0/40 |
+| *Grids' own, for scale* | *hand-made* | - | *15.5* | *0/40* |
 
-Which is the thing to keep hold of when reading these numbers at all. A high
-ratio can come from close neighbours OR from distant far-cells, and it is mostly
-the second. It is a check that the SOM converged, not a quality score, and
-certainly not a league table - a map of 25 identical patterns would score near
-100% and be useless.
+A dead edge is a neighbour pair differing by three steps or fewer at every density: a knob
+move you cannot hear.
 
-Its nodes come out recognisably single-style - 76% bossa, 67% afrobeat, 55%
-songo, 51% jazz - where the all-styles map is mixed everywhere and spends about
-half its nodes on rock, which is only a quarter of that corpus.
+**These replace SOM-derived banks that scored 9.4 to 10.9.** The earlier tables came off a
+self-organising map, and both of its properties are wrong here: its objective function is to
+minimise the difference between neighbouring cells, and its nodes are centroids - averages of
+thousands of patterns, which regress toward each other. It measured well on a coherence ratio
+and played flat. See ../groove_nodes/exemplars.py.
+
+The coherence table that used to be here is gone. It was a ratio of neighbour distance to
+any-pair distance, it is not a quality score, and a map of 25 identical patterns scores near
+100% on it.
 
 ## Generating a table
+
+First derive the one-bar tables, which is a different cut from Sorrow's - Grids steps at
+32nds, so one Grids pattern is ONE bar where Sorrow's is two:
+
+    cd ../groove_nodes
+    python3 exemplars.py       <groove.zip>       ../grids_firmware/jazzlatin --filter latin --bars 1
+    python3 exemplars.py       <groove.zip>       ../grids_firmware/groove    --filter all   --bars 1
+    python3 exemplars_club.py  <groove-midi-dir>  ../grids_firmware/club                     --bars 1
+
+each of which writes `<name>_1bar.npy` next to this README. Then:
 
     python3 emit_resources.py jazzlatin > nodes_jazzlatin.cc
 
@@ -51,10 +57,9 @@ Paste the output over the `node_0` ... `node_24` block in `grids/resources.cc`.
 
 The emitter permutes the nodes, and that matters: Grids' `drum_map[5][5]` does
 not list its nodes in order. Emilie arranged the 25 patterns by ear so that
-neighbours are musically related. Our banks come off a
-self-organising map, which does that arranging automatically, so they are
-already row-major correct; the emitter inverts her table so Grids' source needs
-no other edit.
+neighbours are musically related. Our banks are arranged row-major
+by `exemplars.arrange()`, so they are already in the right order; the emitter
+inverts her table so Grids' source needs no other edit.
 
 **Self-test.** `emit_resources.py original` re-emits Grids' own data unpermuted,
 and the output is byte-identical to the node block in `grids/resources.cc`. If
