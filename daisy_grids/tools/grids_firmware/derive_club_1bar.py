@@ -1,4 +1,15 @@
-"""Derive the Club bank at one bar, selected by rhythmic signature.
+"""SUPERSEDED by ../groove_nodes/exemplars.py --bars 1, which is what ships.
+
+This derives its 25 nodes with a self-organising map. That measured well and
+played flat: a SOM's objective function IS to minimise the difference between
+neighbouring cells, which is the opposite of what a morphing X/Y wants, and its
+nodes are centroids - averages regress toward each other. Measured per cell move,
+these tables scored 9.4-10.9 against the exemplar method's 16.4-18.1.
+
+Kept for the even/odd slot analysis below, which still holds and is not written
+down anywhere else. Do not ship from it.
+
+Derive the Club bank at one bar, selected by rhythmic signature.
 
 No corpus is simultaneously modern, timed and openly licensed. Lakh has the
 scale and CC BY, but its clean subset is Beatles, Metallica, ABBA and Genesis -

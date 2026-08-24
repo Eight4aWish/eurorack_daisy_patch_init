@@ -1,4 +1,15 @@
-"""Derive a Grids bank at ONE bar, on the 16th-note slots.
+"""SUPERSEDED by ../groove_nodes/exemplars.py --bars 1, which is what ships.
+
+This derives its 25 nodes with a self-organising map. That measured well and
+played flat: a SOM's objective function IS to minimise the difference between
+neighbouring cells, which is the opposite of what a morphing X/Y wants, and its
+nodes are centroids - averages regress toward each other. Measured per cell move,
+these tables scored 9.4-10.9 against the exemplar method's 16.4-18.1.
+
+Kept for the even/odd slot analysis below, which still holds and is not written
+down anywhere else. Do not ship from it.
+
+Derive a Grids bank at ONE bar, on the 16th-note slots.
 
 Sorrow and real Grids step at different rates, and it matters:
 
