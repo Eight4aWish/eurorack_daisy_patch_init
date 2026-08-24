@@ -1,5 +1,20 @@
 #!/usr/bin/env python3
-"""The Club bank, by the exemplars method - Lakh, selected by rhythmic signature.
+"""Rhythmic-signature selection: find club vocabulary by what the rhythm IS.
+
+SUPERSEDED for the shipped Club bank, which now comes from Groove MIDI via
+exemplars.py using this file's `signature()`. Kept because the signature logic is
+the reusable part and because Lakh may be the right corpus for something else.
+
+DO NOT ship a Lakh-derived bank made with exemplars.py. The exemplar method
+embeds real patterns rather than averages, and every one of the 25 nodes traced
+back to a two-bar window of a named commercial recording - Led Zeppelin, Nirvana,
+Kraftwerk, Metallica, two from a John Bonham drum solo - with eight reproducing
+their source rhythm bit for bit. Centroids used to make that moot. They no longer
+apply. Groove MIDI is CC BY 4.0 and measures the same or better.
+
+The original note follows.
+
+The Club bank, by the exemplars method - Lakh, selected by rhythmic signature.
 
 Lakh has no usable genre labels (its clean subset is Beatles, Metallica, ABBA),
 so the club vocabulary is found by what the rhythm IS rather than who played it.
