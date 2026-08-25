@@ -316,8 +316,15 @@ static constexpr float kLedVoltsDim  = 3.4f;
 // is meant to displace and do nothing useful.
 //
 // Two consequences worth knowing:
-//   - Emilie's tables still read correctly here, because she writes almost
-//     entirely on the even (16th) slots - 858 of her 907 non-zero values.
+//   - Emilie's own bank does NOT read correctly here, and the note that used to
+//     sit in this spot said it did. It reasoned that because she writes almost
+//     entirely on the even (16th) slots - 858 of her 907 non-zero values - nothing
+//     is lost. Nothing IS lost. But nothing being lost is not the same as the
+//     tempo being right: her 32 steps are one bar of 32nds and ours are two bars
+//     of 16ths, so her table plays as a uniform 2x time stretch. Her node 17 has
+//     a kick on all four quarters of a bar; here it comes out as a kick on beats
+//     one and three of two bars. Across the bank, 16.6 hits per node written into
+//     one bar are spread over two - half the density, half the speed.
 //   - Banks derived FOR this module are 32 sixteenths, i.e. two bars, and have
 //     to be re-derived at one bar before going onto real Grids hardware, or they
 //     play at double time. See tools/grids_firmware/.
