@@ -259,15 +259,23 @@ def main() -> None:
     print(f"{args.prefix}: {len(X)} windows of {steps} steps, filter={args.filter}")
 
     E = choose(X) * 255.0
-    if steps == 32:
-        report(E, "chosen, unarranged")
-    E = arrange(E)
-    if steps == 32:
-        report(E, "chosen, arranged")
+    report(E, "chosen, unarranged")
 
+    # SHAPE FIRST, THEN ARRANGE. It used to be the other way round, and that was
+    # wrong once shape() started matching per node: arrange() minimises edge
+    # length on the values it is handed, and shape() then reassigned those values
+    # by activity rank, which can reorder the relationships between nodes
+    # entirely. The map was being laid out for numbers it did not end up holding.
+    #
+    # Measured on Traditional, edge/map went 92% arranged-then-shaped against 85%
+    # shaped-then-arranged. 100% means neighbours differ as much as distant cells
+    # - a shuffle, where every knob move is a jump to something unrelated and the
+    # bilinear blend of four unrelated corners averages to much the same mush
+    # wherever you are. Fewer steps change per nudge this way, and they change in
+    # a direction.
     orig96 = np.load(pathlib.Path(__file__).resolve().parent / "orig.npy")
-    A = shape(E, orig96, steps)
-    report(A, "after histogram match")
+    A = arrange(shape(E, orig96, steps))
+    report(A, "shaped and arranged")
     np.save(f"{args.prefix}_nodes.npy", A)
     print(f"  wrote {args.prefix}_nodes.npy")
 

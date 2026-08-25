@@ -138,8 +138,10 @@ def main() -> None:
     # Every setting clears all forty edges, so there is nothing left to buy. What
     # rises with the floor is edge/map, and at 100% neighbours differ as much as
     # distant cells - a shuffle, not a map. Off sits at 81%, next to Grids' own 78%.
-    E = arrange(choose(X) * 255.0, floor_pct=args.floor, floor_w=2.0)
-    A = shape(E, np.load(pathlib.Path(__file__).resolve().parent / "orig.npy"), steps)
+    # Shape first, then arrange - see the note in exemplars.py main().
+    E = shape(choose(X) * 255.0,
+              np.load(pathlib.Path(__file__).resolve().parent / "orig.npy"), steps)
+    A = arrange(E, floor_pct=args.floor, floor_w=2.0)
     report(A, "after histogram match")
     np.save(f"{args.prefix}_nodes.npy", A)
     print(f"  wrote {args.prefix}_nodes.npy")
