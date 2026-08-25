@@ -31,7 +31,7 @@ CPP_SOURCES = \
 	src/grids_nodes_jazzlatin.cpp \
 	src/speech_data.cpp
 
-SORROW_VERSION ?= 2.4.0
+SORROW_VERSION ?= 2.4.1
 C_DEFS += -DSORROW_VERSION=\"$(SORROW_VERSION)\"
 
 # The user bank is read from the SD card at runtime, not compiled in, so there
