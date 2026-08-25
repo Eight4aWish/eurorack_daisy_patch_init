@@ -173,8 +173,17 @@ GridsStep GridsDrumGenerator::Tick(uint8_t x,
                                   uint8_t density_hh,
                                   uint8_t randomness)
 {
-    // At the beginning of a pattern, decide on perturbation levels.
-    if(step_ == 0)
+    // Decide on perturbation levels once per BAR.
+    //
+    // Upstream re-rolls at the start of each pattern, and on real Grids a pattern
+    // IS a bar: kPulsesPerStep = 3 at 24 ppqn gives 8 steps per quarter, so its 32
+    // steps are one bar of 32nds. Sorrow steps once per 16th, so the same 32 steps
+    // are TWO bars - and re-rolling at step 0 alone gave chaos half the rate
+    // Emilie intended. Matching her musical period rather than her buffer length
+    // restores it, and earns a second thing for nothing: our nodes repeat 82-86%
+    // between their two bars, and a fresh roll at the bar line is what tells them
+    // apart.
+    if((step_ & 0x0Fu) == 0)
     {
         const uint8_t r = static_cast<uint8_t>(randomness >> 2); // matches upstream (when swing disabled)
         perturb_[0]     = U8U8MulShift8(RandByte(), r);

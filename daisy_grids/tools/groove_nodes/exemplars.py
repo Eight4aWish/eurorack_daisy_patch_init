@@ -180,40 +180,53 @@ def arrange(E: np.ndarray, restarts: int = 12, iters: int = 40000,
 
 
 def shape(A: np.ndarray, orig96: np.ndarray, steps: int) -> np.ndarray:
-    """Rank-match each lane onto Grids' own value distribution.
+    """Rank-match each node-lane onto ONE OF EMILIE'S node-lanes, paired by activity.
 
-    Kept from som.py, and for the same reason: the density threshold and the
-    fixed 192 accent line then behave exactly as they do with Grids' data, so
-    nothing downstream has to change. It is monotonic per lane, so it cannot
-    reorder a pattern - only rescale it.
+    Kept from som.py in purpose: the density threshold and the fixed 192 accent
+    line then behave exactly as they do with Grids' own data, so nothing
+    downstream has to change. Monotonic per node-lane, so it cannot reorder a
+    pattern - only rescale it.
 
-    For a one-bar bank the 16 values are written to the EVEN slots of the 32-slot
-    node, which is where Emilie writes hers, and matched against her even slots
-    only: 94% of her odd slots are zero, so matching the lot drags everything
-    toward silence.
+    It used to match each lane GLOBALLY - all 25x32 values sorted at once against
+    her 800. That reproduces her distribution exactly but says nothing about how
+    the zeros get shared out, and 62% of her values are zero. A node-lane quieter
+    than the other 24 collected the bottom of the distribution and went silent:
+    ten, eleven and fourteen of the 25 nodes lost a voice in Latin, Traditional
+    and Club. Emilie loses none, in 75 node-lanes - she does not leave a drum out.
+
+    Pairing fixes it by construction and costs nothing. Sort our nodes by activity
+    in that lane, sort hers the same way, pair them off and rank-match each pair.
+    Every one of her 1200 values is still used exactly once, so the global
+    distribution is untouched - but our nth-busiest node inherits her nth-busiest
+    node's shape, including how many hits it keeps. Measured, it also raised
+    movement in all three banks (20.3->24.6, 22.5->23.7, 19.4->20.7) and brought
+    edge/map from 73-83% to 84-93%, around her own 91%.
+
+    For a one-bar bank the 16 values are written to the EVEN slots, which is where
+    Emilie writes hers, and matched against her even slots only.
     """
     out = np.zeros((25, 96), dtype=np.float32)
     for lane in range(LANES):
         sl = slice(lane * 32, (lane + 1) * 32)
-        col = orig96[:, sl]
-        target = np.sort((col if steps == 32 else col[:, 0::2]).reshape(-1))
-        flat = A[:, lane * steps:(lane + 1) * steps].reshape(-1).copy()
-        # Ties must break at random, not by index. A stable sort breaks them in
-        # flat order, which is node-major, so every tied block gets handed out
-        # low-to-high across the nodes - node 0 takes the quiet end of the block
-        # and node 24 the loud end. On human playing that is harmless because
-        # velocities are all different. On programmed MIDI it is fatal: Lakh has
-        # 96% ties (28 distinct kick velocities across 800 slots), and the effect
-        # was collapsing six adjacent pairs onto IDENTICAL firing patterns -
-        # six knob moves that did nothing, out of forty.
-        keys = np.lexsort((np.random.default_rng(1234 + lane).permutation(flat.size), flat))
-        order = keys
-        buf = np.empty_like(flat)
-        buf[order] = target
-        if steps == 32:
-            out[:, sl] = buf.reshape(25, 32)
-        else:
-            out[:, lane * 32:(lane + 1) * 32:2] = buf.reshape(25, 16)
+        her = orig96[:, sl]
+        her = her if steps == 32 else her[:, 0::2]
+        ours = A[:, lane * steps:(lane + 1) * steps]
+        our_order = np.argsort(ours.sum(1), kind="stable")
+        her_order = np.argsort(her.sum(1), kind="stable")
+        # Ties must break at random, not by index - see the note in choose(). On
+        # programmed MIDI a stable sort hands tied blocks out low-to-high across
+        # the nodes, which collapsed adjacent pairs onto identical firing patterns.
+        rng = np.random.default_rng(1234 + lane)
+        for k in range(25):
+            src = ours[our_order[k]].copy()
+            tgt = np.sort(her[her_order[k]].astype(np.float32))
+            keys = np.lexsort((rng.permutation(src.size), src))
+            buf = np.empty_like(src)
+            buf[keys] = tgt
+            if steps == 32:
+                out[our_order[k], sl] = buf
+            else:
+                out[our_order[k], lane * 32:(lane + 1) * 32:2] = buf
     return out
 
 
