@@ -180,7 +180,17 @@ static float g_home_rnd  = 0.0f;
 static float g_dens_kick  = 0.5f;
 static float g_dens_snare = 0.5f;
 static float g_dens_hat   = 0.5f;
-static float g_wildness   = 0.35f;
+
+// Deliberately well below noon, and 0.175 rather than the 0.35 it was until the
+// knob was split in two. There is no patch saving, so this is what every power-on
+// sounds like and it has to be the safe side.
+//
+// The two numbers mean the same thing. Wildness now opens the parameter ranges
+// over the FIRST HALF of the travel - WildRange(w) = min(2w, 1) in
+// drum_voices.cpp - so 0.175 opens them exactly as far as 0.35 used to, unlocks
+// the same models at the same odds, and polarises not at all. Leaving it at 0.35
+// would have doubled the boot default's reach without anyone asking for it.
+static float g_wildness = 0.175f;
 
 // Soft-takeover state: a knob only grabs its parameter once it crosses the
 // stored value, so entering the Kit page doesn't make params jump to the knob's
