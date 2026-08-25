@@ -43,14 +43,54 @@ static inline float Lerp(float a, float b, float t)
     return a + (b - a) * t;
 }
 
-// Draw from a range that widens with wildness: [lo0,hi0] at w=0 opening out to
-// [lo1,hi1] at w=1. Every model parameter is expressed this way, so "tame" and
-// "unhinged" are tuned per parameter rather than by one global scale factor.
+// The knob is two halves. Below noon the RANGE opens, from [lo0,hi0] to
+// [lo1,hi1]; above noon the range stays open and the DRAW SHAPE polarises, so
+// values are pushed toward the ends instead of the middle.
+//
+// It used to be one half: the range opened across the whole travel and the draw
+// stayed uniform inside it the entire way. That is why full wildness still gave
+// usable kits every time. Measured, the shape of the draw was IDENTICAL at every
+// setting - median 0.50 of the way out from centre at w=0.0, 0.5 and 1.0, and a
+// parameter in the outer fifth of its range 20% of the time whatever the knob
+// did. The box got wider and you still landed in the middle of it, and the
+// middle of even the widest range is a usable sound.
+//
+// The extremes were always in the tables; they were just statistically
+// unreachable. Six independent uniform draws put all six past halfway 1.6% of
+// the time, at every setting. Polarised at the top of the travel that is 68%.
+//
+// Splitting the travel rather than polarising throughout keeps every kit the
+// module used to make: the old full-wildness behaviour is now exactly noon, so
+// nothing below it changes and nothing already usable is lost.
+static inline float WildRange(float w)
+{
+    return w * 2.0f < 1.0f ? w * 2.0f : 1.0f;
+}
+static inline float WildPolar(float w)
+{
+    return w * 2.0f > 1.0f ? w * 2.0f - 1.0f : 0.0f;
+}
+
+// Uniform at p=0, increasingly U-shaped as p rises. Symmetric, so neither end is
+// favoured, and continuous at p=0 so noon is not a step change.
+static inline float Polarise(float u, float p)
+{
+    if(p <= 0.0f)
+        return u;
+    const float e = 1.0f - 0.75f * p; // exponent 1.0 -> 0.25
+    const float d = fabsf(u - 0.5f) * 2.0f;
+    return 0.5f + (u >= 0.5f ? 0.5f : -0.5f) * powf(d, e);
+}
+
+// Draw from a range that widens over the first half of the knob, with a shape
+// that polarises over the second. Every model parameter is expressed this way,
+// so "tame" and "unhinged" are tuned per parameter rather than by one global
+// scale factor.
 static inline float RndW(RandFn r, float w, float lo0, float hi0, float lo1, float hi1)
 {
-    const float lo = Lerp(lo0, lo1, w);
-    const float hi = Lerp(hi0, hi1, w);
-    return lo + r() * (hi - lo);
+    const float lo = Lerp(lo0, lo1, WildRange(w));
+    const float hi = Lerp(hi0, hi1, WildRange(w));
+    return lo + Polarise(r(), WildPolar(w)) * (hi - lo);
 }
 
 // -----------------------------------------------------------------------------
@@ -392,11 +432,56 @@ inline SlotState& StateOf(Slot slot)
 // went from never appearing to a third of all rolls across about 0.1 of knob
 // travel, so most of the pool stayed invisible for most of the range. A ramp
 // fades each model in gradually instead.
+//
+// Unlocking happens over the first half of the knob, on WildRange, so the whole
+// pool is available by noon. Past noon the ramp has nothing left to do - every
+// weight saturates at 1.0 and selection goes UNIFORM, which meant the tamest
+// model stayed exactly as likely as the strangest: a third of kicks at full
+// wildness were still the synth kick. So the top half of the travel biases
+// toward the exotic ones instead, which is what "wild" ought to mean - prefer
+// the strange, not merely permit it.
 float ModelWeight(float exotic, float wildness)
 {
     constexpr float kRamp = 0.30f;
-    const float     t     = (wildness + 0.25f - exotic) / kRamp;
-    return t <= 0.0f ? 0.0f : (t >= 1.0f ? 1.0f : t);
+    const float     t     = (WildRange(wildness) + 0.25f - exotic) / kRamp;
+    const float     w     = t <= 0.0f ? 0.0f : (t >= 1.0f ? 1.0f : t);
+    return w * (1.0f + 3.0f * WildPolar(wildness) * exotic);
+}
+
+// Choose a family, tilted toward the strange ones as the knob passes noon.
+//
+// This has to exist, and it took a measurement to notice. Family is chosen FIRST
+// and the model is then picked only from that family - and kick and hat have
+// exactly ONE model per family. So the family draw fully determined the model for
+// two slots out of three, and ModelWeight's exotic bias never got a say: at full
+// wildness the synth kick still came up a third of the time, exactly as often as
+// the modal one. Only snare has two Physical models, which is why the string
+// snare was the single model the bias appeared to move at all.
+//
+// Weighted by how exotic each family's models are, so past noon the pool tilts
+// toward Physical without ever excluding the others - a wild kit that happens to
+// pick a synth kick is fine; a knob that cannot prefer the strange is not.
+Family PickFamily(float wildness, RandFn r)
+{
+    // Mean exotic rating of each family across the three slots, from the model
+    // tables above: Synth 0.00, Analog 0.13, Physical 0.55.
+    constexpr float kFamExotic[3] = {0.00f, 0.13f, 0.55f};
+    const float     p             = WildPolar(wildness);
+
+    float w[3], total = 0.0f;
+    for(uint8_t i = 0; i < 3; ++i)
+    {
+        w[i] = 1.0f + 3.0f * p * kFamExotic[i];
+        total += w[i];
+    }
+    float pick = r() * total;
+    for(uint8_t i = 0; i < 3; ++i)
+    {
+        pick -= w[i];
+        if(pick <= 0.0f)
+            return static_cast<Family>(i);
+    }
+    return Family::Physical;
 }
 
 // Cheapest model in a slot, used to reserve budget for slots not yet chosen.
@@ -631,12 +716,12 @@ float VoiceCost(Slot slot)
 void VoicesRoll(float wildness, RandFn rnd)
 {
 
-    // One family for the kit to agree on, then each slot may defect from it
-    // with probability = wildness. At 0 the kit is coherent; at 1 the three
-    // slots are chosen independently and can mix families freely.
-    const uint8_t fam_count = static_cast<uint8_t>(Family::kCount);
-    const uint8_t base_idx  = static_cast<uint8_t>(rnd() * fam_count) % fam_count;
-    const Family  base      = static_cast<Family>(base_idx);
+    // One family for the kit to agree on, then each slot may defect from it with
+    // probability = WildRange. At 0 the kit is coherent; by noon the three slots
+    // are chosen independently and can mix families freely, which is as far as
+    // defection can go - past noon the wildness lives in the model bias and the
+    // parameter draw instead.
+    const Family base = PickFamily(wildness, rnd);
 
     // Spend the kit budget slot by slot, always holding back enough for the
     // slots not yet chosen so the last one is never left unaffordable.
@@ -647,11 +732,8 @@ void VoicesRoll(float wildness, RandFn rnd)
         SlotState& s = s_slots[i];
 
         Family want = base;
-        if(rnd() < wildness)
-        {
-            const uint8_t idx = static_cast<uint8_t>(rnd() * fam_count) % fam_count;
-            want              = static_cast<Family>(idx);
-        }
+        if(rnd() < WildRange(wildness))
+            want = PickFamily(wildness, rnd);
 
         float reserve = 0.0f;
         for(uint8_t j = i + 1; j < static_cast<uint8_t>(Slot::kCount); ++j)
