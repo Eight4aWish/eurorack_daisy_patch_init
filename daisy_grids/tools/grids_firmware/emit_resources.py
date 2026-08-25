@@ -44,12 +44,22 @@ GRIDS_ORDER = [10, 8, 0, 9, 11, 15, 7, 13, 12, 6, 18, 14, 4, 5, 3,
 
 
 def load(bank):
-    # One-bar banks derived for real Grids land as .npy from derive_1bar.py /
-    # derive_club_1bar.py. Those are the ones to ship: the .cpp tables in src/
-    # are Sorrow's, two bars of 16ths, and play at double time here.
-    npy = pathlib.Path(__file__).resolve().parent / f'{bank}_1bar.npy'
+    import numpy as np
+    here = pathlib.Path(__file__).resolve().parent
+
+    # 'original' is the self-test, and it must read EMILIE'S RAW TABLE. It used to
+    # read src/grids_nodes.cpp, which was her data byte for byte until Sorrow
+    # started shipping a folded rendering of it - her 32nds merged onto Sorrow's
+    # 16th grid, see tools/groove_nodes/fold_original.py. That file is no longer
+    # her table, so the self-test now reads orig96.npy, which is.
+    if bank == 'original':
+        return [list(int(v) for v in row) for row in np.load(here / 'orig96.npy')]
+
+    # One-bar banks derived for real Grids land as .npy from exemplars.py --bars 1.
+    # Those are the ones to ship: the .cpp tables in src/ are Sorrow's, two bars of
+    # 16ths, and play at double time here.
+    npy = here / f'{bank}_1bar.npy'
     if npy.exists():
-        import numpy as np
         return [list(int(v) for v in row) for row in np.load(npy)]
     fn, prefix = BANKS[bank]
     txt = (SRC / fn).read_text()
