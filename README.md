@@ -11,7 +11,7 @@ Firmwares offered as finished modules are named after the nursery rhyme
 
 | Name | Firmware | Version | Based on | Licence |
 | --- | --- | --- | --- | --- |
-| **Sorrow** | [`daisy_grids/`](daisy_grids/) | v2.0.0 | Mutable Instruments Grids | **GPL-3.0-or-later** |
+| **Sorrow** | [`daisy_grids/`](daisy_grids/) | v2.4.1 | Mutable Instruments Grids | **GPL-3.0-or-later** |
 | **Joy** | [`daisy_braids_oled/`](daisy_braids_oled/) | v1.4.0 | Mutable Instruments Braids | MIT |
 | **Joy Lite** | [`daisy_joy_lite/`](daisy_joy_lite/) | v1.4.0 | Mutable Instruments Braids | MIT |
 
