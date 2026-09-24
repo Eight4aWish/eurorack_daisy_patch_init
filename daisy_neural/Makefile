@@ -28,6 +28,8 @@ CPP_SOURCES = src/main.cpp \
 
 # Additional include paths
 C_INCLUDES += -I$(_P_UP1)/common
+# Project root, so src/main.cpp can include the lifted engine as "nam/...".
+C_INCLUDES += -I$(_P_DIR)
 
 # Linker configuration
 LDFLAGS += -u _printf_float

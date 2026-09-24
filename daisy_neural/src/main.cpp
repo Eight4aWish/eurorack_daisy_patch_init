@@ -41,38 +41,76 @@ using namespace daisysp;
 using namespace patch_sm;
 
 // ================================================================
-// Engine slot
+// Engine slot — NAM A2
 // ================================================================
 //
-// Phase 1 step 3 replaces the body of Process() with the A2 engine lifted from
-// tone-3000/nam-pedal branch `t3k-pedal` @ 6dc47a4 (nam_model.c/.h, keeping its
-// NAM_DTCM placement), with bkshepherd's nam_a2_runtime.h kept open alongside
-// as the readable version of the same maths. Both are MIT; per the working
-// rules their licence text lands in daisy_neural/LICENSE-<project>.txt and the
-// source commit goes in a comment at the top of each lifted file.
+// The engine is bkshepherd's single-header A2 runtime rather than nam-pedal's
+// nam_model.c, because bkshepherd ships the whole path: the runtime, the
+// .nam -> C array converter, and five already-converted captures. nam-pedal's
+// converter (nam2c.py) is not in that repo, so its engine cannot be fed without
+// writing one first. Both are MIT; this is the one that gets to a first trial.
 //
-// The seam is deliberately one sample in, one sample out. A2 is causal and
-// sample-by-sample, so nothing here needs to change shape when it arrives —
-// only Init(), Process() and Name().
+// A2's API is a fixed 48-sample block, not one sample at a time — so this seam
+// is block-shaped. The Patch SM defaults to 48kHz with 48-sample blocks, which
+// is exactly what the engine expects, so the two line up with no buffering.
+//
+// Memory placement: the runtime pins its hot data to .dtcmram_bss and the ~76KB
+// history to .sram_d2_bss, which need nam/nam_a2_sections.lds and the
+// bootloader. For a first BOOT_NONE trial those macros are neutralised below and
+// everything lands in ordinary .bss. Revisit under BOOT_SRAM if the measured CPU
+// load says the placement matters.
+#define NAM_A2_HOT_DATA
+#define NAM_A2_STATE_DATA
+#define NAM_A2_HOT_STATE_DATA
+#include "nam/nam_a2_runtime.h"
+#include "nam/model_data_nam_a2.h"
+
+// One capture compiled in, the fewest moving parts phase 1 step 4 asks for.
+// The other four in model_data_nam_a2.h stay unreferenced so -fdata-sections
+// and --gc-sections drop them, which matters because flash is tight here.
+// outputGain is bkshepherd's hand-tuned loudness match, carried over as-is.
+static constexpr const char*  kCaptureName   = "JCM800";
+static const float* const     kCaptureWeights = nam_a2_models::kWeightsJcm800;
+static constexpr float        kCaptureGain   = 1.1f;
+
+// The engine's fixed block size. Anything else and we pass through rather than
+// feed it a block it cannot handle.
+static constexpr size_t kA2BlockSize = 48;
+
 class EngineSlot
 {
   public:
     void Init(float sample_rate)
     {
         sample_rate_ = sample_rate;
+        loaded_      = player_.load_weights(kCaptureWeights,
+                                            nam_a2_daisy::kA2WeightCount);
     }
 
-    inline float Process(float x)
+    // in and out may alias. Checked against the runtime rather than assumed:
+    // process_block_48() does all its work in hot.bufA/bufB and writes `output`
+    // only in the final process_head() call, after every layer has finished
+    // reading `input`. If that ever changes upstream, this needs a second buffer.
+    inline void ProcessBlock(const float* in, float* out, size_t size)
     {
-        // Passthrough. The engine goes here.
-        return x;
+        if(!loaded_ || size != kA2BlockSize)
+        {
+            for(size_t i = 0; i < size; i++)
+                out[i] = in[i];
+            return;
+        }
+        player_.process_block_48(in, out);
+        for(size_t i = 0; i < size; i++)
+            out[i] *= kCaptureGain;
     }
 
-    // Shown on the display, truncated to the panel's ten characters.
-    const char* Name() const { return "PASSTHRU"; }
+    bool        Loaded() const { return loaded_; }
+    const char* Name() const { return loaded_ ? kCaptureName : "NO CAP"; }
 
   private:
-    float sample_rate_ = 48000.f;
+    nam_a2_daisy::A2Player player_;
+    float                  sample_rate_ = 48000.f;
+    bool                   loaded_      = false;
 };
 
 // ================================================================
@@ -187,7 +225,12 @@ void AudioCallback(AudioHandle::InputBuffer  in,
     float peak = 0.f;
     float dc   = g_in_dc;
 
-    for(size_t i = 0; i < size; i++)
+    // Metering and trim first, over the whole block, because the engine wants
+    // a contiguous 48 samples rather than one at a time.
+    static float scratch[kA2BlockSize];
+    const size_t n = (size > kA2BlockSize) ? kA2BlockSize : size;
+
+    for(size_t i = 0; i < n; i++)
     {
         const float x = in[0][i];
 
@@ -198,19 +241,25 @@ void AudioCallback(AudioHandle::InputBuffer  in,
         // Slow one-pole, for watching a sub-1Hz LFO on the DC page.
         dc += g_dc_coeff * (x - dc);
 
-        float y;
-        if(g_bypass)
-        {
-            y = x;
-        }
-        else
-        {
-            y = engine.Process(x * trim);
-        }
-        y *= level;
+        scratch[i] = g_bypass ? x : (x * trim);
+    }
 
-        out[0][i] = y;
-        out[1][i] = y;
+    if(!g_bypass)
+        engine.ProcessBlock(scratch, scratch, n);
+
+    for(size_t i = 0; i < n; i++)
+    {
+        const float y = scratch[i] * level;
+        out[0][i]     = y;
+        out[1][i]     = y;
+    }
+
+    // Only reachable if the block size is ever configured above 48; the engine
+    // cannot help there, so the tail passes through dry rather than going quiet.
+    for(size_t i = n; i < size; i++)
+    {
+        out[0][i] = in[0][i] * level;
+        out[1][i] = in[0][i] * level;
     }
 
     g_in_peak = peak;
@@ -308,7 +357,7 @@ int main(void)
     display.Init(patch.A2, patch.A3);
     display.Clear();
     display.DrawStringCentered(8, "NEURAL", false);
-    display.DrawStringCentered(24, "PASSTHRU", false);
+    display.DrawStringCentered(24, kCaptureName, false);
     display.Update();
     System::Delay(800);
 
