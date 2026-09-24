@@ -1,4 +1,4 @@
-# Neural models on Eurorack (Daisy patch.init) — project brief
+# Neural networks on Eurorack (Daisy patch.init) — project brief
 
 Handoff from a planning conversation (September 2026), corrected on 2026-09-24 against
 the actual repos. Revised the same day: the conditioned model targets my Dual Pingable
@@ -39,7 +39,7 @@ narrower vocabulary. Keep to it in code, commits and on the panel.
 | **engine** | the inference code that runs a network (the A2 engine, RTNeural) | the weights |
 | **capture** | one trained weights file for one device at one setting (a `.nam`) | the architecture |
 | **architecture** | the shape of the network — A2/WaveNet, GRU, TCN | a specific trained thing |
-| **slot** | where an engine runs in the firmware, one sample in, one out | a preset list |
+| **slot** | where an engine runs in the firmware (A2 takes a 48-sample block) | a preset list |
 
 - **Do not use "patch" in this project at all.** It already means a selectable effect in
   `daisy_multifx_oled` (`PatchDef`, four banks of four), the hardware is called
@@ -82,8 +82,9 @@ narrower vocabulary. Keep to it in code, commits and on the panel.
     128KB internal flash, 128KB DTCM, 512KB AXI SRAM, 288KB D2 SRAM.
   - libDaisy class: `patch_sm::DaisyPatchSM`. **Defaults to 48kHz, 48-sample blocks**
     (`daisy_patch_sm.cpp`), so nothing needs changing to match the benchmarks.
-  - MultiFX builds `BOOT_NONE`. This firmware will need the Daisy bootloader
-    (`BOOT_SRAM` or `BOOT_QSPI`), as Sorrow and Joy already do.
+  - MultiFX builds `BOOT_NONE`. ~~This firmware will need the Daisy bootloader~~ — it
+    does not, yet: the A2 engine plus one capture fits `BOOT_NONE` at 84.5% of flash.
+    `BOOT_SRAM` is still the move once the DTCM placement is needed, as Sorrow and Joy do.
   - The carrier has a **microSD slot** (see `patch_init_schematic.pdf`).
   - **IN_R is normalled to IN_L** on the carrier.
   - CV_OUT is 12-bit, 0–5V. CV_5–CV_8 are ±5V inputs.
@@ -98,7 +99,7 @@ narrower vocabulary. Keep to it in code, commits and on the panel.
     Do not capture it.
   - Input level and fold CV range: _read from Befaco's user manual and add here._
   - Schematics are published by Befaco (CC BY-NC-SA) at <https://www.befaco.org/docs/>.
-- **Dual Pingable LPG** — the phase 3 capture target, and my own design: 10HP, dual
+- **Dual Pingable LPG** — the subject of phases 2–5, and my own design: 10HP, dual
   channel, on the N8Synth solderable breadboard, canonical Buchla 292 audio path in a
   Make Noise Optomix shape. Design docs live in the `eurorack_electronics` repo under
   `docs/lpg_*` — reference review, netlist, BOM, placement and generated schematics.
@@ -208,11 +209,19 @@ no dropouts, and the measured CPU load is recorded here.
    Skeleton footprint with the slot empty: FLASH 99,508 B (75.9% of 128 KB), SRAM
    16,764 B, RAM_D2 16,896 B, DTCM unused — so `BOOT_NONE` has only ~28 KB spare, which
    is the practical reason step 3 moves to `BOOT_SRAM`.
-3. **Lift the engine** from nam-pedal `t3k-pedal` @ `6dc47a4`: `nam_model.c/.h`, keeping
-   its `NAM_DTCM` placement. Replace `DaisySeed` with `DaisyPatchSM`. Keep bkshepherd's
-   `nam_a2_runtime.h` open alongside as the easier-to-read version of the same maths.
-4. **Start with one capture compiled in** (fewest moving parts), `BOOT_SRAM`. Move to a
-   QSPI capture bank (`pack_models.py`, `BOOT_QSPI`) or the microSD slot once it runs.
+3. ~~Lift the engine from nam-pedal `t3k-pedal` @ `6dc47a4`.~~ **Done — from bkshepherd
+   instead.** That repo ships the whole path: the runtime, the `.nam` → C array converter,
+   and five already-converted captures. nam-pedal's `nam2c.py` is not in its repo, so its
+   engine cannot be fed without writing a converter first. `nam/nam_a2_runtime.h` @
+   `ccae0f2` (2026-09-08), MIT, licence in `LICENSE-daisyseedprojects.txt`.
+   **Correction to this brief:** A2's API here is a fixed **48-sample block**, not sample
+   by sample. The Patch SM's default block is also 48, so they line up exactly.
+4. ~~Start with one capture compiled in, `BOOT_SRAM`.~~ **Done, and it fits `BOOT_NONE`**
+   — JCM800, one of the five shipped; the other four stay unreferenced and `--gc-sections`
+   drops them. Engine + capture cost 11.3 KB of flash (84.5% used) and 88.5 KB of SRAM
+   (the history buffer). The DTCM/D2 placement macros are neutralised so it runs without
+   the bootloader; move to `BOOT_SRAM` with `nam/nam_a2_sections.lds` if measured CPU
+   says the placement matters. QSPI capture bank or microSD comes later.
 5. **Audio path:** IN_L → input trim (knob 1) → A2 → output level (knob 2)
    → OUT_L and OUT_R. The button toggles bypass for A/B comparison.
 6. **Display (64×48 OLED):** CPU load (libDaisy `CpuLoadMeter`), an input peak meter
