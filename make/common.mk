@@ -33,3 +33,37 @@ DAISYSP_DIR  ?= $(DAISY_ROOT)/DaisySP
 
 # Mutable Instruments eurorack deps root.
 MUTABLE_EURORACK ?= $(DEPS_ROOT)/mutable/eurorack
+
+# ----------------------------------------------------------------------------
+# Toolchain auto-detection
+#
+# libDaisy's core Makefile uses arm-none-eabi-gcc from PATH unless GCC_PATH is
+# set. That breaks when the toolchain on PATH cannot run on this host — an
+# x86-64 arm-none-eabi-gcc on an Apple Silicon Mac without Rosetta fails with
+# "Bad CPU type in executable", which is a confusing way to be told to install
+# something.
+#
+# So: try the one on PATH first, and only if it cannot even report its version
+# do we go looking. An explicit GCC_PATH= on the command line still wins, and
+# when PATH is healthy this costs one `-dumpversion` and changes nothing.
+ifeq ($(strip $(GCC_PATH)),)
+  _TC_PATH_OK := $(shell arm-none-eabi-gcc -dumpversion 2>/dev/null)
+  ifeq ($(strip $(_TC_PATH_OK)),)
+    # Candidates, in preference order. Add to this list rather than hard-coding
+    # a path in a project Makefile.
+    _TC_CANDIDATES := \
+      $(HOME)/.platformio/packages/toolchain-gccarmnoneeabi/bin \
+      /opt/homebrew/bin \
+      /usr/local/bin
+    GCC_PATH := $(firstword \
+      $(foreach d,$(_TC_CANDIDATES),\
+        $(if $(shell $(d)/arm-none-eabi-gcc -dumpversion 2>/dev/null),$(d),)))
+    ifeq ($(strip $(GCC_PATH)),)
+      $(error No runnable arm-none-eabi-gcc found. The one on PATH will not run on \
+this host, and none of $(_TC_CANDIDATES) works either. Install a native toolchain \
+(brew install arm-none-eabi-gcc) or pass GCC_PATH=/path/to/bin)
+    endif
+    export GCC_PATH
+    $(info Toolchain: arm-none-eabi-gcc on PATH will not run here; using $(GCC_PATH))
+  endif
+endif
