@@ -37,7 +37,7 @@ SYSTEM_FILES_DIR = $(LIBDAISY_DIR)/core
 
 # App type / linker selection.
 #
-# BOOT_NONE while the model slot is a passthrough: the skeleton is small, it
+# BOOT_NONE while the engine slot is a passthrough: the skeleton is small, it
 # flashes straight over DFU, and it does not need the Daisy bootloader on the
 # unit — which matters because this unit currently runs MultiFX (BOOT_NONE), so
 # the bootloader may not be installed. Phase 0 bench check 2 can therefore be

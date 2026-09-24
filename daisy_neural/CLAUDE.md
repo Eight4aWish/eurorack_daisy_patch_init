@@ -8,20 +8,49 @@ LPG rather than the folder, with that module's as-built details taken from the
 
 ## Goal
 
-Run neural network audio models on Eurorack hardware, in phases:
+Run neural audio networks on Eurorack hardware, in phases:
 
-1. Run someone else's trained model on my hardware.
-2. Measure, then capture, my own Eurorack module (Befaco Chopping Kinky) — the learning
-   vehicle, chosen for being simple, DC-coupled and well documented.
-3. Add CV control (a conditioned model) on a device that needs one: my Dual Pingable LPG.
-4. Train for audio-rate CV modulation, then design my own panel hardware.
-5. (Optional) FPGA, only if phases 3–4 produce a measured bottleneck.
+1. Run someone else's capture on my hardware.
+2. Measure my Dual Pingable LPG and build the white-box baseline the networks must beat.
+3. Capture the gate with NAM A2 — static, one capture per setting.
+4. Add CV control: a conditioned GRU, so the gate has a real knob.
+5. Train for audio-rate CV modulation, then design my own panel hardware.
+6. (Optional) FPGA, only if phases 4–5 produce a measured bottleneck.
 
-**Why two different modules.** A wavefolder is probably gain plus a memoryless curve, so
-a measured curve may beat a network on it outright (phase 1.5). A vactrol has slow
-memory, which no static curve reproduces. The folder teaches the pipeline; the gate is
-where a neural model earns its place. Phase 1.5 decides whether the *folder* needs a
-network — it does not decide whether the project continues.
+**One device, all the way through: the vactrol low-pass gate.** A vactrol's slow,
+asymmetric lag is memory, and memory is the thing a static curve cannot reproduce and a
+network can. Every phase from 2 onward is the same module seen at increasing fidelity,
+which means each phase's measurements are the next phase's training data and each
+phase's failure is the argument for the next.
+
+The Befaco Chopping Kinky was the original phase 2–3 subject and has been **dropped from
+the main line** — see the appendix. It is very likely gain plus a memoryless curve, which
+makes it a poor argument for neural modelling: the honest result would be "a lookup table
+won". It remains available as a pipeline-validation exercise, which is a real use, but it
+is no longer on the critical path.
+
+## Words used here
+
+"Model" and "patch" were both ambiguous enough to cause trouble, so this project uses a
+narrower vocabulary. Keep to it in code, commits and on the panel.
+
+| Word | Means | Not |
+|---|---|---|
+| **engine** | the inference code that runs a network (the A2 engine, RTNeural) | the weights |
+| **capture** | one trained weights file for one device at one setting (a `.nam`) | the architecture |
+| **architecture** | the shape of the network — A2/WaveNet, GRU, TCN | a specific trained thing |
+| **slot** | where an engine runs in the firmware, one sample in, one out | a preset list |
+
+- **Do not use "patch" in this project at all.** It already means a selectable effect in
+  `daisy_multifx_oled` (`PatchDef`, four banks of four), the hardware is called
+  Patch.Init(), `patch` is the C++ variable for it in every `main.cpp` here, and in
+  Eurorack it is what you do with cables. A fifth meaning is indefensible.
+- **"Model" is reserved for the architecture**, or avoided by naming it. Say "the A2
+  engine runs a capture of the gate at medium CV", where each word does one job.
+- **"Engine" matches the repo already** — `daisy_multiosc` calls FM4OP, INTVL, SCAN and
+  BYTEBEAT engines, not patches.
+- NAM upstream calls its `.nam` files "models". Write "a `.nam` capture" and accept the
+  seam rather than fight their naming.
 
 ## Working rules for this project
 
@@ -136,7 +165,7 @@ network — it does not decide whether the project continues.
 | `jatinchowdhury18/RTNeural` | Inference for small GRU/LSTM. **Phase 3 engine.** | Last commit 2026-08-20; no tagged releases. Issue #167 (open) is clicks on `reset()` — crossfade on model switch, as MultiFX already does. |
 | `GuitarML/NeuralSeed` | Phase 3 precedent (MIT) | **Inactive** (last commit 2023-04-11). RTNeural GRU-10 snapshot, GRU-8 with 2–3 knobs fed as extra network inputs. Reference only. |
 | `oyama/pico-neural-amp-modeler-demo` | Reference | A2-Lite on RP2350 via NAM Core's `a2_fast` path: 4,533 cycles/sample at 300MHz (73%). Cites **2,965 cycles/sample on a Cortex-M7** (~30% at 480MHz). |
-| `VCVRack/Befaco` `src/ChoppingKinky.cpp` | **Phase 1.5 baseline** | Active (2026-09-17). Static, memoryless curve per channel (256-point table), preceded by a gain set by knob + CVs. Oversampled ×4 by default. |
+| `VCVRack/Befaco` `src/ChoppingKinky.cpp` | Appendix only (folder dropped) | Active (2026-09-17). Static, memoryless curve per channel (256-point table), preceded by a gain set by knob + CVs. Oversampled ×4 by default. This is the evidence the folder is memoryless. |
 
 **What A2 is.** A WaveNet exported as a `SlimmableContainer` holding two sizes: A2-Lite /
 "nano" (3 channels) and A2-Full (8 channels). Both have 23 layers, LeakyReLU, dilations
@@ -157,13 +186,13 @@ found, and no NAM or ToneX capture of any Eurorack module. Open ground.
 2. **Patch.init audio coupling.** Feed a very slow LFO (under 1Hz) into IN_L with
    pass-through firmware; watch whether it holds its level or decays toward zero. Record
    the answer under Hardware.
-3. **Chopping Kinky levels.** Input level and fold CV range from Befaco's manual.
+3. ~~Chopping Kinky levels.~~ Dropped with the folder; see the appendix.
 4. **Dual LPG noise floor and channel match.** Record both channels quiet, then ping each
    with Strike, noting which vactrols are fitted. It is a hand-built module, so know its
    noise floor before phase 3 asks whether a model matches it — and the two ping
    responses show up front how far apart the channels are.
 
-## Phase 1 — run an existing A2 model on patch.init (START HERE)
+## Phase 1 — run an existing A2 capture on patch.init (START HERE)
 
 **Done when:** a downloaded A2 capture processes guitar audio on patch.init at 48kHz with
 no dropouts, and the measured CPU load is recorded here.
@@ -172,7 +201,7 @@ no dropouts, and the measured CPU load is recorded here.
    from TONE3000 (no cabinet IR needed) and play it in the NAM plugin.
 2. ~~**Set up the build in `daisy_neural/`**, copying the Makefile pattern from
    `daisy_multifx_oled/` (`make/common.mk`, `common/oled_soft_i2c.cpp`).~~ **Done** —
-   `Makefile` + `src/main.cpp` carry the whole chain with `ModelSlot::Process()` as a
+   `Makefile` + `src/main.cpp` carry the whole chain with `EngineSlot::Process()` as a
    passthrough, which is also the pass-through firmware bench check 2 needs, so that
    check can run before the engine exists. Built `BOOT_NONE` for now so it flashes
    without the bootloader; see the README. **Compiles clean, not yet run on hardware.**
@@ -182,62 +211,77 @@ no dropouts, and the measured CPU load is recorded here.
 3. **Lift the engine** from nam-pedal `t3k-pedal` @ `6dc47a4`: `nam_model.c/.h`, keeping
    its `NAM_DTCM` placement. Replace `DaisySeed` with `DaisyPatchSM`. Keep bkshepherd's
    `nam_a2_runtime.h` open alongside as the easier-to-read version of the same maths.
-4. **Start with one model compiled in** (fewest moving parts), `BOOT_SRAM`. Move to a
-   QSPI model bank (`pack_models.py`, `BOOT_QSPI`) or the microSD slot once it runs.
+4. **Start with one capture compiled in** (fewest moving parts), `BOOT_SRAM`. Move to a
+   QSPI capture bank (`pack_models.py`, `BOOT_QSPI`) or the microSD slot once it runs.
 5. **Audio path:** IN_L → input trim (knob 1) → A2 → output level (knob 2)
    → OUT_L and OUT_R. The button toggles bypass for A/B comparison.
 6. **Display (64×48 OLED):** CPU load (libDaisy `CpuLoadMeter`), an input peak meter
-   (to set the trim so the signal reaches the model at the level it was trained on), and
-   the model name, truncated to fit.
+   (to set the trim so the signal reaches the engine at the level it was trained on),
+   and the capture name, truncated to fit.
 7. **Measure and record:** CPU load, and memory use by region (DTCM, AXI SRAM, D2 SRAM,
    SDRAM, QSPI). Keep hot buffers out of SDRAM.
 
-## Phase 1.5 — measure the folder before modelling it (NEW)
+## Phase 2 — measure the gate before modelling it
 
-The VCV model — and the one derivative schematic found (`kraakenstuff/KinkyNoChop`,
-2019: OTA VCAs driving diode folders) — suggest each channel is **a gain stage followed
-by a fixed, memoryless curve.** If the hardware agrees, a measured curve is a better
-model than a neural net: near-zero CPU, anti-aliased by standard methods (oversampling
-or ADAA), and CV — including audio-rate CV — is just a multiply before the curve.
+Nothing gets trained on this module until its behaviour is written down. The
+measurements here are the baseline every later phase is judged against, and they are
+also what sizes the network in phase 4 — so this is data collection, not a detour.
 
-1. Through the ES-10, send a slow triangle ramp (a few seconds, full input range) through
-   each channel at several fold settings; record the output. The input/output plot is
-   the transfer curve.
-2. Compare with `ChoppingKinky.cpp`.
-3. Check for memory: repeat the ramp faster and see whether the curve changes (slew,
-   hysteresis). No change → the static model will be hard to beat.
-4. Implement the curve on the patch.init with 2–4× oversampling as the baseline.
+**Strike makes it easy.** A ping is a repeatable impulse, so the vactrol's decay can be
+recorded in isolation with nothing else moving.
 
-**Done when:** the static model exists and there is a written answer to "does the folder
-have memory?". A "no" retires the folder as a neural target and phase 2 becomes a
-like-for-like comparison, not a prerequisite. Phase 3 proceeds either way, on the gate.
+1. Set MANUAL to minimum so CV and Strike alone drive the LED.
+2. Ping each channel at several DEPTH settings and record the response. Fit the decay:
+   you want its rough time constant, and whether attack and decay differ (they will).
+3. Step the CV and record the attack side the same way.
+4. Sweep a slow triangle through the audio path at several fixed CV levels — the
+   input/output plot at each level is the static transfer curve.
+5. Build the **white-box baseline** on the patch.init: the Parker & D'Angelo envelope
+   driving a VCA plus the filter pole, from this module's own netlist, no network.
 
-## Phase 2 — capture the Chopping Kinky with NAM A2
+**Done when:** the decay time constants are written down, the white-box baseline runs,
+and there is an honest note on how close it already gets. If it gets very close, say so —
+that is a real result and it raises the bar the networks have to clear.
 
-- Capture each channel separately at gentle, medium and heavy fold settings, with the
-  CV inputs unpatched. That gives six `.nam` files.
-- Re-amp through the ES-10 at modular levels (around 10Vpp at the folder input), and
-  match the input level on playback.
+**These are the same measurements the pot re-range needs** (`eurorack_electronics`,
+rev 0.27), so do them before the circuit changes and again after; the second set is the
+training data.
+
+## Phase 3 — capture the gate with NAM A2 (and find out where it breaks)
+
+A2 is static: one capture describes the device at one CV setting, so a full set means
+capturing a grid of settings. That limitation is the point of this phase.
+
+- Capture each channel separately at several fixed CV levels, Strike unpatched.
+- Re-amp through the ES-10 at modular levels and match the input level on playback.
 - Use NAM's standard training input **plus oscillator sweeps at several amplitudes** —
-  a folder's output depends heavily on input level, and oscillators are its real use.
+  the gate's response depends on input level, and oscillators are its real use.
 - Aliasing: the *recording* will not alias (the interface filters its input), but the
-  *model* will, because it cannot produce harmonics above 24kHz and folds them back.
-  Heavy settings will suffer most. Recording and training at 96kHz helps — but a model
-  must run at the rate it was trained at, because a WaveNet's dilations are counted in
-  samples, so a 96kHz model played back at 48kHz has its whole time structure halved.
-  Running 96kHz on the Daisy doubles the CPU cost, which A2 likely cannot afford, so
-  train at 48kHz unless the measurements say otherwise. (Carson et al. on sample-rate
-  independence, in the papers below, is the way out if 96kHz training proves necessary.)
-- Store models in QSPI (or SD) and switch at runtime, crossfading on switch.
-- **Done when:** a blind A/B test against the module is hard to call at gentle and
-  medium, **and** the capture is compared blind against the phase 1.5 static model.
+  capture will, because it cannot produce harmonics above 24kHz and folds them back.
+  Recording and training at 96kHz helps — but a capture must run at the rate it was
+  trained at, because a WaveNet's dilations are counted in samples, so a 96kHz capture
+  played back at 48kHz has its whole time structure halved. Running 96kHz on the Daisy
+  doubles the CPU cost, which A2 likely cannot afford, so train at 48kHz unless the
+  measurements say otherwise. (Carson et al. on sample-rate independence, below, is the
+  way out if 96kHz training proves necessary.)
+- Store captures in QSPI (or SD) and switch at runtime, crossfading on switch.
 
-## Phase 3 — CV-conditioned model, on the vactrol low-pass gate
+**Expect this to fail on the tail, and watch how.** A2's dilations reach 239 samples —
+about 5ms at 48kHz — while the vactrol's decay runs to tens of milliseconds. The
+architecture cannot see far enough back to reproduce it, so it should learn some average
+of the tail and smear the ping. That failure is not a disappointment, it is the
+measurement that justifies phase 4: a recurrent network carries state and has no such
+window.
 
-The target changes here, deliberately. The folder is very likely gain plus a static
-curve, where CV is just a multiply and a network buys nothing. The gate's vactrol has
-memory, so the network has something real to learn. Same rig either way: one ADAT channel
-of audio, one of CV, sample-aligned.
+**Done when:** a capture holds up under sustained audio at a fixed setting, *and* the
+ping response is compared against the real gate and against the phase 2 white-box
+baseline, with the gap written down.
+
+## Phase 4 — CV-conditioned GRU: give the gate a knob
+
+Phase 3 leaves a grid of static captures and no way to move between them. Conditioning
+is what turns that into a control: the CV becomes an input to the network, so one
+network covers the whole range and responds continuously.
 
 **The LPG is not a frozen target, and that dictates the order.** A pot re-range is
 specified and awaiting the bench — little of DEPTH's and MANUAL's travel does anything
@@ -256,22 +300,23 @@ and capture afterwards** — no hurry, phases 0 through 2 come first. Two conseq
   structure-first approach above: put the known filter topology in as fixed maths and
   leave the network only the nonlinearity.
 
-- **Measure the vactrol first**, exactly as phase 1.5 measures the folder — and Strike
-  makes it easy. A ping is a repeatable impulse, so recording the ping response at
-  several DEPTH settings gives the vactrol's decay envelope in isolation, with nothing
-  else moving. Follow it with CV steps for the attack side. Those time constants say how
-  much history the model needs, which sets the GRU size — measure it, don't guess. Set
-  MANUAL to minimum so CV and Strike alone drive the LED.
+- **Size it from phase 2's measurements, don't guess.** The decay time constants say how
+  much history the network must hold, and that sets the unit count. A network too small
+  cannot hold the tail; too large and it will not fit the CPU budget.
 - **Stack:** RTNeural running a small GRU (8–16 units) with a Dense output layer, the
   NeuralSeed pattern: the CV is an extra network input alongside the audio. Use a short
   PyTorch training script I own; NAM's trainer cannot do this.
 - **Structure first:** Parker & D'Angelo (DAFx-13) model a vactrol as a slow envelope
   driving a VCA — and this build follows that paper's own Rα placement, so the structure
-  comes from the netlist rather than from guesswork. Put the envelope in front of the
-  network as fixed maths and let it learn only what is left over: the same trick as
-  phase 1.5's "gain then curve", and the idea behind Hayes et al. (NEWT). One envelope
-  state per channel, per the series LED chain. It keeps audio-rate CV well-behaved in
-  phase 4.
+  comes from the netlist rather than from guesswork. Put the phase 2 white-box envelope
+  in front of the network as fixed maths and let it learn only what is left over. That
+  is the idea behind Hayes et al. (NEWT), and it keeps audio-rate CV well-behaved in
+  phase 5. One envelope state per channel, per the series LED chain.
+- **Conditioning method is an open choice, not a settled one.** Feeding CV in as an extra
+  input alongside the audio is the simplest option and the one NeuralSeed used, but it is
+  not the only one — FiLM modulates each layer instead, and hypernetworks generate the
+  weights. Simionato & Fasciani (below) compare them directly; read it before committing,
+  because this decides how smoothly the knob behaves between trained points.
 - **Prototype data:** a white-box vactrol simulation, built from that paper and this
   module's own netlist, generates unlimited audio + CV including fast CV, for rehearsing
   the pipeline. It is a model of a model: final accuracy needs real recordings.
@@ -283,29 +328,46 @@ and capture afterwards** — no hurry, phases 0 through 2 come first. Two conseq
   tail included, and a static-curve model of the same gate audibly fails to — which is
   the evidence that the network was necessary. Ping is the sharper test of the two.
 
-## Phase 4 — audio-rate conditioning, then hardware
+## Phase 5 — audio-rate conditioning, then hardware
 
-- Train with fast-moving CV and test the model under audio-rate modulation. No paper
-  found conditions on audio-rate CV — the published conditioning work assumes slow
-  controls. This is the novel part.
-- Audio-rate CV into a vactrol is where this gets interesting: the real vactrol cannot
-  follow it, so the model has to learn the lag itself rather than track the control.
-- Candidate next targets:
-  - two-input models (ring modulation, cross-modulation)
-  - the Chopping Kinky under audio-rate fold CV, if phase 2 earned it against the static
-    model
-- Design panel and interface hardware once the model's needs are known (or move to the
+- Train with fast-moving CV and test under audio-rate modulation. No paper found
+  conditions on audio-rate CV — the published conditioning work assumes slow controls.
+  This is the novel part.
+- Audio-rate CV into a vactrol is where it gets interesting: the real vactrol cannot
+  follow it, so the network has to learn the lag itself rather than track the control.
+  The hardware's own limitation becomes the thing being modelled.
+- Candidate next targets: two-input networks (ring modulation, cross-modulation).
+- Design panel and interface hardware once the requirements are known (or move to the
   Alchemy Lab if it is only more CV).
 
-## Phase 5 — FPGA (decision point, not a commitment)
+## Phase 6 — FPGA (decision point, not a commitment)
 
-Consider the Tiliqua (ECP5) only if phases 3–4 produce a measured bottleneck:
+Consider the Tiliqua (ECP5) only if phases 4–5 produce a measured bottleneck:
 
 - oversampling for aliasing control doesn't fit the M7's budget
 - block-based CV response is audibly worse than sample-by-sample
-- multiple models need to run at once
+- multiple networks need to run at once
 
 Check first whether a faster processor would solve it more cheaply.
+
+## Appendix — the Befaco Chopping Kinky (dropped from the main line)
+
+The folder was the original phase 2–3 subject. It is off the critical path because it is
+very likely **gain plus a memoryless curve**: the VCV model and the one derivative
+schematic found (`kraakenstuff/KinkyNoChop`, 2019: OTA VCAs driving diode folders) both
+point that way. If so, a measured 256-point curve beats a network on it outright — near
+zero CPU, anti-aliased by ordinary means (oversampling or ADAA), and CV, including
+audio-rate CV, is just a multiply in front of the curve. Modelling it neurally would be
+choosing the harder tool to get the worse answer.
+
+It stays useful for one thing: **validating the capture pipeline against a known
+ground truth.** Measure its transfer curve, capture it with A2, and the two should agree.
+If they do not, the re-amp levels, alignment or training are wrong — and finding that out
+on a device whose correct answer you already know is much easier than finding it out on
+the gate. Worth an evening if phase 3 produces a confusing result.
+
+Its hardware details are kept under Hardware, and the CV range and levels still need
+reading off Befaco's manual if this is ever picked up.
 
 ## Key papers
 
@@ -329,7 +391,9 @@ Check first whether a faster processor would solve it more cheaply.
 ## Open questions
 
 - Is the Patch SM audio input AC- or DC-coupled? (Phase 0, check 2.)
-- Does the Chopping Kinky have memory, or is it gain + static curve? (Phase 1.5.)
+- Which conditioning method for phase 4 — CV as an extra input, FiLM, or a hypernetwork?
+  Simionato & Fasciani compare them; it decides how the knob behaves between trained
+  points, so it wants reading before the training script is written.
 - Which vactrols are physically fitted in the LPG right now? The netlist and BOM specify
   2× VTL5C3 per channel day-one, but the parts drawer also holds LCR0202/0203 and a
   six-value GL55xx LDR pack for DIY vactrols, and the sockets accept all of them. Only
