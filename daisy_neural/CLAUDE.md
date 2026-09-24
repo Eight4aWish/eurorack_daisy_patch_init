@@ -88,12 +88,15 @@ network — it does not decide whether the project continues.
     the filter, one in the attenuator — always see the same current. The model therefore
     needs a single vactrol state per channel, not two. That is exactly the Parker &
     D'Angelo structure, whose Eq. 4/12 placement of Rα this build already follows.
-  - **The vactrols are socketed and swappable:** LCR0202 (slow, classic) and LCR0203
-    (faster, better for ping), four of each plus spares, with a DIY swappable-LED shroud
-    planned. The filter cap is socketed too (layer L6). **The device under capture is a
-    configuration, not a constant** — record the fitted parts with every capture, and
-    expect a swap to invalidate one. It cuts the other way too: one circuit yields
-    several ground truths, which is a free generalisation test for phase 3.
+  - **The vactrols are socketed and swappable.** Day-one per the netlist and BOM is
+    2× **VTL5C3** (DIP-4, single-LDR) per channel, LEDs in series, Vf chain ≈ 3.2V, with
+    6v8 zener clamps giving ≈ 7.7mA peak through the 470R. The same socket also takes
+    molded VTL5C3/2, LCR0202/0203, or a DIY shroud, and the drawer holds a six-value
+    GL55xx LDR pack and four LED colours for exactly that experimentation. The filter cap
+    is socketed too (layer L6). **The device under capture is a configuration, not a
+    constant** — record the fitted parts with every capture, and expect a swap to
+    invalidate one. It cuts the other way too: one circuit yields several ground truths,
+    which is a free generalisation test for phase 3.
   - **Expect the two channels to differ.** LDR part-to-part spread is wide (~50% on DIY
     parts; the molded Senba parts vary too). Capture each channel separately and do not
     assume symmetry.
@@ -229,6 +232,21 @@ curve, where CV is just a multiply and a network buys nothing. The gate's vactro
 memory, so the network has something real to learn. Same rig either way: one ADAT channel
 of audio, one of CV, sample-aligned.
 
+**The LPG is not a frozen target, and that dictates the order.** Two changes are on its
+roadmap: re-ranging the pots (little of DEPTH's and MANUAL's travel does anything
+audible) and adding L7 resonance on the reserved spare op-amp half. Both change the
+device a capture would describe, so **do the circuit work first and capture afterwards** —
+there is no hurry, phases 0 through 2 come first. Two consequences worth holding on to:
+
+- The phase 3 measurements and the re-ranging want the same data. Ping responses and CV
+  steps say where the LED current actually does something audible, which is exactly what
+  chooses a pot value and taper. Measure before changing anything, then again after, and
+  the second set is the training data.
+- Resonance makes the model harder, not just different. A feedback path that can approach
+  self-oscillation is a known weak spot for black-box RNNs. It is an argument for the
+  structure-first approach above: put the known filter topology in as fixed maths and
+  leave the network only the nonlinearity.
+
 - **Measure the vactrol first**, exactly as phase 1.5 measures the folder — and Strike
   makes it easy. A ping is a repeatable impulse, so recording the ping response at
   several DEPTH settings gives the vactrol's decay envelope in isolation, with nothing
@@ -303,8 +321,11 @@ Check first whether a faster processor would solve it more cheaply.
 
 - Is the Patch SM audio input AC- or DC-coupled? (Phase 0, check 2.)
 - Does the Chopping Kinky have memory, or is it gain + static curve? (Phase 1.5.)
-- Which vactrols are fitted in the LPG right now, LCR0202 or LCR0203? Every capture is
-  of one configuration, so this goes in the capture notes. (Phase 0, check 4.)
+- Which vactrols are physically fitted in the LPG right now? The netlist and BOM specify
+  2× VTL5C3 per channel day-one, but the parts drawer also holds LCR0202/0203 and a
+  six-value GL55xx LDR pack for DIY vactrols, and the sockets accept all of them. Only
+  the bench can confirm it. Every capture is of one configuration, so this goes in the
+  capture notes. (Phase 0, check 4.)
 - End goal: a module for my own rig and videos, or eventual release?
 
 ## Settled
