@@ -139,6 +139,14 @@ static volatile float g_in_dc   = 0.f;  // heavily smoothed signed input, DC pag
 static volatile float g_dc_min  = 0.f;
 static volatile float g_dc_max  = 0.f;
 
+// Reference leg of the HPF measurement: the same LFO into CV_5, which is a
+// DC-coupled ±5V jack, so it shows what the signal is actually doing. Without
+// it a collapsed audio span is ambiguous — AC coupling and an unplugged cable
+// look identical. Read at block rate, which is plenty for a sub-1Hz LFO.
+static volatile float g_cv_dc  = 0.f;
+static volatile float g_cv_min = 0.f;
+static volatile float g_cv_max = 0.f;
+
 // One-pole coefficient for the DC reading, set in main() for ~50 ms.
 static float g_dc_coeff = 0.f;
 
@@ -151,8 +159,10 @@ static inline void SetLed(bool on)
 
 static void ResetDcHold()
 {
-    g_dc_min = 0.f;
-    g_dc_max = 0.f;
+    g_dc_min  = 0.f;
+    g_dc_max  = 0.f;
+    g_cv_min  = 0.f;
+    g_cv_max  = 0.f;
 }
 
 // ================================================================
@@ -273,6 +283,14 @@ void AudioCallback(AudioHandle::InputBuffer  in,
     if(dc > g_dc_max)
         g_dc_max = dc;
 
+    // Reference leg: CV_5, a DC-coupled bipolar jack, block-rate.
+    const float cv = patch.GetAdcValue(CV_5);
+    g_cv_dc        = cv;
+    if(cv < g_cv_min)
+        g_cv_min = cv;
+    if(cv > g_cv_max)
+        g_cv_max = cv;
+
     cpu_meter.OnBlockEnd();
 }
 
@@ -310,21 +328,37 @@ static void DrawDcPage()
 {
     char line[16];
 
-    // Bench check 2: with a sub-1Hz LFO on IN_L, a DC-coupled input tracks it
-    // and the min/max hold the LFO's excursion. An AC-coupled input sags back
-    // toward zero and the hold collapses.
-    display.DrawString(0, 0, "DC TEST", false);
+    // The audio input is AC-coupled inside the Patch SM (the carrier wires the
+    // jacks straight through — see patch_init_schematic.pdf), so this page is
+    // not asking "is it AC?" but "where is the corner?".
+    //
+    // Send the same LFO to IN_L and to CV_5, sweep its frequency, and read RAT:
+    // the audio span divided by the CV span. CV_5 is DC-coupled so its span is
+    // the truth. RAT near 1.00 means the audio input is passing that frequency
+    // intact; RAT near 0.71 is the -3dB corner. That frequency is what sets the
+    // crossover for phase 5's split-path CV.
+    display.DrawString(0, 0, "HPF TEST", false);
 
     snprintf(line, sizeof(line), "IN %+5.2f", (double)g_in_dc);
-    display.DrawString(0, 12, line, false);
+    display.DrawString(0, 9, line, false);
 
-    snprintf(line, sizeof(line), "LO %+5.2f", (double)g_dc_min);
-    display.DrawString(0, 22, line, false);
+    const float in_span = g_dc_max - g_dc_min;
+    snprintf(line, sizeof(line), "SPN %4.2f", (double)in_span);
+    display.DrawString(0, 17, line, false);
 
-    snprintf(line, sizeof(line), "HI %+5.2f", (double)g_dc_max);
-    display.DrawString(0, 32, line, false);
+    snprintf(line, sizeof(line), "CV %+5.2f", (double)g_cv_dc);
+    display.DrawString(0, 25, line, false);
 
-    snprintf(line, sizeof(line), "SPN %4.2f", (double)(g_dc_max - g_dc_min));
+    const float cv_span = g_cv_max - g_cv_min;
+    snprintf(line, sizeof(line), "CVS %4.2f", (double)cv_span);
+    display.DrawString(0, 33, line, false);
+
+    // Guarded: with no LFO on CV_5 the reference span is zero, and a ratio
+    // against nothing is worse than no reading at all.
+    if(cv_span > 0.02f)
+        snprintf(line, sizeof(line), "RAT %4.2f", (double)(in_span / cv_span));
+    else
+        snprintf(line, sizeof(line), "RAT  --");
     display.DrawString(0, 41, line, false);
 }
 

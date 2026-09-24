@@ -18,11 +18,10 @@ Two things, and the second is the reason it exists this early:
 1. **Runs a NAM A2 capture** — a JCM800 — with input trim, output level, bypass for
    A/B against the dry input, an input peak meter for setting the trim, and a CPU load
    readout. Recording that CPU figure is what closes phase 1.
-2. **Phase 0 bench check 2** — hold bypass on and the firmware is the pass-through the
-   brief asks for. Feed a sub-1Hz LFO into IN_L, watch the DC page, and see whether the
-   reading holds its level or sags toward zero. That answers whether the Patch SM's
-   audio input is AC- or DC-coupled, which is an open question the whole capture plan
-   depends on and which no datasheet has settled.
+2. **Phase 0 bench check 2** — bypass on turns it into the pass-through the brief asks
+   for, and the HPF page measures the audio input's high-pass corner. That the input is
+   AC-coupled is already settled; the corner frequency is not, and it decides where
+   phase 5 has to split audio-rate CV between a CV jack and an audio jack.
 
 ## Signal path
 
@@ -31,9 +30,12 @@ IN_L ──► trim (CV_1) ──► [ engine slot ] ──► level (CV_2) ─�
                                                           └─► OUT_R
 ```
 
-IN_R is normalled to IN_L on the carrier, so only IN_L is read. Bypass takes the dry
-input to the same output level, so an A/B compares the engine against the input rather
-than against a level change.
+IN_R is normalled to IN_L on the carrier, so only IN_L is read. Patching IN_R breaks
+that normal, which is what makes it available later as the per-sample input for
+audio-rate CV — the CV jacks are only read once per block, about 1 kHz.
+
+Bypass takes the dry input to the same output level, so an A/B compares the engine
+against the input rather than against a level change.
 
 ## Controls
 
@@ -42,7 +44,7 @@ than against a level change.
 | **CV_1** (+ CV_5 jack) | Input trim into the engine, −20…+20 dB, unity at noon |
 | **CV_2** (+ CV_6 jack) | Output level, 0…1 |
 | **B7** short press | Bypass on/off |
-| **B7** long press (600 ms) | Change page, RUN ↔ DC |
+| **B7** long press (600 ms) | Change page, RUN ↔ HPF |
 | **CV_OUT_2** LED | Lit when the engine is in circuit, dark when bypassed |
 
 The trim exists so the signal can be set to the level the capture was trained at, which is
@@ -54,10 +56,13 @@ why the peak meter reads the input *before* the trim rather than after.
 are the ones phase 1 is done when it can record; the brief's references put A2 on a
 480 MHz H7 somewhere between 30% and 61%.
 
-**DC** — the bench check 2 page. A ~50 ms one-pole reading of the input, with a min/max
-hold and the span between them. A DC-coupled input tracks a slow LFO and the hold keeps
-its full excursion; an AC-coupled input sags back toward zero and the span collapses.
-The hold resets each time you enter the page.
+**HPF** — the bench check 2 page. AC coupling is settled; this measures the *corner*. Send
+one LFO to both IN_L and CV_5, and read `RAT` — the audio span over the CV span. CV_5 is
+DC-coupled so its span is the truth, so RAT is the audio input's response at that
+frequency: 1.00 passes intact, 0.71 is the −3dB corner. Holds reset on entering the page.
+
+The CV leg is there to disambiguate: without it, a collapsed audio span could equally
+mean AC coupling or an unplugged cable.
 
 ## Hardware
 
@@ -150,7 +155,7 @@ macros are neutralised in `main.cpp` so everything lands in ordinary `.bss`, whi
 what lets this run `BOOT_NONE`. DTCM is therefore untouched and the history sits in the
 slower AXI SRAM. **If the measured CPU load is high, that is the first thing to fix** —
 move to `BOOT_SRAM`, wire in the `.lds`, and let the placement do its job. A second
-option if flash ever gets tight is dropping `-u _printf_float` and formatting the DC page
+option if flash ever gets tight is dropping `-u _printf_float` and formatting the HPF page
 with integer maths.
 
 ## Next — at the bench
@@ -163,8 +168,8 @@ In rough order, because each answers something the next depends on:
    The references put A2 on a 480 MHz H7 between 30% and 61%; this build's history buffer
    is in the slower AXI SRAM rather than D2, so expect the high end or worse. If it is
    uncomfortable, `BOOT_SRAM` plus `nam/nam_a2_sections.lds` is the fix.
-3. **Bench check 2**, while the unit is out: bypass on, sub-1Hz LFO into IN_L, long-press
-   to the DC page, watch whether the span holds or collapses. Record the answer in
+3. **Bench check 2**, while the unit is out: bypass on, one LFO to both IN_L and CV_5, long-press
+   to the HPF page, sweep the LFO and find where RAT hits 0.71. Record the corner in
    [CLAUDE.md](CLAUDE.md) under Hardware.
 
 If the trim range or the meter ballistics turn out wrong in use, those are one-line
