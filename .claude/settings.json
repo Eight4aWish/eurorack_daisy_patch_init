@@ -4,6 +4,9 @@
       "Bash(make)",
       "Bash(make dfu-list *)",
       "Bash(make flash *)"
+    ],
+    "additionalDirectories": [
+      "../eurorack_electronics"
     ]
   }
 }
