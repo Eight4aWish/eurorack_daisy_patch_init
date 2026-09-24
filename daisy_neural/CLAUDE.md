@@ -1,8 +1,9 @@
 # Neural models on Eurorack (Daisy patch.init) — project brief
 
 Handoff from a planning conversation (September 2026), corrected on 2026-09-24 against
-the actual repos. Revised the same day: the conditioned model targets the vactrol
-low-pass gate, not the folder. Claude Code loads this file when working in
+the actual repos. Revised the same day: the conditioned model targets my Dual Pingable
+LPG rather than the folder, with that module's as-built details taken from the
+`eurorack_electronics` repo. Claude Code loads this file when working in
 `daisy_neural/`. The repo-root `CLAUDE.md` still applies.
 
 ## Goal
@@ -12,8 +13,7 @@ Run neural network audio models on Eurorack hardware, in phases:
 1. Run someone else's trained model on my hardware.
 2. Measure, then capture, my own Eurorack module (Befaco Chopping Kinky) — the learning
    vehicle, chosen for being simple, DC-coupled and well documented.
-3. Add CV control (a conditioned model) on a device that needs one: the Buchla 292-style
-   vactrol low-pass gate.
+3. Add CV control (a conditioned model) on a device that needs one: my Dual Pingable LPG.
 4. Train for audio-rate CV modulation, then design my own panel hardware.
 5. (Optional) FPGA, only if phases 3–4 produce a measured bottleneck.
 
@@ -69,12 +69,38 @@ network — it does not decide whether the project continues.
     Do not capture it.
   - Input level and fold CV range: _read from Befaco's user manual and add here._
   - Schematics are published by Befaco (CC BY-NC-SA) at <https://www.befaco.org/docs/>.
-- **Buchla 292-style vactrol low-pass gate** — the phase 3 capture target.
+- **Dual Pingable LPG** — the phase 3 capture target, and my own design: 10HP, dual
+  channel, on the N8Synth solderable breadboard, canonical Buchla 292 audio path in a
+  Make Noise Optomix shape. Design docs live in the `eurorack_electronics` repo under
+  `docs/lpg_*` — reference review, netlist, BOM, placement and generated schematics.
   - A vactrol is an LED facing a light-dependent resistor. The LDR lags the LED by tens
     of milliseconds, asymmetrically (decay far slower than attack), and that lag *is*
     memory: the thing a static curve cannot represent and a recurrent network can.
-  - Exact module, its CV range and whether it has a VCA/VCF/both mode: _record here._
-  - White-box reference: Parker & D'Angelo, DAFx-13.
+  - **Per channel:** audio in/out, **Strike** (pingable gate, 1µF/10K differentiator,
+    positive edge only), **CV in** (0–8V through a 100K attenuator), **MANUAL** offset,
+    **DEPTH** (500K log rheostat in series with the LED drive — it can close the gate
+    fully). Plus a summed mix out.
+  - **The channels are independent.** DAMP (layer L4), the mode switch (L5) and resonance
+    (L7) have tap points and board space reserved but are **not built**. Mode is "both" —
+    level drop and high-frequency roll-off together, the LPG signature.
+  - **One envelope per channel.** The driver feeds DEPTH → 470R → *both* of that
+    channel's vactrol LEDs in series (status LED between them), so the two LDRs — one in
+    the filter, one in the attenuator — always see the same current. The model therefore
+    needs a single vactrol state per channel, not two. That is exactly the Parker &
+    D'Angelo structure, whose Eq. 4/12 placement of Rα this build already follows.
+  - **The vactrols are socketed and swappable:** LCR0202 (slow, classic) and LCR0203
+    (faster, better for ping), four of each plus spares, with a DIY swappable-LED shroud
+    planned. The filter cap is socketed too (layer L6). **The device under capture is a
+    configuration, not a constant** — record the fitted parts with every capture, and
+    expect a swap to invalidate one. It cuts the other way too: one circuit yields
+    several ground truths, which is a free generalisation test for phase 3.
+  - **Expect the two channels to differ.** LDR part-to-part spread is wide (~50% on DIY
+    parts; the molded Senba parts vary too). Capture each channel separately and do not
+    assume symmetry.
+  - **Hand-built, so its noise floor is its own** — unlike the patch.init. Measure it
+    before asking a model to match it (phase 0, check 4).
+  - White-box reference: Parker & D'Angelo, DAFx-13 — already the analytic basis of the
+    build itself.
 - **Befaco Instrument Interface** and a guitar, for test input.
 - **Recording chain:** Mac → Focusrite 16i16 → ADAT → **Expert Sleepers ES-10** → modular,
   and back the same way.
@@ -129,6 +155,10 @@ found, and no NAM or ToneX capture of any Eurorack module. Open ground.
    pass-through firmware; watch whether it holds its level or decays toward zero. Record
    the answer under Hardware.
 3. **Chopping Kinky levels.** Input level and fold CV range from Befaco's manual.
+4. **Dual LPG noise floor and channel match.** Record both channels quiet, then ping each
+   with Strike, noting which vactrols are fitted. It is a hand-built module, so know its
+   noise floor before phase 3 asks whether a model matches it — and the two ping
+   responses show up front how far apart the channels are.
 
 ## Phase 1 — run an existing A2 model on patch.init (START HERE)
 
@@ -199,25 +229,32 @@ curve, where CV is just a multiply and a network buys nothing. The gate's vactro
 memory, so the network has something real to learn. Same rig either way: one ADAT channel
 of audio, one of CV, sample-aligned.
 
-- **Measure the vactrol first**, exactly as phase 1.5 measures the folder: step the CV
-  and record the attack and decay tails at several levels. Those time constants say how
-  much history the model needs, which sets the GRU size — measure, don't guess it.
+- **Measure the vactrol first**, exactly as phase 1.5 measures the folder — and Strike
+  makes it easy. A ping is a repeatable impulse, so recording the ping response at
+  several DEPTH settings gives the vactrol's decay envelope in isolation, with nothing
+  else moving. Follow it with CV steps for the attack side. Those time constants say how
+  much history the model needs, which sets the GRU size — measure it, don't guess. Set
+  MANUAL to minimum so CV and Strike alone drive the LED.
 - **Stack:** RTNeural running a small GRU (8–16 units) with a Dense output layer, the
   NeuralSeed pattern: the CV is an extra network input alongside the audio. Use a short
   PyTorch training script I own; NAM's trainer cannot do this.
 - **Structure first:** Parker & D'Angelo (DAFx-13) model a vactrol as a slow envelope
-  driving a VCA. Put that envelope in front of the network as fixed maths and let the
-  network learn only what is left over — the same trick as phase 1.5's "gain then curve",
-  and the idea behind Hayes et al. (NEWT). It keeps audio-rate CV well-behaved in phase 4.
-- **Prototype data:** a white-box vactrol simulation from that paper generates unlimited
-  audio + CV, including fast CV, for rehearsing the pipeline. It is a model of a model:
-  final accuracy needs real recordings.
-- **Real data:** ES-10 drives audio and gate CV from one sample-aligned file.
+  driving a VCA — and this build follows that paper's own Rα placement, so the structure
+  comes from the netlist rather than from guesswork. Put the envelope in front of the
+  network as fixed maths and let it learn only what is left over: the same trick as
+  phase 1.5's "gain then curve", and the idea behind Hayes et al. (NEWT). One envelope
+  state per channel, per the series LED chain. It keeps audio-rate CV well-behaved in
+  phase 4.
+- **Prototype data:** a white-box vactrol simulation, built from that paper and this
+  module's own netlist, generates unlimited audio + CV including fast CV, for rehearsing
+  the pipeline. It is a model of a model: final accuracy needs real recordings.
+- **Real data:** ES-10 drives audio, CV and Strike from one sample-aligned file. Check
+  the ES-10 covers 0–8V at the attenuator setting used.
 - **Pipeline check:** confirm the C++ output matches PyTorch sample for sample on the
   Mac before flashing.
-- **Done when:** the model tracks the real gate under slow CV, decay tail included, and
-  a static-curve model of the same gate audibly fails to — which is the evidence that the
-  network was necessary.
+- **Done when:** the model tracks the real gate under slow CV *and* under ping, decay
+  tail included, and a static-curve model of the same gate audibly fails to — which is
+  the evidence that the network was necessary. Ping is the sharper test of the two.
 
 ## Phase 4 — audio-rate conditioning, then hardware
 
@@ -266,7 +303,8 @@ Check first whether a faster processor would solve it more cheaply.
 
 - Is the Patch SM audio input AC- or DC-coupled? (Phase 0, check 2.)
 - Does the Chopping Kinky have memory, or is it gain + static curve? (Phase 1.5.)
-- Which vactrol low-pass gate exactly, and what are its CV range and modes? (Hardware.)
+- Which vactrols are fitted in the LPG right now, LCR0202 or LCR0203? Every capture is
+  of one configuration, so this goes in the capture notes. (Phase 0, check 4.)
 - End goal: a module for my own rig and videos, or eventual release?
 
 ## Settled
@@ -277,3 +315,6 @@ Check first whether a faster processor would solve it more cheaply.
   repurposed, not merged into. (For the record, MultiFX is `BOOT_NONE`.)
 - ~~Is this unit affected by the shared +5V rail comb seen on the hand-built modules?~~
   No — it is the commercial Electrosmith patch.init.
+- ~~Which vactrol low-pass gate, and what are its CV range and modes?~~ My Dual Pingable
+  LPG: 0–8V CV through a 100K attenuator, "both" mode only, Strike per channel, DAMP and
+  the mode switch not built. Documented in `eurorack_electronics/docs/lpg_*`.
