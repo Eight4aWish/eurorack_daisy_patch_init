@@ -1,8 +1,8 @@
 /**
- * NEURAL — neural audio models on the Patch SM
+ * NEURAL — neural audio networks on the Patch SM
  *
  * Phase 1 skeleton: the signal chain, controls, metering and display that the
- * NAM A2 engine drops into, with the model slot running as a straight
+ * NAM A2 engine drops into, with the engine slot running as a straight
  * passthrough until the engine is lifted (CLAUDE.md, phase 1 step 3).
  *
  * The passthrough is not a placeholder for its own sake. It is exactly the
@@ -16,15 +16,18 @@
  * A3=SCL). IN_R is normalled to IN_L on the carrier, so only IN_L is read.
  *
  * Controls
- *   CV_1 (+ CV_5 jack)   input trim into the model, -20..+20 dB, unity at noon
+ *   CV_1 (+ CV_5 jack)   input trim into the engine, -20..+20 dB, unity at noon
  *   CV_2 (+ CV_6 jack)   output level, 0..1
- *   B7 short press       bypass on/off, to A/B the model against the dry input
+ *   B7 short press       bypass on/off, to A/B the engine against the dry input
  *   B7 long press        change page, RUN <-> DC
- *   CV_OUT_2 LED         lit when the model is in circuit, dark when bypassed
+ *   CV_OUT_2 LED         lit when the engine is in circuit, dark when bypassed
  *
- * Audio: IN_L -> trim -> model slot -> level -> OUT_L and OUT_R.
+ * Audio: IN_L -> trim -> engine slot -> level -> OUT_L and OUT_R.
  * Bypass takes the dry input to the same output level, so an A/B compares the
- * model against the input rather than against a level change.
+ * engine against the input rather than against a level change.
+ *
+ * Vocabulary follows CLAUDE.md: "engine" is the inference code, "capture" is one
+ * trained weights file, and "patch" is never used for either.
  */
 
 #include "daisy_patch_sm.h"
@@ -38,7 +41,7 @@ using namespace daisysp;
 using namespace patch_sm;
 
 // ================================================================
-// Model slot
+// Engine slot
 // ================================================================
 //
 // Phase 1 step 3 replaces the body of Process() with the A2 engine lifted from
@@ -51,7 +54,7 @@ using namespace patch_sm;
 // The seam is deliberately one sample in, one sample out. A2 is causal and
 // sample-by-sample, so nothing here needs to change shape when it arrives —
 // only Init(), Process() and Name().
-class ModelSlot
+class EngineSlot
 {
   public:
     void Init(float sample_rate)
@@ -79,7 +82,7 @@ DaisyPatchSM  patch;
 oled::SSD1306 display;
 Switch        nav_btn;
 CpuLoadMeter  cpu_meter;
-ModelSlot     model;
+EngineSlot    engine;
 
 enum class Page
 {
@@ -177,7 +180,7 @@ void AudioCallback(AudioHandle::InputBuffer  in,
     const float level_k = fclamp(patch.GetAdcValue(CV_2) + patch.GetAdcValue(CV_6), 0.f, 1.f);
 
     // Trim spans -20..+20 dB with unity at noon, so the signal can be set to
-    // the level the model was trained at. Computed per block, not per sample.
+    // the level the capture was trained at. Computed per block, not per sample.
     const float trim  = powf(10.f, (trim_k * 2.f - 1.f));
     const float level = level_k;
 
@@ -202,7 +205,7 @@ void AudioCallback(AudioHandle::InputBuffer  in,
         }
         else
         {
-            y = model.Process(x * trim);
+            y = engine.Process(x * trim);
         }
         y *= level;
 
@@ -228,7 +231,7 @@ static void DrawRunPage()
 {
     char line[16];
 
-    display.DrawString(0, 0, model.Name(), false);
+    display.DrawString(0, 0, engine.Name(), false);
 
     // Input peak meter. The point of it is setting the trim, so it reads the
     // input before the trim rather than after.
@@ -295,7 +298,7 @@ int main(void)
 
     patch.StartDac();
 
-    model.Init(sr);
+    engine.Init(sr);
     cpu_meter.Init(sr, patch.AudioBlockSize());
 
     // ~50 ms one-pole for the DC reading: slow enough to be readable, fast

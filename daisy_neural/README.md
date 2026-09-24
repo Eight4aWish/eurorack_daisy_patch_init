@@ -1,10 +1,10 @@
 # daisy_neural
 
-Neural audio models on the Daisy Patch.Init — the firmware side of the project
+Neural audio networks on the Daisy Patch.Init — the firmware side of the project
 briefed in [CLAUDE.md](CLAUDE.md).
 
 **Status: phase 1 skeleton.** The signal chain, controls, metering and display are
-built and the model slot runs as a straight passthrough. No neural engine yet — that
+built and the engine slot runs as a straight passthrough. No neural engine yet — that
 arrives at phase 1 step 3, when the NAM A2 engine is lifted from
 [tone-3000/nam-pedal](https://github.com/tone-3000/nam-pedal) branch `t3k-pedal`.
 
@@ -27,30 +27,30 @@ Two things, and the second is the reason it exists this early:
 ## Signal path
 
 ```
-IN_L ──► trim (CV_1) ──► [ model slot ] ──► level (CV_2) ──► OUT_L
+IN_L ──► trim (CV_1) ──► [ engine slot ] ──► level (CV_2) ──► OUT_L
                                                           └─► OUT_R
 ```
 
 IN_R is normalled to IN_L on the carrier, so only IN_L is read. Bypass takes the dry
-input to the same output level, so an A/B compares the model against the input rather
+input to the same output level, so an A/B compares the engine against the input rather
 than against a level change.
 
 ## Controls
 
 | Control | Function |
 |---|---|
-| **CV_1** (+ CV_5 jack) | Input trim into the model, −20…+20 dB, unity at noon |
+| **CV_1** (+ CV_5 jack) | Input trim into the engine, −20…+20 dB, unity at noon |
 | **CV_2** (+ CV_6 jack) | Output level, 0…1 |
 | **B7** short press | Bypass on/off |
 | **B7** long press (600 ms) | Change page, RUN ↔ DC |
-| **CV_OUT_2** LED | Lit when the model is in circuit, dark when bypassed |
+| **CV_OUT_2** LED | Lit when the engine is in circuit, dark when bypassed |
 
-The trim exists so the signal can be set to the level the model was trained at, which is
+The trim exists so the signal can be set to the level the capture was trained at, which is
 why the peak meter reads the input *before* the trim rather than after.
 
 ## Pages
 
-**RUN** — model name, input peak meter, average and maximum CPU load. The CPU figures
+**RUN** — capture name, input peak meter, average and maximum CPU load. The CPU figures
 are the ones phase 1 is done when it can record; the brief's references put A2 on a
 480 MHz H7 somewhere between 30% and 61%.
 
@@ -73,7 +73,7 @@ cd daisy_neural
 make
 ```
 
-Builds `BOOT_NONE` while the model slot is a passthrough, so it flashes straight over
+Builds `BOOT_NONE` while the engine slot is a passthrough, so it flashes straight over
 DFU without the Daisy bootloader being installed — which matters, because this unit
 currently runs MultiFX, also `BOOT_NONE`. Switch when the engine lands and the weights
 need DTCM:
@@ -88,7 +88,7 @@ with no Rosetta, so it fails with `Bad CPU type in executable`.
 toolchain that can actually run — currently the native arm64 xPack GCC 12.3.1 that came
 with PlatformIO. Plain `make` works; `GCC_PATH=/path/to/bin` still overrides.
 
-## Footprint (skeleton, model slot empty)
+## Footprint (skeleton, engine slot empty)
 
 | Region | Used | Size | % |
 |---|---|---|---|
@@ -107,7 +107,7 @@ with integer maths would give back the largest single chunk.
 ## Next
 
 Phase 1 step 3: lift `nam_model.c/.h` from nam-pedal `t3k-pedal` @ `6dc47a4`, keeping
-its `NAM_DTCM` placement, and replace the body of `ModelSlot::Process()`. The seam is
+its `NAM_DTCM` placement, and replace the body of `EngineSlot::Process()`. The seam is
 one sample in, one sample out, which is the shape A2 already has. Per the working rules
 in [CLAUDE.md](CLAUDE.md), lifted code records its source commit at the top of the file
 and carries its licence into `LICENSE-<project>.txt` here.
