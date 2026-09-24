@@ -88,9 +88,18 @@ narrower vocabulary. Keep to it in code, commits and on the panel.
   - The carrier has a **microSD slot** (see `patch_init_schematic.pdf`).
   - **IN_R is normalled to IN_L** on the carrier.
   - CV_OUT is 12-bit, 0–5V. CV_5–CV_8 are ±5V inputs.
-  - **Audio input/output coupling is unverified.** The carrier wires the jacks straight
-    to the submodule, so it is set inside the Patch SM. Check the Patch SM datasheet or
-    measure it (bench check 2) before relying on it.
+  - **The audio inputs are AC-coupled.** The carrier adds nothing — `J_LIN`/`J_RIN` go
+    straight to submodule pins B4/B3 with no series caps (`patch_init_schematic.pdf`), so
+    the coupling is inside the Patch SM. What is *not* yet known is the corner frequency,
+    which is what the HPF page measures and what phase 5 needs.
+  - **`IN_R` is normalled to `IN_L`, and patching `IN_R` breaks that normal** — the R
+    jack's NORM contact carries `SIG_LIN`. So IN_R is a second per-sample input whenever
+    something is plugged into it, which is the only route for audio-rate CV.
+  - **Pots are wired 0–5V, CV jacks −5V to +5V** (schematic note). libDaisy inits
+    CV_1–CV_8 alike with `InitBipolarCv`, so a pot only covers part of the bipolar range.
+    This firmware sums pot + CV and clamps exactly as `daisy_multifx_oled` does, so the
+    knobs behave the same as that unit's — whatever that turns out to feel like, it is
+    not novel here. Confirm on hardware before tuning any knob range.
 - **Befaco Chopping Kinky.**
   - Dual wavefolder; channel A symmetric, channel B asymmetric (per the VCV model).
   - Two fold CV inputs per channel, one through an attenuverter.
@@ -184,9 +193,12 @@ found, and no NAM or ToneX capture of any Eurorack module. Open ground.
 
 1. **ES-10 passes DC.** Jumper to DC. Play a +2V DC step out of an ES-10 output, patch
    it to an ES-10 input, record it; confirm the offset holds.
-2. **Patch.init audio coupling.** Feed a very slow LFO (under 1Hz) into IN_L with
-   pass-through firmware; watch whether it holds its level or decays toward zero. Record
-   the answer under Hardware.
+2. **Patch.init audio input — find the high-pass corner.** AC-coupled is already settled,
+   so this is now a measurement, not a yes/no. Send one LFO to **both** `IN_L` and `CV_5`,
+   run `daisy_neural`, long-press to the HPF page. `CV_5` is DC-coupled, so its span is
+   the truth and `RAT` is the audio input's response at that frequency. Sweep the LFO up
+   from ~0.1Hz and find where `RAT` reaches 0.71 — that is the −3dB corner. Record it
+   under Hardware; it sets the crossover for phase 5's split-path CV.
 3. ~~Chopping Kinky levels.~~ Dropped with the folder; see the appendix.
 4. **Dual LPG noise floor and channel match.** Record both channels quiet, then ping each
    with Strike, noting which vactrols are fitted. It is a hand-built module, so know its
@@ -339,6 +351,20 @@ and capture afterwards** — no hurry, phases 0 through 2 come first. Two conseq
 
 ## Phase 5 — audio-rate conditioning, then hardware
 
+**How audio-rate CV actually gets in.** This is settled by the hardware, so decide it
+before training anything. The CV jacks are read by `ProcessAllControls()` once per
+block — about 1kHz — which is fine for a knob and useless for audio rate. The only
+per-sample input is an audio jack, and `IN_R` is available the moment something is
+patched into it, since that breaks its normal from `IN_L`. But the audio inputs are
+**AC-coupled**, so that path loses the DC and the slowest part of the control signal.
+
+Neither path carries the whole signal, so **split it**: the slow component through a CV
+jack (DC-accurate, block rate) and the fast component through `IN_R` (per-sample,
+AC-coupled), summed in firmware. Each path covers exactly what the other cannot. The
+crossover belongs at the audio input's high-pass corner, which is what the firmware's
+HPF page measures — send one LFO to both `IN_L` and `CV_5`, sweep its frequency, and
+read the span ratio.
+
 - Train with fast-moving CV and test under audio-rate modulation. No paper found
   conditions on audio-rate CV — the published conditioning work assumes slow controls.
   This is the novel part.
@@ -399,7 +425,9 @@ reading off Befaco's manual if this is ever picked up.
 
 ## Open questions
 
-- Is the Patch SM audio input AC- or DC-coupled? (Phase 0, check 2.)
+- What is the audio input's high-pass corner frequency? AC-coupled is settled; the corner
+  is not, and it sets the crossover for phase 5's split-path CV. (Phase 0, check 2, now
+  a measurement rather than a yes/no.)
 - Which conditioning method for phase 4 — CV as an extra input, FiLM, or a hypernetwork?
   Simionato & Fasciani compare them; it decides how the knob behaves between trained
   points, so it wants reading before the training script is written.
