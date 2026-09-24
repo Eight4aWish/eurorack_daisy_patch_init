@@ -82,6 +82,28 @@ placement is needed:
 make APP_TYPE=BOOT_SRAM
 ```
 
+## Flashing
+
+```sh
+make flash                      # build if needed, then flash over DFU
+make dfu-list                   # show every DFU device attached
+make flash DFU_SERIAL=<serial>  # pick one when several are in DFU mode
+```
+
+Same pattern as `daisy_grids`, including its handling of the dfu-util quirk where a
+successful write to a `:leave` address still exits 74.
+
+Because this builds `BOOT_NONE`, `make flash` writes straight to internal flash at
+`0x08000000` and **needs no bootloader on the unit** — the same arrangement MultiFX uses,
+so nothing about the unit has to change first. Put the Patch SM into DFU mode (hold BOOT,
+tap RESET, release BOOT), run `make flash`, then tap RESET.
+
+To put MultiFX back afterwards: `cd ../daisy_multifx_oled && make flash`.
+
+With no module attached, `make flash` builds the binary and then stops with
+`No DFU device found for 0483:df11` — so the path is verified as far as it can be without
+hardware. What it cannot tell you is whether the unit enumerates or the write succeeds.
+
 **Toolchain.** `arm-none-eabi-gcc` on PATH is an x86-64 binary and this host is arm64
 with no Rosetta, so it fails with `Bad CPU type in executable`.
 [`make/common.mk`](../make/common.mk) now detects that and falls back to the first
