@@ -92,7 +92,7 @@ make DAISY_ROOT=/path/to/daisy
 - `daisy_fm4op/` – 4-op FM synth (standalone build, and the FM4OP engine for `daisy_multiosc`)
 - `daisy_interval_osc/` – **INTVL** — Nick Donaldson's IntervalOsc: dual oscillator with quantized interval offset ([ndonald2/DaisyPatches](https://github.com/ndonald2/DaisyPatches), MIT — see [`daisy_interval_osc/LICENSE-daisypatches.txt`](daisy_interval_osc/LICENSE-daisypatches.txt)). His patch and README are kept as written; the multiosc engine is a port of that DSP onto the universal panel
 - `daisy_scanned/` – scanned-synthesis engine source for `daisy_multiosc` (no standalone build)
-- `nam_patchinit/` – **planned**: neural audio models (NAM A2, then a CV-conditioned GRU) on the patch.init, working towards a capture of the Befaco Chopping Kinky. Brief and phase plan only so far — see its [CLAUDE.md](nam_patchinit/CLAUDE.md)
+- `daisy_neural/` – **planned**: neural audio models on the patch.init — a NAM A2 capture of the Befaco Chopping Kinky first, then a CV-conditioned GRU of a vactrol low-pass gate, where the vactrol's memory is something a static curve cannot reproduce. Brief and phase plan only so far — see its [CLAUDE.md](daisy_neural/CLAUDE.md)
 - `daisy_bytebeat/` – **BYTEBEAT** engine source for `daisy_multiosc` (no standalone build): dual-voice bytebeat with a 100-formula bank in five families and a lo-fi Tone macro, ported from [Ogham](https://github.com/keeos-io/ogham) by Steven Collins (Keeos.io, MIT — see [`daisy_bytebeat/LICENSE-ogham.txt`](daisy_bytebeat/LICENSE-ogham.txt))
 
 ## Shared code

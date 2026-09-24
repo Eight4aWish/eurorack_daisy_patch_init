@@ -1,18 +1,27 @@
 # Neural models on Eurorack (Daisy patch.init) — project brief
 
 Handoff from a planning conversation (September 2026), corrected on 2026-09-24 against
-the actual repos. Claude Code loads this file when working in `nam_patchinit/`. The
-repo-root `CLAUDE.md` still applies.
+the actual repos. Revised the same day: the conditioned model targets the vactrol
+low-pass gate, not the folder. Claude Code loads this file when working in
+`daisy_neural/`. The repo-root `CLAUDE.md` still applies.
 
 ## Goal
 
 Run neural network audio models on Eurorack hardware, in phases:
 
 1. Run someone else's trained model on my hardware.
-2. Measure, then capture, my own Eurorack module (Befaco Chopping Kinky).
-3. Add CV control (a conditioned model) — only if the capture earns it (see phase 1.5).
+2. Measure, then capture, my own Eurorack module (Befaco Chopping Kinky) — the learning
+   vehicle, chosen for being simple, DC-coupled and well documented.
+3. Add CV control (a conditioned model) on a device that needs one: the Buchla 292-style
+   vactrol low-pass gate.
 4. Train for audio-rate CV modulation, then design my own panel hardware.
 5. (Optional) FPGA, only if phases 3–4 produce a measured bottleneck.
+
+**Why two different modules.** A wavefolder is probably gain plus a memoryless curve, so
+a measured curve may beat a network on it outright (phase 1.5). A vactrol has slow
+memory, which no static curve reproduces. The folder teaches the pipeline; the gate is
+where a neural model earns its place. Phase 1.5 decides whether the *folder* needs a
+network — it does not decide whether the project continues.
 
 ## Working rules for this project
 
@@ -23,6 +32,10 @@ Run neural network audio models on Eurorack hardware, in phases:
 - **Pin what you lift.** Code copied from another repo records its source commit in a
   comment at the top of the file. Several of the sources below live on non-default
   branches that move.
+- **Carry the licence with it.** Lifted code also puts the upstream licence text in
+  `daisy_neural/LICENSE-<project>.txt` and a line in the repo README pointing at it, as
+  `daisy_bytebeat/` and `daisy_interval_osc/` already do. Phase 1 lifts from two separate
+  MIT projects, so expect two files.
 - **Keep the build standalone.** This firmware repurposes the Daisy MultiFX unit;
   MultiFX goes back on by re-flashing `daisy_multifx_oled/`. Nothing is merged into it.
 - **Explain in digestible steps.** Keep code simple over clever. I am new to neural
@@ -33,6 +46,9 @@ Run neural network audio models on Eurorack hardware, in phases:
 - **Electrosmith patch.init()** — the unit that normally runs Daisy MultiFX, with a
   64×48 SSD1306 OLED in place of the B8 toggle (soft I2C on A2 = SDA, A3 = SCL; driver
   `common/oled_soft_i2c`). About 10 characters per line.
+  - This is the **commercial Electrosmith unit**, not one of the hand-built modules, so
+    the shared +5V rail comb that affects those does not apply. The blind A/B tests in
+    phases 1–3 start from the factory noise floor.
   - Daisy Patch Submodule: STM32H750 at 480MHz, 64MB SDRAM, 8MB QSPI flash,
     128KB internal flash, 128KB DTCM, 512KB AXI SRAM, 288KB D2 SRAM.
   - libDaisy class: `patch_sm::DaisyPatchSM`. **Defaults to 48kHz, 48-sample blocks**
@@ -53,6 +69,12 @@ Run neural network audio models on Eurorack hardware, in phases:
     Do not capture it.
   - Input level and fold CV range: _read from Befaco's user manual and add here._
   - Schematics are published by Befaco (CC BY-NC-SA) at <https://www.befaco.org/docs/>.
+- **Buchla 292-style vactrol low-pass gate** — the phase 3 capture target.
+  - A vactrol is an LED facing a light-dependent resistor. The LDR lags the LED by tens
+    of milliseconds, asymmetrically (decay far slower than attack), and that lag *is*
+    memory: the thing a static curve cannot represent and a recurrent network can.
+  - Exact module, its CV range and whether it has a VCA/VCF/both mode: _record here._
+  - White-box reference: Parker & D'Angelo, DAFx-13.
 - **Befaco Instrument Interface** and a guitar, for test input.
 - **Recording chain:** Mac → Focusrite 16i16 → ADAT → **Expert Sleepers ES-10** → modular,
   and back the same way.
@@ -115,7 +137,7 @@ no dropouts, and the measured CPU load is recorded here.
 
 1. **Hear it on the Mac first.** Download an **A2** overdrive or fuzz *pedal* capture
    from TONE3000 (no cabinet IR needed) and play it in the NAM plugin.
-2. **Create `nam_patchinit/`** in this repo, copying the Makefile pattern from
+2. **Set up the build in `daisy_neural/`**, copying the Makefile pattern from
    `daisy_multifx_oled/` (`make/common.mk`, `common/oled_soft_i2c.cpp`).
 3. **Lift the engine** from nam-pedal `t3k-pedal` @ `6dc47a4`: `nam_model.c/.h`, keeping
    its `NAM_DTCM` placement. Replace `DaisySeed` with `DaisyPatchSM`. Keep bkshepherd's
@@ -146,8 +168,9 @@ or ADAA), and CV — including audio-rate CV — is just a multiply before the c
    hysteresis). No change → the static model will be hard to beat.
 4. Implement the curve on the patch.init with 2–4× oversampling as the baseline.
 
-**Done when:** the static model exists and there is a written answer to "does the
-hardware have memory?".
+**Done when:** the static model exists and there is a written answer to "does the folder
+have memory?". A "no" retires the folder as a neural target and phase 2 becomes a
+like-for-like comparison, not a prerequisite. Phase 3 proceeds either way, on the gate.
 
 ## Phase 2 — capture the Chopping Kinky with NAM A2
 
@@ -159,37 +182,54 @@ hardware have memory?".
   a folder's output depends heavily on input level, and oscillators are its real use.
 - Aliasing: the *recording* will not alias (the interface filters its input), but the
   *model* will, because it cannot produce harmonics above 24kHz and folds them back.
-  Heavy settings will suffer most. Recording and training at 96kHz helps; running at
-  96kHz on the Daisy doubles the CPU cost, which A2 likely cannot afford.
+  Heavy settings will suffer most. Recording and training at 96kHz helps — but a model
+  must run at the rate it was trained at, because a WaveNet's dilations are counted in
+  samples, so a 96kHz model played back at 48kHz has its whole time structure halved.
+  Running 96kHz on the Daisy doubles the CPU cost, which A2 likely cannot afford, so
+  train at 48kHz unless the measurements say otherwise. (Carson et al. on sample-rate
+  independence, in the papers below, is the way out if 96kHz training proves necessary.)
 - Store models in QSPI (or SD) and switch at runtime, crossfading on switch.
 - **Done when:** a blind A/B test against the module is hard to call at gentle and
   medium, **and** the capture is compared blind against the phase 1.5 static model.
 
-## Phase 3 — CV-conditioned model (only if phase 2 beats phase 1.5)
+## Phase 3 — CV-conditioned model, on the vactrol low-pass gate
 
+The target changes here, deliberately. The folder is very likely gain plus a static
+curve, where CV is just a multiply and a network buys nothing. The gate's vactrol has
+memory, so the network has something real to learn. Same rig either way: one ADAT channel
+of audio, one of CV, sample-aligned.
+
+- **Measure the vactrol first**, exactly as phase 1.5 measures the folder: step the CV
+  and record the attack and decay tails at several levels. Those time constants say how
+  much history the model needs, which sets the GRU size — measure, don't guess it.
 - **Stack:** RTNeural running a small GRU (8–16 units) with a Dense output layer, the
   NeuralSeed pattern: the CV is an extra network input alongside the audio. Use a short
   PyTorch training script I own; NAM's trainer cannot do this.
-- **Structure first:** if phase 1.5 shows "gain then curve", put that gain in front of
-  the network as fixed maths and let the network learn only the shaper (the idea behind
-  Hayes et al., NEWT). It keeps audio-rate CV well-behaved.
-- **Prototype data:** the VCV Befaco plugin can generate unlimited audio + fold CV,
-  including fast CV. This is a model of a model: final accuracy needs real recordings.
-- **Real data:** ES-10 drives audio and fold CV from one sample-aligned file.
+- **Structure first:** Parker & D'Angelo (DAFx-13) model a vactrol as a slow envelope
+  driving a VCA. Put that envelope in front of the network as fixed maths and let the
+  network learn only what is left over — the same trick as phase 1.5's "gain then curve",
+  and the idea behind Hayes et al. (NEWT). It keeps audio-rate CV well-behaved in phase 4.
+- **Prototype data:** a white-box vactrol simulation from that paper generates unlimited
+  audio + CV, including fast CV, for rehearsing the pipeline. It is a model of a model:
+  final accuracy needs real recordings.
+- **Real data:** ES-10 drives audio and gate CV from one sample-aligned file.
 - **Pipeline check:** confirm the C++ output matches PyTorch sample for sample on the
   Mac before flashing.
-- **Done when:** changing the CV on the model tracks changing the fold on the real module.
+- **Done when:** the model tracks the real gate under slow CV, decay tail included, and
+  a static-curve model of the same gate audibly fails to — which is the evidence that the
+  network was necessary.
 
 ## Phase 4 — audio-rate conditioning, then hardware
 
 - Train with fast-moving CV and test the model under audio-rate modulation. No paper
   found conditions on audio-rate CV — the published conditioning work assumes slow
   controls. This is the novel part.
+- Audio-rate CV into a vactrol is where this gets interesting: the real vactrol cannot
+  follow it, so the model has to learn the lag itself rather than track the control.
 - Candidate next targets:
-  - my Buchla 292-style vactrol low-pass gate — a vactrol has slow memory, so a neural
-    model is better justified there than on the folder. White-box reference: Parker &
-    D'Angelo, DAFx-13.
   - two-input models (ring modulation, cross-modulation)
+  - the Chopping Kinky under audio-rate fold CV, if phase 2 earned it against the static
+    model
 - Design panel and interface hardware once the model's needs are known (or move to the
   Alchemy Lab if it is only more CV).
 
@@ -226,6 +266,7 @@ Check first whether a faster processor would solve it more cheaply.
 
 - Is the Patch SM audio input AC- or DC-coupled? (Phase 0, check 2.)
 - Does the Chopping Kinky have memory, or is it gain + static curve? (Phase 1.5.)
+- Which vactrol low-pass gate exactly, and what are its CV range and modes? (Hardware.)
 - End goal: a module for my own rig and videos, or eventual release?
 
 ## Settled
@@ -234,3 +275,5 @@ Check first whether a faster processor would solve it more cheaply.
   Confirm once on the bench (phase 0, check 1).
 - ~~Does Daisy MultiFX use the bootloader and DTCM?~~ Moot: the MultiFX unit is
   repurposed, not merged into. (For the record, MultiFX is `BOOT_NONE`.)
+- ~~Is this unit affected by the shared +5V rail comb seen on the hand-built modules?~~
+  No — it is the commercial Electrosmith patch.init.
