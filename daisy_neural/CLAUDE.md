@@ -232,11 +232,13 @@ curve, where CV is just a multiply and a network buys nothing. The gate's vactro
 memory, so the network has something real to learn. Same rig either way: one ADAT channel
 of audio, one of CV, sample-aligned.
 
-**The LPG is not a frozen target, and that dictates the order.** Two changes are on its
-roadmap: re-ranging the pots (little of DEPTH's and MANUAL's travel does anything
-audible) and adding L7 resonance on the reserved spare op-amp half. Both change the
-device a capture would describe, so **do the circuit work first and capture afterwards** —
-there is no hurry, phases 0 through 2 come first. Two consequences worth holding on to:
+**The LPG is not a frozen target, and that dictates the order.** A pot re-range is
+specified and awaiting the bench — little of DEPTH's and MANUAL's travel does anything
+audible — with the diagnosis in `eurorack_electronics/docs/lpg_netlist.md` and a bench
+procedure in `docs/lpg_mod_pot_rerange.md` there. **L7 resonance is deferred**, which is
+the happier order for this project: it keeps the phase 3 target free of a feedback path.
+The re-range changes the device a capture would describe, so **do the circuit work first
+and capture afterwards** — no hurry, phases 0 through 2 come first. Two consequences:
 
 - The phase 3 measurements and the re-ranging want the same data. Ping responses and CV
   steps say where the LED current actually does something audible, which is exactly what
