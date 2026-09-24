@@ -170,8 +170,15 @@ no dropouts, and the measured CPU load is recorded here.
 
 1. **Hear it on the Mac first.** Download an **A2** overdrive or fuzz *pedal* capture
    from TONE3000 (no cabinet IR needed) and play it in the NAM plugin.
-2. **Set up the build in `daisy_neural/`**, copying the Makefile pattern from
-   `daisy_multifx_oled/` (`make/common.mk`, `common/oled_soft_i2c.cpp`).
+2. ~~**Set up the build in `daisy_neural/`**, copying the Makefile pattern from
+   `daisy_multifx_oled/` (`make/common.mk`, `common/oled_soft_i2c.cpp`).~~ **Done** —
+   `Makefile` + `src/main.cpp` carry the whole chain with `ModelSlot::Process()` as a
+   passthrough, which is also the pass-through firmware bench check 2 needs, so that
+   check can run before the engine exists. Built `BOOT_NONE` for now so it flashes
+   without the bootloader; see the README. **Compiles clean, not yet run on hardware.**
+   Skeleton footprint with the slot empty: FLASH 99,508 B (75.9% of 128 KB), SRAM
+   16,764 B, RAM_D2 16,896 B, DTCM unused — so `BOOT_NONE` has only ~28 KB spare, which
+   is the practical reason step 3 moves to `BOOT_SRAM`.
 3. **Lift the engine** from nam-pedal `t3k-pedal` @ `6dc47a4`: `nam_model.c/.h`, keeping
    its `NAM_DTCM` placement. Replace `DaisySeed` with `DaisyPatchSM`. Keep bkshepherd's
    `nam_a2_runtime.h` open alongside as the easier-to-read version of the same maths.
