@@ -227,7 +227,10 @@ void AudioCallback(AudioHandle::InputBuffer  in,
 
     // Metering and trim first, over the whole block, because the engine wants
     // a contiguous 48 samples rather than one at a time.
-    static float scratch[kA2BlockSize];
+    // 32-byte aligned to match the engine's own buffers (NAM_A2_ALIGN32).
+    // It reads input scalar-wise so this is belt-and-braces, but a misaligned
+    // access fault is a miserable thing to diagnose at the bench.
+    alignas(32) static float scratch[kA2BlockSize];
     const size_t n = (size > kA2BlockSize) ? kA2BlockSize : size;
 
     for(size_t i = 0; i < n; i++)
