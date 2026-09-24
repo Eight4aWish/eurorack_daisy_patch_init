@@ -52,9 +52,17 @@ why the peak meter reads the input *before* the trim rather than after.
 
 ## Pages
 
-**RUN** — capture name, input peak meter, average and maximum CPU load. The CPU figures
-are the ones phase 1 is done when it can record; the brief's references put A2 on a
-480 MHz H7 somewhere between 30% and 61%.
+**RUN** — capture name, input peak meter, average and maximum CPU load, and the raw
+trim/level knob reads on the bottom line as `T+0.5L+0.8`. The CPU figures are the ones
+phase 1 is done when it can record; the brief's references put A2 on a 480 MHz H7
+somewhere between 30% and 61%.
+
+That bottom line exists because the pot scaling is **not confirmed**. libDaisy inits
+CV_1–CV_8 alike as bipolar while the pots are wired 0–5 V, so what a knob actually spans
+is unknown until it is seen. The summing here is exactly what `daisy_multifx_oled` does
+and is known to work on this unit, so it stays — but **if there is no sound, read that
+line before suspecting anything else.** `L` at 0.0 with the knob turned up is the whole
+explanation, and the fix is four lines in `main.cpp`, not in the engine.
 
 **HPF** — the bench check 2 page. AC coupling is settled; this measures the *corner*. Send
 one LFO to both IN_L and CV_5, and read `RAT` — the audio span over the CV span. CV_5 is

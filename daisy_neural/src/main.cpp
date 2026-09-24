@@ -150,6 +150,11 @@ static volatile float g_cv_max = 0.f;
 // One-pole coefficient for the DC reading, set in main() for ~50 ms.
 static float g_dc_coeff = 0.f;
 
+// Raw knob reads, shown on the RUN page so unconfirmed pot scaling is visible
+// rather than mysterious. See the note in the audio callback.
+static volatile float g_trim_raw  = 0.f;
+static volatile float g_level_raw = 0.f;
+
 static constexpr float kLedVolts = 2.0f;
 
 static inline void SetLed(bool on)
@@ -224,8 +229,20 @@ void AudioCallback(AudioHandle::InputBuffer  in,
     ProcessNav();
 
     // Pot + CV jack summed and clamped, the house attenuverter behaviour.
-    const float trim_k  = fclamp(patch.GetAdcValue(CV_1) + patch.GetAdcValue(CV_5), 0.f, 1.f);
-    const float level_k = fclamp(patch.GetAdcValue(CV_2) + patch.GetAdcValue(CV_6), 0.f, 1.f);
+    // Raw reads kept for the display. libDaisy inits CV_1–CV_8 alike as bipolar
+    // while the pots are wired 0–5V, so what a knob actually spans has not been
+    // confirmed on hardware. The summing below is exactly what
+    // daisy_multifx_oled does and is known to work on this unit, so it stays —
+    // but the raw values go on screen so the first bench minute settles it
+    // instead of guessing. If LVL reads 0 with the knob up, that is why there
+    // is no sound, and the fix is here rather than in the engine.
+    const float trim_raw  = patch.GetAdcValue(CV_1);
+    const float level_raw = patch.GetAdcValue(CV_2);
+    g_trim_raw            = trim_raw;
+    g_level_raw           = level_raw;
+
+    const float trim_k  = fclamp(trim_raw + patch.GetAdcValue(CV_5), 0.f, 1.f);
+    const float level_k = fclamp(level_raw + patch.GetAdcValue(CV_6), 0.f, 1.f);
 
     // Trim spans -20..+20 dB with unity at noon, so the signal can be set to
     // the level the capture was trained at. Computed per block, not per sample.
@@ -314,11 +331,16 @@ static void DrawRunPage()
 
     snprintf(line, sizeof(line), "CPU %2d%%",
              (int)(cpu_meter.GetAvgCpuLoad() * 100.f + 0.5f));
-    display.DrawString(0, 29, line, false);
+    display.DrawString(0, 28, line, false);
 
     snprintf(line, sizeof(line), "MAX %2d%%",
              (int)(cpu_meter.GetMaxCpuLoad() * 100.f + 0.5f));
-    display.DrawString(0, 38, line, false);
+    display.DrawString(0, 35, line, false);
+
+    // Raw knob reads. Ten characters is the panel budget, so they share a line.
+    snprintf(line, sizeof(line), "T%+.1fL%+.1f",
+             (double)g_trim_raw, (double)g_level_raw);
+    display.DrawString(0, 42, line, false);
 
     if(g_bypass)
         display.DrawString(46, 0, "BYP", true);
