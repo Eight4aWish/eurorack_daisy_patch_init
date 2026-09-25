@@ -15,7 +15,14 @@ Run neural audio networks on Eurorack hardware, in phases:
 3. Capture the gate with NAM A2 — static, one capture per setting.
 4. Add CV control: a conditioned GRU, so the gate has a real knob.
 5. Train for audio-rate CV modulation, then design my own panel hardware.
-6. (Optional) FPGA, only if phases 4–5 produce a measured bottleneck.
+6. Move to the Tiliqua for phase 5 — not as a fallback, as the platform it needs.
+
+**Two platforms, and the split is deliberate.** The Daisy carries phases 1–4: it has a
+working MIT A2 engine to lift, builds in seconds, and runs float, so it is where the data
+and the architecture get settled cheaply. The Tiliqua carries phase 5, because audio-rate
+sample-accurate conditioning is not something the M7 is slow at — it is something the M7
+cannot do, its CV being read once per block. Knowing that in advance is what stops
+phase 3 turning into M7 micro-optimisation that the project then throws away.
 
 **One device, all the way through: the vactrol low-pass gate.** A vactrol's slow,
 asymmetric lag is memory, and memory is the thing a static curve cannot reproduce and a
@@ -286,6 +293,10 @@ capturing a grid of settings. That limitation is the point of this phase.
   measurements say otherwise. (Carson et al. on sample-rate independence, below, is the
   way out if 96kHz training proves necessary.)
 - Store captures in QSPI (or SD) and switch at runtime, crossfading on switch.
+- **Chasing aliasing on the Daisy is optional.** Oversampling 2–4× multiplies the CPU
+  cost and would need int16 quantisation or aggressive DTCM tiering to fit. That work
+  does not transfer to phase 5's platform, so do it only if you want a good-sounding
+  Daisy build for its own sake. Record how bad the aliasing is and move on otherwise.
 
 **Expect this to fail on the tail, and watch how.** A2's dilations reach 239 samples —
 about 5ms at 48kHz — while the vactrol's decay runs to tens of milliseconds. The
@@ -375,15 +386,51 @@ read the span ratio.
 - Design panel and interface hardware once the requirements are known (or move to the
   Alchemy Lab if it is only more CV).
 
-## Phase 6 — FPGA (decision point, not a commitment)
+## Phase 6 — the Tiliqua is where phase 5 lands
 
-Consider the Tiliqua (ECP5) only if phases 4–5 produce a measured bottleneck:
+**This used to read "FPGA, optional, only if phases 4–5 produce a measured bottleneck."
+That framing was wrong**, and it was wrong in a way that would have wasted effort: it
+treats the FPGA as an escape hatch for when the M7 runs out, when for audio-rate
+sample-accurate conditioning the M7 is not slow but *structurally incapable*. CV is read
+once per audio block (~1kHz), and the only per-sample way in is an AC-coupled audio jack.
+No amount of optimisation fixes that; it is the shape of the platform.
 
-- oversampling for aliasing control doesn't fit the M7's budget
-- block-based CV response is audibly worse than sample-by-sample
-- multiple networks need to run at once
+The numbers, from `eurorack_electronics`'s sibling — the `tiliqua` repo's own build
+figures rather than datasheet optimism:
 
-Check first whether a faster processor would solve it more cheaply.
+| | needed | available on the ECP5-25F |
+|---|---|---|
+| A2 WaveNet, 1,871 weights | ~2–3k MAC/sample | 28 mult × 1250 cycles = **35,000** at 48kHz |
+| GRU-16 + 2 CV inputs | ~880 MAC/sample | 28 × 312 = **8,700** at 192kHz (4× oversampled) |
+| weights storage | 3.7 KB at 16-bit | **1008 kbit** block RAM |
+
+So a network of this size has ten to forty times the arithmetic it needs, keeps it under
+oversampling, and fits entirely in BRAM — no PSRAM, no tiering, none of the placement
+problem that constrains the Daisy build. The mesh in Silver and Gold is a far harder
+workload than any of this.
+
+What it actually costs, which is not silicon and not skills:
+
+- **It is a third bitstream, not an addition.** Silver takes 22 of 28 multipliers at
+  48×48, Gold 19 of 28 at 32×32. A neural engine gets its own top-level and its own
+  board time; it does not ride along.
+- **Quantisation is new work** — though the same discipline as the mesh's fixed-point
+  scaling, not a different one.
+- **The training pipeline is unaffected.** PyTorch on the Mac either way; the platform
+  only changes what runs the result.
+- Upstream's policy permits AI assistance in non-pedagogical top-level bitstreams with
+  clear provenance, but **not** in shared library or platform code — so a neural
+  top-level is in the permitted category and anything touching `dsp/` is not.
+
+**Therefore: squeezing the M7 is optional.** int16 quantisation via the Cortex-M7's
+integer SIMD, DTCM tiering beyond what phase 1 already needs, shaving the engine — do
+these only if you want phase 3's oversampling *on the Daisy*, not because the project
+needs them. On the path to phase 5 they are throwaway. The Daisy's job is phases 1–4:
+get the data right, get the architecture and conditioning right, in float, where
+iteration costs seconds. Then port a known-good network.
+
+A faster processor is still worth a thought before committing, but it buys throughput,
+not the per-sample structure, so it does not address the thing phase 5 needs.
 
 ## Appendix — the Befaco Chopping Kinky (dropped from the main line)
 
