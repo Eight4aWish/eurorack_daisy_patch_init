@@ -4,8 +4,13 @@ Neural audio networks on the Daisy Patch.Init — the firmware side of the proje
 briefed in [CLAUDE.md](CLAUDE.md).
 
 **Status: a real engine and a real capture, ready to trial.** The NAM A2 engine is in
-and a JCM800 capture is compiled in, so this is flashable and listenable now. It fits
-`BOOT_NONE`, so it needs no bootloader on the unit.
+with a JCM800 capture compiled in, and all five captures are exported as files for the
+microSD card (loader still to be written — see [Next](#next--at-the-bench)).
+
+Built `BOOT_SRAM`, which needs the Daisy bootloader installed once on the unit. This is
+going on a **fresh patch.init()** rather than repurposing the MultiFX one, so there is no
+reason not to. `BOOT_SRAM` is also what the engine was written for: weights in DTCMRAM,
+history in RAM_D2, both on-chip.
 
 **Builds clean. Not yet run on hardware** — every behaviour below is written but
 unobserved, including whether it makes any sound at all, so the first bench session is
@@ -86,14 +91,19 @@ cd daisy_neural
 make
 ```
 
-Builds `BOOT_NONE`, so it flashes straight over DFU without the Daisy bootloader being
-installed — which matters, because this unit currently runs MultiFX, also `BOOT_NONE`.
-The engine and one capture still fit. Switch when the measured CPU load says the DTCM
-placement is needed:
+Builds `BOOT_SRAM` by default. That needs the Daisy bootloader on the unit — a one-off,
+installed with `make program-boot` or the Electrosmith web programmer.
+
+For a first power-on before the bootloader is installed, `BOOT_NONE` still works and
+still needs no bootloader:
 
 ```sh
-make APP_TYPE=BOOT_SRAM
+make APP_TYPE=BOOT_NONE
 ```
+
+In that mode the engine's placement sections do not exist, so the macros are neutralised
+and everything lands in ordinary `.bss` — correct, just slower, with the history in AXI
+SRAM rather than RAM_D2.
 
 ## Flashing
 
@@ -106,12 +116,11 @@ make flash DFU_SERIAL=<serial>  # pick one when several are in DFU mode
 Same pattern as `daisy_grids`, including its handling of the dfu-util quirk where a
 successful write to a `:leave` address still exits 74.
 
-Because this builds `BOOT_NONE`, `make flash` writes straight to internal flash at
-`0x08000000` and **needs no bootloader on the unit** — the same arrangement MultiFX uses,
-so nothing about the unit has to change first. Put the Patch SM into DFU mode (hold BOOT,
-tap RESET, release BOOT), run `make flash`, then tap RESET.
-
-To put MultiFX back afterwards: `cd ../daisy_multifx_oled && make flash`.
+Under `BOOT_SRAM` this writes to QSPI at `0x90040000` and the bootloader loads it into
+SRAM at power-on, so **the bootloader has to be installed first** — once, on the fresh
+unit. `DFU_ADDR` follows `APP_TYPE` via libDaisy, so the same `make flash` is correct in
+either mode. Put the Patch SM into DFU mode (hold BOOT, tap RESET, release BOOT), run
+`make flash`, then tap RESET.
 
 With no module attached, `make flash` builds the binary and then stops with
 `No DFU device found for 0483:df11` — so the path is verified as far as it can be without
@@ -145,26 +154,51 @@ capture is a three-line change at the top of `main.cpp`.
 A2 processes a **fixed 48-sample block**, not one sample at a time. The Patch SM defaults
 to 48 kHz with 48-sample blocks, so the two line up with no buffering.
 
-## Footprint (engine + one capture)
+## Footprint (BOOT_SRAM, engine + one capture)
 
-| Region | Used | Size | % | vs empty slot |
+| Region | Used | Size | % | holds |
 |---|---|---|---|---|
-| FLASH | 110,808 B | 128 KB | 84.5% | +11,300 B |
-| DTCMRAM | 0 | 128 KB | 0% | — |
-| SRAM | 105,316 B | 512 KB | 20.1% | +88,552 B |
-| RAM_D2 | 16,896 B | 288 KB | 5.7% | — |
+| SRAM | 111,000 B | 480 KB | 22.6% | the program |
+| RAM_D2 | **76,672 B** | 256 KB | 29.3% | the A2 history buffer |
+| DTCMRAM | 28 KB | 128 KB | 21.9% | hot weights and work buffers |
+| QSPIFLASH | 0 | 7936 KB | 0% | free for a capture bank |
 
-The engine costs about 3.8 KB of code and the capture 7.5 KB, so it fits `BOOT_NONE`
-with ~17 KB to spare. The SRAM jump is the ~76 KB history buffer.
+That is the engine's intended tiering, and the 128 KB internal-flash ceiling the
+`BOOT_NONE` build was 84.5% into no longer applies.
 
-**Memory placement is deliberately naive for now.** The runtime wants its hot data in
-DTCM and the history in D2 SRAM, via `nam/nam_a2_sections.lds` and the bootloader. Those
-macros are neutralised in `main.cpp` so everything lands in ordinary `.bss`, which is
-what lets this run `BOOT_NONE`. DTCM is therefore untouched and the history sits in the
-slower AXI SRAM. **If the measured CPU load is high, that is the first thing to fix** —
-move to `BOOT_SRAM`, wire in the `.lds`, and let the placement do its job. A second
-option if flash ever gets tight is dropping `-u _printf_float` and formatting the HPF page
-with integer maths.
+**Getting the history into RAM_D2 took two fixes, both silent failures.** Either one
+leaves you with a build that links clean, boots, and merely runs slower with DTCMRAM 80%
+full — nothing warns you. The build's region table is the only tell, so **check it
+whenever the linker setup or the engine object is touched**:
+
+1. The supplemental linker fragment must be **first** on the link line (ld takes the last
+   `-T` as the main script), and with ld 12.3.1 it also needs its own `MEMORY`
+   declaration or `RAM_D2` is not yet visible. See `nam/neural_a2_sections.lds`.
+2. `NAM_A2_STATE_DATA` goes on the **A2Player instance**, not in the runtime header. The
+   header only defines the macro; placement is the caller's job, as bkshepherd's own
+   module shows.
+
+If flash ever gets tight again, dropping `-u _printf_float` and formatting the HPF page
+with integer maths is the largest single saving.
+
+## Captures on the microSD card
+
+`tools/export_captures.py` reads `nam/model_data_nam_a2.h` and writes one `.a2nb` file
+per capture into `captures/`:
+
+```sh
+python3 tools/export_captures.py
+```
+
+All five — BE-100, JCM800, Ampeg, Mesa and 1959BJA — export at 7,516 bytes each. Copy
+them to the root of a FAT32 card.
+
+The container is deliberately minimal: 32-byte header (magic, version, weight count,
+output gain, name, CRC32) followed by 1,871 float32 in exactly the order the engine's
+`load_weights()` takes. Upstream's `.namb` was the obvious alternative but it is a full
+NAM Core model format whose weight ordering is NAM Core's, not this runtime's — a wrong
+translation would load cleanly and sound wrong, which is the worst kind of bench bug. The
+CRC is there so a bad card is caught rather than fed to the network as weights.
 
 ## Next — at the bench
 
