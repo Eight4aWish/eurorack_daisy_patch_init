@@ -54,14 +54,19 @@ using namespace patch_sm;
 // is block-shaped. The Patch SM defaults to 48kHz with 48-sample blocks, which
 // is exactly what the engine expects, so the two line up with no buffering.
 //
-// Memory placement: the runtime pins its hot data to .dtcmram_bss and the ~76KB
-// history to .sram_d2_bss, which need nam/nam_a2_sections.lds and the
-// bootloader. For a first BOOT_NONE trial those macros are neutralised below and
-// everything lands in ordinary .bss. Revisit under BOOT_SRAM if the measured CPU
-// load says the placement matters.
+// Memory placement. Under BOOT_SRAM (the default) the runtime's own pinning
+// applies: hot weights and work buffers to .dtcmram_bss, the ~76KB history to
+// .sram_d2_bss in the otherwise-empty RAM_D2, both on-chip and both far faster
+// than leaving them to land wherever. libDaisy's SRAM script provides
+// .dtcmram_bss; nam/nam_a2_sections.lds adds .sram_d2_bss (see the Makefile).
+//
+// Under BOOT_NONE neither section exists, so the macros are neutralised and
+// everything falls into ordinary .bss — correct, just slower.
+#ifdef NEURAL_NO_TCM_PLACEMENT
 #define NAM_A2_HOT_DATA
 #define NAM_A2_STATE_DATA
 #define NAM_A2_HOT_STATE_DATA
+#endif
 #include "nam/nam_a2_runtime.h"
 #include "nam/model_data_nam_a2.h"
 
@@ -120,7 +125,17 @@ DaisyPatchSM  patch;
 oled::SSD1306 display;
 Switch        nav_btn;
 CpuLoadMeter  cpu_meter;
-EngineSlot    engine;
+
+// NAM_A2_STATE_DATA goes on the *instance*, not inside the runtime header —
+// the header only defines the macro and leaves placement to the user, exactly
+// as bkshepherd's own module does (`NAM_A2_STATE_DATA static A2Player ...`).
+// EngineSlot's only large member is the A2Player, whose only per-instance
+// member is A2State and its ~76 KB history, so placing this one object is what
+// puts the history in RAM_D2.
+//
+// Miss this and nothing complains: it links, it boots, and the history quietly
+// occupies 80% of DTCMRAM instead. The build's region table is the only tell.
+NAM_A2_STATE_DATA EngineSlot engine;
 
 enum class Page
 {

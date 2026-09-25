@@ -39,16 +39,33 @@ SYSTEM_FILES_DIR = $(LIBDAISY_DIR)/core
 
 # App type / linker selection.
 #
-# BOOT_NONE while the engine slot is a passthrough: the skeleton is small, it
-# flashes straight over DFU, and it does not need the Daisy bootloader on the
-# unit — which matters because this unit currently runs MultiFX (BOOT_NONE), so
-# the bootloader may not be installed. Phase 0 bench check 2 can therefore be
-# run today.
+# BOOT_SRAM, which is what the engine was written for: the hot weights go to
+# DTCMRAM and the ~76 KB history to the otherwise-empty RAM_D2, both on-chip.
+# It needs the Daisy bootloader on the unit — a one-off, and on a fresh
+# patch.init() there is no reason not to. It also lifts the 128 KB internal
+# flash ceiling that the BOOT_NONE build was already 84.5% into.
 #
-# Switch to BOOT_SRAM when the A2 engine lands (phase 1 step 3): the weights
-# want DTCM and the history buffer wants D2 SRAM, which needs the bootloader.
-#   make APP_TYPE=BOOT_SRAM
-APP_TYPE ?= BOOT_NONE
+# BOOT_NONE still works and still needs no bootloader, which is worth keeping
+# for a first-power-on sanity check before the bootloader is installed:
+#   make APP_TYPE=BOOT_NONE
+# In that mode the engine's placement sections do not exist, so the placement
+# macros are neutralised and everything lands in ordinary .bss — correct, just
+# slower, since the history ends up in AXI SRAM rather than RAM_D2.
+APP_TYPE ?= BOOT_SRAM
+
+ifeq ($(APP_TYPE),BOOT_NONE)
+C_DEFS += -DNEURAL_NO_TCM_PLACEMENT
+else
+# Supplemental fragment putting the ~76 KB A2 history in RAM_D2 instead of
+# crowding DTCMRAM. It must be FIRST on the link line: ld treats the LAST -T as
+# the main script, so passing it after libDaisy's makes ld use it as the main
+# script and the INSERT anchor disappears. LDFLAGS set here is emitted before
+# the core Makefile's -T$(LDSCRIPT), which is what we want.
+#
+# Verify by the region table, not by a clean build: a failed placement still
+# links and still boots, it just silently lands in DTCMRAM.
+LDFLAGS += -T$(_P_DIR)/nam/neural_a2_sections.lds
+endif
 
 ifeq ($(APP_TYPE),BOOT_QSPI)
 LDSCRIPT ?= $(SYSTEM_FILES_DIR)/STM32H750IB_qspi.lds
@@ -59,6 +76,22 @@ LDSCRIPT ?= $(SYSTEM_FILES_DIR)/STM32H750IB_flash.lds
 endif
 include $(SYSTEM_FILES_DIR)/Makefile
 
+#######################################
+# NAM A2 memory placement
+#######################################
+# nam/nam_a2_sections.lds adds a .sram_d2_bss output section in RAM_D2 so the
+# ~76 KB history buffer lives there instead of crowding DTCMRAM.
+#
+# It must come AFTER libDaisy's main script on the command line, which is why
+# this append sits below the include rather than above it. The fragment's own
+# header says to put it first, per the ld manual's rule for INSERT scripts —
+# but with this toolchain (ld 12.3.1) that produces
+#   warning: memory region `RAM_D2' not declared
+# and the section falls back into DTCMRAM, which is a silent failure: it links
+# clean, boots, and is merely slower and nearly out of DTCM. Measured: first
+# 105,344 B of 128 KB DTCMRAM used and RAM_D2 at zero; after, the history is in
+# RAM_D2 where it belongs. Check both regions in the build output if this is
+# ever touched.
 #######################################
 # DFU flashing
 #######################################
