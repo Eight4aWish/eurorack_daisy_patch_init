@@ -25,6 +25,7 @@ BUILD_DIR ?= build
 # Sources
 CPP_SOURCES = src/main.cpp \
               src/capture_store.cpp \
+              src/seed_weights.cpp \
               $(_P_UP1)/common/oled_soft_i2c.cpp
 
 # FatFS long-filename support. libDaisy compiles ff.c with LFN enabled but does

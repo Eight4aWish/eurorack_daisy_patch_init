@@ -18,12 +18,23 @@
  * Controls
  *   CV_1 (+ CV_5 jack)   input trim into the engine, -20..+20 dB, unity at noon
  *   CV_2 (+ CV_6 jack)   output level, 0..1
- *   CV_3 (+ CV_7 jack)   select capture off the card
+ *   CV_3 (+ CV_7 jack)   slot: the card's captures, then SEED at the top
+ *   CV_4                 SEED — which untrained network (seed slot only)
+ *   CV_8                 TILT — brightness, dark to bright (seed slot only)
  *   B7 short press       bypass on/off, to A/B the engine against the dry input
  *   B7 long press        change page, RUN <-> DC
  *   CV_OUT_2 LED         lit when the engine is in circuit, dark when bypassed
  *
- * Audio: IN_L -> trim -> engine slot -> level -> OUT_L and OUT_R.
+ * The last slot is SEED: weights generated on the fly from a number rather
+ * than read off the card, so it works with no card at all. It models nothing —
+ * a nonlinearity that has never existed, and the same seed gives the same one
+ * on any unit, forever. See src/seed_weights.h, and the prior art noted there.
+ *
+ * CV_4 and CV_8 are read separately rather than summed as the other pairs are,
+ * because they do different jobs: the pot chooses a network, the jack
+ * modulates brightness.
+ *
+ * Audio: IN_L -> trim -> engine slot -> level -> DC block -> OUT_L and OUT_R.
  * Bypass takes the dry input to the same output level, so an A/B compares the
  * engine against the input rather than against a level change.
  *
@@ -35,6 +46,7 @@
 #include "daisysp.h"
 #include "oled_soft_i2c.h"
 #include "capture_store.h"
+#include "seed_weights.h"
 #include <cmath>
 #include <cstdio>
 
@@ -126,6 +138,46 @@ class EngineSlot
             out[i] *= gain_;
     }
 
+    /** Re-level after a seed change. Untrained networks vary about 13x in
+     *  output level (RMS 0.023 to 0.308 measured), so without this the seed
+     *  knob is mostly a volume control. Runs a short tone through the engine,
+     *  measures it, then resets the state it just disturbed. */
+    void AutoGain(float target_rms)
+    {
+        if(!loaded_)
+            return;
+        gain_ = 1.f;
+
+        float in[kA2BlockSize], out[kA2BlockSize];
+        double acc = 0.0;
+        int    n   = 0;
+        float  ph  = 0.f;
+        for(int b = 0; b < 12; b++)  // ~12ms of 220Hz, enough to settle
+        {
+            for(size_t i = 0; i < kA2BlockSize; i++)
+            {
+                in[i] = 0.4f * sinf(ph);
+                ph += 2.f * (float)M_PI * 220.f / 48000.f;
+                if(ph > 2.f * (float)M_PI)
+                    ph -= 2.f * (float)M_PI;
+            }
+            player_.process_block_48(in, out);
+            if(b >= 4)  // discard the first blocks; the history is still filling
+            {
+                for(size_t i = 0; i < kA2BlockSize; i++)
+                {
+                    acc += (double)out[i] * out[i];
+                    n++;
+                }
+            }
+        }
+        player_.reset();  // undo the probe
+
+        const float rms = (n > 0) ? sqrtf((float)(acc / n)) : 0.f;
+        // Clamped: a near-silent network must not be handed enormous gain.
+        gain_ = (rms > 1e-4f) ? fclamp(target_rms / rms, 0.05f, 20.f) : 1.f;
+    }
+
     bool        Loaded() const { return loaded_; }
     const char* Name() const { return loaded_ ? name_ : "NO CAP"; }
 
@@ -205,10 +257,28 @@ enum class Xf
     FadeIn,    // ramping back up
 };
 
-static volatile Xf  g_xf        = Xf::Run;
-static volatile int g_want      = 0;  // index CV_3 is asking for
-static volatile int g_active    = -1; // index currently loaded, -1 = fallback
-static float        g_xf_gain   = 1.f;
+static volatile Xf  g_xf      = Xf::Run;
+static volatile int g_want    = 0;   // slot CV_3 is asking for
+static volatile int g_active  = -1;  // slot currently loaded, -1 = fallback
+static float        g_xf_gain = 1.f;
+
+// Slots are the card's captures plus one more: the seed slot, where weights
+// are generated on the fly instead of read. It is always the last slot, so it
+// is always at the clockwise end of the knob however many captures the card
+// holds.
+static int SlotCount() { return captures::Count() + 1; }
+static int SeedSlot() { return captures::Count(); }
+
+// Seed mode's two controls. SEED picks which network — stepped, a character
+// lottery. TILT sets brightness — continuous, and the one worth modulating.
+static constexpr uint32_t kSeedMax   = 999;
+static volatile uint32_t  g_want_seed   = 1;
+static volatile uint32_t  g_active_seed = 0;
+static volatile float     g_tilt        = 0.f;
+
+// What AutoGain aims for: roughly what a trained capture produces from this
+// input, so switching between card captures and seeds is not a level jump.
+static constexpr float kSeedTargetRms = 0.16f;
 
 // ~5ms at 48kHz/48, which is long enough not to click and short enough not to
 // feel like a gap when auditioning captures back to back.
@@ -318,18 +388,37 @@ void AudioCallback(AudioHandle::InputBuffer  in,
     // CV_3 across however many captures the card turned up. Hysteresis of half
     // a step, so a knob sitting on a boundary does not sit there reloading the
     // network every block.
-    const int n_caps = captures::Count();
-    if(n_caps > 1)
+    const int n_slots = SlotCount();
+    if(n_slots > 1)
     {
         const float sel  = fclamp(patch.GetAdcValue(CV_3) + patch.GetAdcValue(CV_7), 0.f, 1.f);
-        const float span = 1.f / (float)n_caps;
-        int         idx  = (int)(sel * (float)n_caps);
-        if(idx >= n_caps)
-            idx = n_caps - 1;
+        const float span = 1.f / (float)n_slots;
+        int         idx  = (int)(sel * (float)n_slots);
+        if(idx >= n_slots)
+            idx = n_slots - 1;
 
         const float centre = ((float)g_want + 0.5f) * span;
         if(idx != g_want && fabsf(sel - centre) > span * 0.75f)
             g_want = idx;
+    }
+
+    // --- seed mode -------------------------------------------------------
+    // CV_4 and CV_8 are read SEPARATELY here rather than summed as elsewhere,
+    // because they do different jobs: the pot chooses a network (stepped, set
+    // once), the jack modulates brightness (continuous, worth a CV). Unpatched
+    // CV_8 reads ~0, which is tilt 0 — the dark default the seeds were
+    // measured at.
+    if(g_want == SeedSlot())
+    {
+        const float k   = fclamp(patch.GetAdcValue(CV_4), 0.f, 1.f);
+        const uint32_t s = 1u + (uint32_t)(k * (float)(kSeedMax - 1));
+        // One step of hysteresis: reloading the network every block while a
+        // knob sits on a boundary would be audible and pointless.
+        if(s != g_want_seed
+           && fabsf(k - ((float)(g_want_seed - 1) / (float)(kSeedMax - 1))) > 1.5f / (float)kSeedMax)
+            g_want_seed = s;
+
+        g_tilt = fclamp(patch.GetAdcValue(CV_8), 0.f, 1.f);
     }
 
     // Drive the crossfade. The load itself happens in the main loop; all the
@@ -337,7 +426,8 @@ void AudioCallback(AudioHandle::InputBuffer  in,
     switch(g_xf)
     {
         case Xf::Run:
-            if(g_want != g_active && n_caps > 0)
+            if(g_want != g_active
+               || (g_want == SeedSlot() && g_want_seed != g_active_seed))
                 g_xf = Xf::FadeOut;
             break;
         case Xf::FadeOut:
@@ -387,12 +477,23 @@ void AudioCallback(AudioHandle::InputBuffer  in,
     if(!g_bypass)
         engine.ProcessBlock(scratch, scratch, n);
 
+    // DC blocker, ~20Hz one-pole. Needed for the seed slot, which is
+    // asymmetric and parks on an offset nothing has trained out (measured: RMS
+    // 20.4 of which 20.4 was DC, with perfectly good audio underneath). Even a
+    // trained capture shows a small offset, and daisy_multifx_oled blocks DC in
+    // its output stage for the same reason: DC into a rack is nobody's friend.
+    static float dcb_x1 = 0.f, dcb_y1 = 0.f;
+    constexpr float kDcR = 0.99738f;  // exp(-2*pi*20/48000)
+
     const float out_gain = level * g_xf_gain;
     for(size_t i = 0; i < n; i++)
     {
-        const float y = scratch[i] * out_gain;
-        out[0][i]     = y;
-        out[1][i]     = y;
+        const float raw = scratch[i] * out_gain;
+        const float y   = raw - dcb_x1 + kDcR * dcb_y1;
+        dcb_x1          = raw;
+        dcb_y1          = y;
+        out[0][i]       = y;
+        out[1][i]       = y;
     }
 
     // Only reachable if the block size is ever configured above 48; the engine
@@ -480,7 +581,14 @@ static void DrawRunPage()
     const int raw_n  = captures::Count();
     const int n_caps = raw_n > 99 ? 99 : raw_n;
     const int shown  = (g_active >= 0 && g_active < 99) ? g_active + 1 : 0;
-    if(n_caps > 0 && shown > 0)
+    if(g_active == SeedSlot())
+    {
+        // Seed mode: the seed IS the sound, so it goes on screen where the
+        // capture number would be, with tilt beside it.
+        const unsigned long s = (unsigned long)(g_active_seed % 1000u);
+        snprintf(line, sizeof(line), "S%03lu T%.1f", s, (double)g_tilt);
+    }
+    else if(n_caps > 0 && shown > 0)
         snprintf(line, sizeof(line), "CAP %d/%d", shown, n_caps);
     else if(n_caps > 0)
         // Card present but the fallback is playing — a load failed. The name
