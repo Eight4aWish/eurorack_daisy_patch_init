@@ -192,6 +192,40 @@ whenever the linker setup or the engine object is touched**:
 If flash ever gets tight again, dropping `-u _printf_float` and formatting the HPF page
 with integer maths is the largest single saving.
 
+## Getting more captures
+
+[TONE3000](https://www.tone3000.com/) carries **700,000+ tones**, and the library more
+than doubled from 300,000 in the three months after A2 launched in June 2026. A2 models
+carry an **A2 badge** and the browse and search views **filter by architecture**, which
+is the filter that matters: the embedded engine runs A2-Lite only.
+
+An A2 download is a **single file holding both sizes** — A2-Full at 8 channels for DAWs,
+A2-Lite at 3 channels for constrained devices. The converter takes the Lite submodel.
+
+```sh
+python3 tools/nam_to_a2nb.py downloaded.nam --out captures/
+python3 tools/nam_to_a2nb.py *.nam --out captures/      # a folder at a time
+```
+
+Straight from download to card: no C++, no rebuild, no reflash. The older path through
+`nam_to_cpp_array.py` and `model_data_nam_a2.h` means editing a header and recompiling
+per capture, which stops being reasonable past about five.
+
+**It validates the weight count, and that matters.** `nam_to_cpp_array.py` emits
+`float x[kA2WeightCount] = {...}` whatever it extracted — too many weights is a compile
+error, but **too few is silently zero-padded**, giving a capture that loads cleanly and
+sounds wrong. This fails at conversion instead, naming the count it found:
+
+```
+legacy.nam: 9999 weights, engine needs 1871 (plain WaveNet). Not an A2-Lite model.
+lstm.nam: unsupported architecture 'LSTM'. The engine runs A2-Lite only.
+```
+
+**On licensing:** the A2 *architecture* is MIT and explicitly free to ship in commercial
+products. TONE3000's guide does **not** state terms for the individual captures, which
+are other people's work. Fine for your own rack; worth checking per-creator terms before
+any firmware with captures baked in goes out as a download.
+
 ## Captures on the microSD card
 
 `tools/export_captures.py` reads `nam/model_data_nam_a2.h` and writes one `.a2nb` file
