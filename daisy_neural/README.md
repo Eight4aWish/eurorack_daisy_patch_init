@@ -49,7 +49,9 @@ against the input rather than against a level change.
 |---|---|
 | **CV_1** (+ CV_5 jack) | Input trim into the engine, −20…+20 dB, unity at noon |
 | **CV_2** (+ CV_6 jack) | Output level, 0…1 |
-| **CV_3** (+ CV_7 jack) | Select capture, across however many the card holds |
+| **CV_3** (+ CV_7 jack) | Slot: the card's captures, then **SEED** at the top |
+| **CV_4** | **SEED** — which untrained network (seed slot only) |
+| **CV_8** | **TILT** — brightness, dark to bright (seed slot only) |
 | **B7** short press | Bypass on/off |
 | **B7** long press (600 ms) | Change page, RUN ↔ HPF |
 | **CV_OUT_2** LED | Lit when the engine is in circuit, dark when bypassed |
@@ -191,6 +193,49 @@ whenever the linker setup or the engine object is touched**:
 
 If flash ever gets tight again, dropping `-u _printf_float` and formatting the HPF page
 with integer maths is the largest single saving.
+
+## The seed slot
+
+The last slot generates its weights from a number instead of reading them off the card,
+so **it works with no card at all**. The network models nothing: it is a nonlinearity
+that has never existed, and the same seed gives the same one on any unit, forever. A seed
+is an address, not a preset.
+
+CV_4 picks the seed, CV_8 tilts it from dark to bright. Those two are read *separately*
+rather than summed like the other pot/jack pairs, because they do different jobs — the
+pot chooses a network and is set once, the jack modulates brightness and is worth a CV.
+Unpatched, CV_8 reads ~0, which is the dark default the seeds were measured at.
+
+**Not a new idea, and worth saying so.** Steinmetz and Reiss published randomly-weighted
+networks as audio effects in 2020 ([arXiv:2010.04237](https://arxiv.org/abs/2010.04237)),
+with code and a real-time plugin. What is different here is narrower: a fixed
+amp-modelling architecture rather than one chosen for the experiment, on an MCU, in a
+rack, with the seed as the control surface instead of the architecture.
+
+Two things it needs that a trained capture does not, both measured rather than assumed:
+
+**A DC blocker.** Untrained LeakyReLU stacks are asymmetric and nothing has trained that
+out, so they sit on a large offset with the audio riding on top — measured RMS 20.4 of
+which 20.4 was DC, with perfectly good audio underneath. The output now has a ~20 Hz
+one-pole blocker. Even trained captures show a small offset, and `daisy_multifx_oled`
+blocks DC for the same reason, so this was overdue regardless.
+
+**Auto-gain.** Levels vary about 50× across seeds (RMS 0.006 to 0.304 measured on the
+device generator). Without normalising, the seed knob would mostly be a volume control.
+On each seed change the engine runs a brief 220 Hz tone through itself, measures the
+result, sets a gain and resets the state it disturbed — all inside the existing muted
+crossfade window.
+
+**Why they sound the way they do.** Random dilated convolutions average, and averaging is
+a low pass, so untrained networks are dark by default. TILT alternates the sign of
+successive conv taps, turning each convolution from an average into a difference, which
+is a high pass — worth 1.7× to 2.3× on the spectral centroid. The 16-tap head looks like
+the obvious place to do that and is the wrong one: it is a linear output stage, so
+tilting it changes level and leaves the spectrum alone.
+
+They also distort differently from a real amp — second-harmonic dominant where a trained
+capture is third. Asymmetric and warm rather than symmetric and aggressive. That is the
+most musically distinctive thing about the slot, not a defect.
 
 ## Getting more captures
 
