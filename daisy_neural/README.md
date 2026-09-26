@@ -292,16 +292,26 @@ script drives it. Quantising the weights and handing them back to the same engin
 isolates one variable — everything else is bit-identical between reference and test. A
 numpy rewrite of A2 would have risked measuring its own bugs instead.
 
-Error-to-signal ratio against the float reference, JCM800, plucked-string test signal:
+The default test signal is a **four-second subtractive-synth sequence** — eight notes
+varying in both pitch and level, two detuned saws each, band-limited so nothing aliases
+at the source. The level variation is the important part: an amp model's most
+characteristic behaviour is how its distortion changes with drive, and a sustained note
+sits at one point on the transfer curve the whole time. `--signal pluck` and
+`--signal sweep` are also there, and `--input yours.wav` for real material.
+
+`--keep-wavs` writes `in_dry.wav` alongside the processed files, so there is something to
+judge them against, plus `diff_*.wav` residuals at true level.
+
+Error-to-signal ratio against the float reference, JCM800, synth sequence:
 
 | bits | global scale | per-64 scale |
 |---|---|---|
-| 16 | −53.0 dB | **−63.4 dB** |
-| 14 | −46.0 dB | −51.3 dB |
-| 12 | −28.9 dB | **−39.8 dB** |
-| 10 | −25.2 dB | −29.1 dB |
-| 8 | −9.2 dB | −18.7 dB |
-| 7 | collapses (ESR 1.0) | −15.2 dB |
+| 16 | −53.0 dB | **−66.5 dB** |
+| 12 | −28.9 dB | **−40.6 dB** |
+| 10 | −25.2 dB | −28.4 dB |
+| 8 | −9.2 dB | −19.3 dB |
+| 7 | collapses to silence | −14.3 dB |
+| 6 | collapses to silence | −9.7 dB |
 
 Three things fall out of it:
 

@@ -95,6 +95,82 @@ def make_pluck(seconds=2.0, freq=110.0, sr=SAMPLE_RATE):
     return out
 
 
+def make_synth(sr=SAMPLE_RATE, root=110.0):
+    """A short subtractive-synth sequence — what this module will actually be
+    fed in a rack, rather than one held note.
+
+    Eight notes over four seconds, varying in pitch AND level. The level part
+    matters more than it looks: an amp model's most characteristic behaviour is
+    how its distortion changes with drive, so a sequence with dynamics reveals
+    far more about a damaged transfer curve than a sustained note at one level,
+    where the model sits at a single point on its curve the whole time.
+
+    Two detuned saws per note. The saw is built additively into a single-cycle
+    wavetable and read back, so it is exactly band-limited — no aliasing in the
+    SOURCE to be mistaken for damage done by the model. Harmonic count is capped
+    for the HIGHEST note in the sequence, not the root, or the top notes would
+    alias.
+    """
+    # semitone offsets and velocities — a plain minor-key riff
+    seq = [(0, 1.00), (0, 0.62), (3, 0.85), (5, 1.00),
+           (0, 0.70), (-2, 0.92), (0, 0.55), (7, 1.00)]
+    note_len = 0.5
+    gate = 0.42  # note sounds for this long, rest is silence
+
+    top = root * (2.0 ** (max(s for s, _ in seq) / 12.0))
+    harmonics = max(1, min(int((sr / 2) / top) - 1, 160))
+
+    table_len = 2048
+    table = [0.0] * table_len
+    for n in range(1, harmonics + 1):
+        amp = 1.0 / n
+        for i in range(table_len):
+            table[i] += amp * math.sin(2.0 * math.pi * n * i / table_len)
+    peak = max(abs(v) for v in table) or 1.0
+    table = [v / peak for v in table]
+
+    def read(phase):
+        x = phase * table_len
+        i0 = int(x) % table_len
+        i1 = (i0 + 1) % table_len
+        f = x - int(x)
+        return table[i0] * (1.0 - f) + table[i1] * f
+
+    total = int(len(seq) * note_len * sr)
+    out = array.array("f", bytes(4 * total))
+
+    detune = 7.0 / 1200.0  # seven cents, for slow beating
+    pos = 0
+    for semis, vel in seq:
+        f = root * (2.0 ** (semis / 12.0))
+        f1 = f * (2.0 ** -detune)
+        f2 = f * (2.0 ** detune)
+        p1 = p2 = 0.0
+
+        n = int(gate * sr)
+        atk = int(0.004 * sr)
+        dec = int(0.12 * sr)
+        rel = int(0.08 * sr)
+        sus = 0.7
+
+        for i in range(n):
+            if i < atk:
+                env = i / atk
+            elif i < atk + dec:
+                env = 1.0 - (1.0 - sus) * ((i - atk) / dec)
+            elif i > n - rel:
+                env = sus * max(0.0, (n - i) / rel)
+            else:
+                env = sus
+            out[pos + i] = 0.5 * (read(p1) + read(p2)) * env * vel
+            p1 = (p1 + f1 / sr) % 1.0
+            p2 = (p2 + f2 / sr) % 1.0
+
+        pos += int(note_len * sr)
+
+    return out
+
+
 def make_sweep(seconds=2.0, f0=30.0, f1=6000.0, sr=SAMPLE_RATE):
     n = int(seconds * sr)
     out = array.array("f", bytes(4 * n))
@@ -220,7 +296,7 @@ def main():
                     default=[16, 14, 12, 10, 9, 8, 7, 6])
     ap.add_argument("--chunk", type=int, default=64,
                     help="weights per scale in chunked mode (0 = global only)")
-    ap.add_argument("--signal", choices=["pluck", "sweep"], default="pluck")
+    ap.add_argument("--signal", choices=["synth", "pluck", "sweep"], default="synth")
     ap.add_argument("--input", help="16-bit mono WAV to use instead")
     ap.add_argument("--peak", type=float, default=0.5,
                     help="normalise input to this peak; A2 is nonlinear, so "
@@ -247,8 +323,10 @@ def main():
         audio = read_wav(args.input)
     elif args.signal == "sweep":
         audio = make_sweep()
-    else:
+    elif args.signal == "pluck":
         audio = make_pluck()
+    else:
+        audio = make_synth()
     scale_peak(audio, args.peak)
 
     print(f"capture   {args.capture}  ({len(weights)} weights)")
@@ -258,6 +336,9 @@ def main():
 
     ref = run_engine(weights, audio, workdir, "float")
     if args.keep_wavs:
+        # The dry input at the level that actually reaches the engine. Without
+        # it there is nothing to judge the processed files against.
+        write_wav(workdir / "in_dry.wav", audio)
         write_wav(workdir / "out_float32.wav", ref)
 
     modes = [("global", None)]
