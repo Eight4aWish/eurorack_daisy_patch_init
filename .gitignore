@@ -19,4 +19,10 @@
 
 # Quantisation study scratch (regenerate with tools/quantisation_study.py)
 daisy_neural/quant_study/
-tools/a2_host
+
+# Natively-compiled host harness — machine-specific, built on demand
+**/tools/a2_host
+
+# Python
+__pycache__/
+*.pyc
