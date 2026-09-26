@@ -3,9 +3,10 @@
 Neural audio networks on the Daisy Patch.Init — the firmware side of the project
 briefed in [CLAUDE.md](CLAUDE.md).
 
-**Status: a real engine and a real capture, ready to trial.** The NAM A2 engine is in
-with a JCM800 capture compiled in, and all five captures are exported as files for the
-microSD card (loader still to be written — see [Next](#next--at-the-bench)).
+**Status: engine in, all five captures loadable from the card.** The NAM A2 engine runs
+captures read off the microSD card, selected live with CV_3. A JCM800 stays compiled in
+as a fallback, so a missing or unreadable card gives a working module rather than
+silence.
 
 Built `BOOT_SRAM`, which needs the Daisy bootloader installed once on the unit. This is
 going on a **fresh patch.init()** rather than repurposing the MultiFX one, so there is no
@@ -20,9 +21,9 @@ also the first test. The one number that matters most, CPU load, is on the RUN p
 
 Two things, and the second is the reason it exists this early:
 
-1. **Runs a NAM A2 capture** — a JCM800 — with input trim, output level, bypass for
-   A/B against the dry input, an input peak meter for setting the trim, and a CPU load
-   readout. Recording that CPU figure is what closes phase 1.
+1. **Runs NAM A2 captures off the card** — five of them, chosen with CV_3 — with input
+   trim, output level, bypass for A/B against the dry input, an input peak meter for
+   setting the trim, and a CPU load readout. Recording that CPU figure closes phase 1.
 2. **Phase 0 bench check 2** — bypass on turns it into the pass-through the brief asks
    for, and the HPF page measures the audio input's high-pass corner. That the input is
    AC-coupled is already settled; the corner frequency is not, and it decides where
@@ -48,6 +49,7 @@ against the input rather than against a level change.
 |---|---|
 | **CV_1** (+ CV_5 jack) | Input trim into the engine, −20…+20 dB, unity at noon |
 | **CV_2** (+ CV_6 jack) | Output level, 0…1 |
+| **CV_3** (+ CV_7 jack) | Select capture, across however many the card holds |
 | **B7** short press | Bypass on/off |
 | **B7** long press (600 ms) | Change page, RUN ↔ HPF |
 | **CV_OUT_2** LED | Lit when the engine is in circuit, dark when bypassed |
@@ -57,8 +59,11 @@ why the peak meter reads the input *before* the trim rather than after.
 
 ## Pages
 
-**RUN** — capture name, input peak meter, average and maximum CPU load, and the raw
-trim/level knob reads on the bottom line as `T+0.5L+0.8`. The CPU figures are the ones
+**RUN** — capture name (drawn inverted while bypassed), input peak meter, average and
+maximum CPU load, `CAP 2/5` for the selection, and the raw trim/level knob reads on the
+bottom line as `T+0.5L+0.8`. With no card readable, the `CAP` line shows the reason
+instead — `mount`, `no captures`, `bad crc` — so a card problem reads as a card problem
+rather than a dead engine. The CPU figures are the ones
 phase 1 is done when it can record; the brief's references put A2 on a 480 MHz H7
 somewhere between 30% and 61%.
 
@@ -144,23 +149,29 @@ bkshepherd ships the **whole path**: the runtime, the `.nam` → C array convert
 is not in its repo, so its engine cannot be fed without writing one first. Both are MIT
 and both are active; this is the one that reaches a first trial today.
 
-**Capture:** JCM800 (`[AMP] JCM800-2203-MODIFIED-HI The Sound - DI.nam`), one of the
-five that ship with the runtime. All are DI captures, so there is no cabinet baked in.
-The others — BE-100, Ampeg SVT, Mesa Dual Rectifier, Marshall 1959BJA — are in
-`nam/model_data_nam_a2.h` and stay unreferenced, so `--gc-sections` drops them from the
-binary. Confirmed in the map file: only `kWeightsJcm800` survives the link. Switching
-capture is a three-line change at the top of `main.cpp`.
+**Captures:** all five that ship with the runtime — BE-100, JCM800, Ampeg SVT, Mesa Dual
+Rectifier and Marshall 1959BJA — exported to the card by `tools/export_captures.py`. All
+are DI captures, so there is no cabinet baked in.
+
+JCM800 also stays compiled in as a fallback and shows as `JCM800*`, the trailing asterisk
+marking it as the built-in rather than one off the card. The other four stay unreferenced
+in `nam/model_data_nam_a2.h`, so `--gc-sections` drops them from the binary.
+
+**Swapping a capture is not real-time safe** — `load_weights()` runs `prewarm()` over the
+whole network. So the audio callback only fades the output to silence and raises a flag;
+the main loop does the file read and the load; the callback fades back in. Same shape as
+the crossfade in `daisy_multifx_oled`, and for the same reason.
 
 A2 processes a **fixed 48-sample block**, not one sample at a time. The Patch SM defaults
 to 48 kHz with 48-sample blocks, so the two line up with no buffering.
 
-## Footprint (BOOT_SRAM, engine + one capture)
+## Footprint (BOOT_SRAM, engine + SD loader + fallback capture)
 
 | Region | Used | Size | % | holds |
 |---|---|---|---|---|
-| SRAM | 111,000 B | 480 KB | 22.6% | the program |
+| SRAM | 136,816 B | 480 KB | 27.8% | the program, incl. FatFS |
 | RAM_D2 | **76,672 B** | 256 KB | 29.3% | the A2 history buffer |
-| DTCMRAM | 28 KB | 128 KB | 21.9% | hot weights and work buffers |
+| DTCMRAM | 38,848 B | 128 KB | 29.6% | hot weights, work buffers, load buffer |
 | QSPIFLASH | 0 | 7936 KB | 0% | free for a capture bank |
 
 That is the engine's intended tiering, and the 128 KB internal-flash ceiling the
@@ -191,7 +202,8 @@ python3 tools/export_captures.py
 ```
 
 All five — BE-100, JCM800, Ampeg, Mesa and 1959BJA — export at 7,516 bytes each. Copy
-them to the root of a FAT32 card.
+them to the root of a FAT32 card. They are numbered `0_`…`4_` so the on-module order
+matches the table they came from, whatever order the filesystem returns them in.
 
 The container is deliberately minimal: 32-byte header (magic, version, weight count,
 output gain, name, CRC32) followed by 1,871 float32 in exactly the order the engine's
@@ -204,6 +216,8 @@ CRC is there so a bad card is caught rather than fed to the network as weights.
 
 In rough order, because each answers something the next depends on:
 
+0. **Install the Daisy bootloader** on the fresh unit — once, then `make flash` works.
+   Card formatted FAT32 with the five `.a2nb` files at the root.
 1. **Flash it and confirm it makes a sound.** Guitar or a line source into IN_L, trim at
    noon. Short-press B7 to A/B against dry.
 2. **Read the CPU load off the RUN page and write it here.** That is what closes phase 1.

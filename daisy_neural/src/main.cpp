@@ -33,6 +33,7 @@
 #include "daisy_patch_sm.h"
 #include "daisysp.h"
 #include "oled_soft_i2c.h"
+#include "capture_store.h"
 #include <cmath>
 #include <cstdio>
 
@@ -70,13 +71,14 @@ using namespace patch_sm;
 #include "nam/nam_a2_runtime.h"
 #include "nam/model_data_nam_a2.h"
 
-// One capture compiled in, the fewest moving parts phase 1 step 4 asks for.
-// The other four in model_data_nam_a2.h stay unreferenced so -fdata-sections
-// and --gc-sections drop them, which matters because flash is tight here.
+// One capture stays compiled in as a fallback, so a missing or unreadable card
+// still gives you a working module rather than silence. The other four are
+// unreferenced, so -fdata-sections and --gc-sections drop them; all five live
+// on the card instead (tools/export_captures.py).
 // outputGain is bkshepherd's hand-tuned loudness match, carried over as-is.
-static constexpr const char*  kCaptureName   = "JCM800";
-static const float* const     kCaptureWeights = nam_a2_models::kWeightsJcm800;
-static constexpr float        kCaptureGain   = 1.1f;
+static constexpr const char* kFallbackName    = "JCM800*";
+static const float* const    kFallbackWeights = nam_a2_models::kWeightsJcm800;
+static constexpr float       kFallbackGain    = 1.1f;
 
 // The engine's fixed block size. Anything else and we pass through rather than
 // feed it a block it cannot handle.
@@ -85,11 +87,25 @@ static constexpr size_t kA2BlockSize = 48;
 class EngineSlot
 {
   public:
-    void Init(float sample_rate)
+    /** Load the compiled-in fallback. */
+    void InitFallback(float sample_rate)
     {
         sample_rate_ = sample_rate;
-        loaded_      = player_.load_weights(kCaptureWeights,
-                                            nam_a2_daisy::kA2WeightCount);
+        Load(kFallbackWeights, nam_a2_daisy::kA2WeightCount, kFallbackGain, kFallbackName);
+    }
+
+    /** Not real-time safe: load_weights() runs prewarm(), which walks the whole
+     *  network. Call from the main loop with the output muted, never from the
+     *  audio callback. */
+    bool Load(const float* weights, size_t count, float gain, const char* name)
+    {
+        loaded_ = player_.load_weights(weights, count);
+        if(loaded_)
+        {
+            gain_ = gain;
+            snprintf(name_, sizeof(name_), "%s", name);
+        }
+        return loaded_;
     }
 
     // in and out may alias. Checked against the runtime rather than assumed:
@@ -106,15 +122,17 @@ class EngineSlot
         }
         player_.process_block_48(in, out);
         for(size_t i = 0; i < size; i++)
-            out[i] *= kCaptureGain;
+            out[i] *= gain_;
     }
 
     bool        Loaded() const { return loaded_; }
-    const char* Name() const { return loaded_ ? kCaptureName : "NO CAP"; }
+    const char* Name() const { return loaded_ ? name_ : "NO CAP"; }
 
   private:
     nam_a2_daisy::A2Player player_;
     float                  sample_rate_ = 48000.f;
+    float                  gain_        = 1.f;
+    char                   name_[16]    = "NO CAP";
     bool                   loaded_      = false;
 };
 
@@ -169,6 +187,36 @@ static float g_dc_coeff = 0.f;
 // rather than mysterious. See the note in the audio callback.
 static volatile float g_trim_raw  = 0.f;
 static volatile float g_level_raw = 0.f;
+
+// ---------------------------------------------------------------------------
+// Capture switching
+// ---------------------------------------------------------------------------
+// CV_3 picks a capture off the card. Swapping one in calls load_weights(),
+// which runs prewarm() over the whole network — far too slow for the audio
+// callback — so the callback only fades out and raises a flag, the main loop
+// does the load, and the callback fades back in. Same shape as the crossfade
+// in daisy_multifx_oled, and for the same reason.
+enum class Xf
+{
+    Run = 0,   // playing
+    FadeOut,   // ramping to silence ahead of a swap
+    Swap,      // muted; the main loop is loading
+    FadeIn,    // ramping back up
+};
+
+static volatile Xf  g_xf        = Xf::Run;
+static volatile int g_want      = 0;  // index CV_3 is asking for
+static volatile int g_active    = -1; // index currently loaded, -1 = fallback
+static float        g_xf_gain   = 1.f;
+
+// ~5ms at 48kHz/48, which is long enough not to click and short enough not to
+// feel like a gap when auditioning captures back to back.
+static constexpr float kXfStep = 0.1f;
+
+// Weights land here before the engine takes them. 1871 floats is ~7.3 KB; it
+// sits in ordinary .bss (DTCMRAM under BOOT_SRAM, which has room) and is only
+// touched while muted.
+static float g_weight_buf[nam_a2_daisy::kA2WeightCount];
 
 static constexpr float kLedVolts = 2.0f;
 
@@ -264,6 +312,51 @@ void AudioCallback(AudioHandle::InputBuffer  in,
     const float trim  = powf(10.f, (trim_k * 2.f - 1.f));
     const float level = level_k;
 
+    // --- capture selection ------------------------------------------------
+    // CV_3 across however many captures the card turned up. Hysteresis of half
+    // a step, so a knob sitting on a boundary does not sit there reloading the
+    // network every block.
+    const int n_caps = captures::Count();
+    if(n_caps > 1)
+    {
+        const float sel  = fclamp(patch.GetAdcValue(CV_3) + patch.GetAdcValue(CV_7), 0.f, 1.f);
+        const float span = 1.f / (float)n_caps;
+        int         idx  = (int)(sel * (float)n_caps);
+        if(idx >= n_caps)
+            idx = n_caps - 1;
+
+        const float centre = ((float)g_want + 0.5f) * span;
+        if(idx != g_want && fabsf(sel - centre) > span * 0.75f)
+            g_want = idx;
+    }
+
+    // Drive the crossfade. The load itself happens in the main loop; all the
+    // callback does is get the output to silence first and pick it up after.
+    switch(g_xf)
+    {
+        case Xf::Run:
+            if(g_want != g_active && n_caps > 0)
+                g_xf = Xf::FadeOut;
+            break;
+        case Xf::FadeOut:
+            g_xf_gain -= kXfStep;
+            if(g_xf_gain <= 0.f)
+            {
+                g_xf_gain = 0.f;
+                g_xf      = Xf::Swap;  // main loop takes it from here
+            }
+            break;
+        case Xf::Swap: break;  // waiting on the main loop
+        case Xf::FadeIn:
+            g_xf_gain += kXfStep;
+            if(g_xf_gain >= 1.f)
+            {
+                g_xf_gain = 1.f;
+                g_xf      = Xf::Run;
+            }
+            break;
+    }
+
     float peak = 0.f;
     float dc   = g_in_dc;
 
@@ -292,9 +385,10 @@ void AudioCallback(AudioHandle::InputBuffer  in,
     if(!g_bypass)
         engine.ProcessBlock(scratch, scratch, n);
 
+    const float out_gain = level * g_xf_gain;
     for(size_t i = 0; i < n; i++)
     {
-        const float y = scratch[i] * level;
+        const float y = scratch[i] * out_gain;
         out[0][i]     = y;
         out[1][i]     = y;
     }
@@ -303,8 +397,8 @@ void AudioCallback(AudioHandle::InputBuffer  in,
     // cannot help there, so the tail passes through dry rather than going quiet.
     for(size_t i = n; i < size; i++)
     {
-        out[0][i] = in[0][i] * level;
-        out[1][i] = in[0][i] * level;
+        out[0][i] = in[0][i] * out_gain;
+        out[1][i] = in[0][i] * out_gain;
     }
 
     g_in_peak = peak;
@@ -327,43 +421,80 @@ void AudioCallback(AudioHandle::InputBuffer  in,
 }
 
 // ================================================================
+// Capture swapping (main loop only)
+// ================================================================
+// Reads a capture off the card and hands it to the engine. Both halves are
+// slow — a file read, then prewarm() over the whole network — so this must
+// only ever run with the output muted, which is what Xf::Swap guarantees.
+static bool SwapCapture(int index)
+{
+    const captures::Entry* e = captures::Get(index);
+    if(!e)
+        return false;
+    if(!captures::Load(index, g_weight_buf, nam_a2_daisy::kA2WeightCount))
+        return false;
+    if(!engine.Load(g_weight_buf, (size_t)e->weight_count, e->gain, e->name))
+        return false;
+    g_active = index;
+    return true;
+}
+
+// ================================================================
 // Display
 // ================================================================
 static void DrawRunPage()
 {
-    char line[16];
+    char line[24];
 
-    display.DrawString(0, 0, engine.Name(), false);
+    // Capture name, drawn inverted while bypassed — the panel has ten
+    // characters and no room for a separate BYP flag once the capture index
+    // is on screen. The LED says the same thing.
+    display.DrawString(0, 0, engine.Name(), g_bypass);
 
     // Input peak meter. The point of it is setting the trim, so it reads the
     // input before the trim rather than after.
     const float peak = fclamp(g_in_peak, 0.f, 1.f);
     const uint8_t w  = (uint8_t)(peak * 62.f + 0.5f);
-    display.DrawString(0, 10, "IN", false);
-    display.DrawRect(0, 19, 64, 7, true);
+    display.DrawRect(0, 9, 64, 7, true);
     if(w > 0)
-        display.FillRect(1, 20, w > 62 ? 62 : w, 5, true);
+        display.FillRect(1, 10, w > 62 ? 62 : w, 5, true);
 
     snprintf(line, sizeof(line), "CPU %2d%%",
              (int)(cpu_meter.GetAvgCpuLoad() * 100.f + 0.5f));
-    display.DrawString(0, 28, line, false);
+    display.DrawString(0, 18, line, false);
 
     snprintf(line, sizeof(line), "MAX %2d%%",
              (int)(cpu_meter.GetMaxCpuLoad() * 100.f + 0.5f));
-    display.DrawString(0, 35, line, false);
+    display.DrawString(0, 26, line, false);
+
+    // Which capture, out of how many the card turned up. With no card this
+    // shows the reason instead, so "no captures" or "mount" reads as a card
+    // problem rather than looking like a dead engine.
+    // Clamped before formatting: both are bounded by kMaxFiles in practice, but
+    // the compiler cannot see that across a translation unit and warns that a
+    // ten-digit int could overrun the line.
+    const int raw_n  = captures::Count();
+    const int n_caps = raw_n > 99 ? 99 : raw_n;
+    const int shown  = (g_active >= 0 && g_active < 99) ? g_active + 1 : 0;
+    if(n_caps > 0 && shown > 0)
+        snprintf(line, sizeof(line), "CAP %d/%d", shown, n_caps);
+    else if(n_caps > 0)
+        // Card present but the fallback is playing — a load failed. The name
+        // line already carries the trailing * that marks the compiled-in one.
+        snprintf(line, sizeof(line), "CAP -/%d", n_caps);
+    else
+        snprintf(line, sizeof(line), "%.10s", captures::Status());
+    display.DrawString(0, 34, line, false);
 
     // Raw knob reads. Ten characters is the panel budget, so they share a line.
     snprintf(line, sizeof(line), "T%+.1fL%+.1f",
              (double)g_trim_raw, (double)g_level_raw);
     display.DrawString(0, 42, line, false);
-
-    if(g_bypass)
-        display.DrawString(46, 0, "BYP", true);
 }
 
 static void DrawDcPage()
 {
-    char line[16];
+    char line[24];
 
     // The audio input is AC-coupled inside the Patch SM (the carrier wires the
     // jacks straight through — see patch_init_schematic.pdf), so this page is
@@ -421,8 +552,18 @@ int main(void)
 
     patch.StartDac();
 
-    engine.Init(sr);
+    engine.InitFallback(sr);
     cpu_meter.Init(sr, patch.AudioBlockSize());
+
+    // Card before audio starts, so the first capture is in place by the time
+    // anything is heard. A missing or unreadable card is not fatal: the
+    // compiled-in fallback is already loaded and captures::Status() says why.
+    captures::Init();
+    if(captures::Count() > 0)
+    {
+        SwapCapture(0);
+        g_want = g_active = 0;
+    }
 
     // ~50 ms one-pole for the DC reading: slow enough to be readable, fast
     // enough to follow a sub-1Hz LFO without lagging it.
@@ -430,10 +571,15 @@ int main(void)
 
     display.Init(patch.A2, patch.A3);
     display.Clear();
-    display.DrawStringCentered(8, "NEURAL", false);
-    display.DrawStringCentered(24, kCaptureName, false);
+    display.DrawStringCentered(4, "NEURAL", false);
+    display.DrawStringCentered(18, engine.Name(), false);
+    {
+        char line[24];
+        snprintf(line, sizeof(line), "SD %d", captures::Count());
+        display.DrawStringCentered(32, line, false);
+    }
     display.Update();
-    System::Delay(800);
+    System::Delay(1000);
 
     SetLed(!g_bypass);
 
@@ -443,6 +589,21 @@ int main(void)
     uint32_t next_frame = 0;
     while(1)
     {
+        // The callback has faded to silence and is waiting on us. Do the slow
+        // work here — file read plus prewarm() — then hand it back to fade in.
+        if(g_xf == Xf::Swap)
+        {
+            if(!SwapCapture(g_want))
+            {
+                // Failed: keep whatever is loaded and stop asking for this
+                // index, or we would sit here retrying it every block.
+                // captures::Status() carries the reason to the display.
+                g_want = g_active;
+            }
+            g_xf            = Xf::FadeIn;
+            g_display_dirty = true;
+        }
+
         const uint32_t now = System::GetNow();
         if(now >= next_frame || g_display_dirty)
         {
