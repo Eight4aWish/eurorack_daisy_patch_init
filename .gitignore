@@ -17,8 +17,10 @@
 # PlatformIO
 .pio/
 
-# Quantisation study scratch (regenerate with tools/quantisation_study.py)
+# Derived audio and scratch from the analysis tools. Regenerate with
+# tools/quantisation_study.py and tools/compare_captures.py.
 daisy_neural/quant_study/
+daisy_neural/amp_compare/
 
 # Natively-compiled host harness — machine-specific, built on demand
 **/tools/a2_host

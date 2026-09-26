@@ -50,7 +50,6 @@ against the input rather than against a level change.
 | **CV_1** (+ CV_5 jack) | Input trim into the engine, −20…+20 dB, unity at noon |
 | **CV_2** (+ CV_6 jack) | Output level, 0…1 |
 | **CV_3** (+ CV_7 jack) | Select capture, across however many the card holds |
-| **CV_4** (+ CV_8 jack) | Weight depth, 16 bits (transparent) down to 6 |
 | **B7** short press | Bypass on/off |
 | **B7** long press (600 ms) | Change page, RUN ↔ HPF |
 | **CV_OUT_2** LED | Lit when the engine is in circuit, dark when bypassed |
@@ -213,39 +212,36 @@ NAM Core model format whose weight ordering is NAM Core's, not this runtime's �
 translation would load cleanly and sound wrong, which is the worst kind of bench bug. The
 CRC is there so a bad card is caught rather than fed to the network as weights.
 
-## Weight depth — the parameter, not the defect
+## Weight depth: tried, measured, dropped
 
-Rounding the weights to fewer bits **does not add noise to the signal, it moves the
-model**. The learned transfer curve itself gets coarser, so you get a *different*
-nonlinearity rather than a degraded one. In the guitar world that is pure loss, because
-the entire product is fidelity to one specific amp. Here there is no target, so it is a
-timbre control.
+The idea was good and it did not survive measurement, which is worth recording so it is
+not reinvented.
 
-That also explains why it is easy to null and hard to A/B: the error is harmonically
-locked to the signal, not laid over it, and with no reference in the room a 22% RMS
-deviation just sounds like a slightly different amp.
+In the guitar world, quantising the weights is pure loss — the product *is* fidelity to
+one specific amp. In Eurorack there is no target, so the same parameter looked like a
+free timbre control: it does not add noise to the signal, it **moves the model**, so the
+distortion characteristic changes shape and a clean input stays clean. Not a bitcrusher.
 
-It is not a bitcrusher. A bitcrusher quantises the **signal**, adding grit on top of
-whatever passes through. This quantises the **model**, so the distortion characteristic
-changes shape and a clean input stays clean.
+It was built, it worked, and **it is inaudible**. Here is why, measured against the same
+synth sequence:
 
-CV_4 sets it, and the range is measured rather than chosen:
-
-| bits | what happens |
+| comparison | difference |
 |---|---|
-| 16–12 | transparent, −63 to −40 dB ESR. Nothing to hear. |
-| 10–8 | audibly a different amp, level and shape intact. **The useful part.** |
-| 7–6 | clearly different, still coherent. −15 to −13 dB. |
-| 5 | marginal — collapses at chunk 64, half survives at chunk 8 |
-| 4 | dead at every chunk size, output goes to silence |
+| one capture versus another | **+2.3 to +9.8 dB** |
+| 16-bit versus 8-bit of the same capture | **−19.3 dB** |
 
-So the floor is 6. A knob that can reach silence is a trap, and the flat transparent
-region at the top is a feature — "off" wants to be easy to find, especially while the pot
-scaling is unconfirmed.
+A positive figure means the difference is larger than the signal itself. So changing
+capture is roughly **30 dB** more of a change than the whole depth range — a factor of a
+thousand in error power. No knob mapping rescues that; it was never going to compete for
+attention against the control sitting next to it.
 
-Changing depth reuses the capture-swap path: requantise from the untouched original in
-RAM, crossfade, reload. Keeping the original matters — requantising an already-quantised
-array would ratchet the damage rather than reproduce it.
+So CV_4 is free, and the code is gone rather than left dormant. The quantisation
+machinery lives in `tools/` where it belongs, because it still answers the question it
+was written for: what precision an FPGA port needs.
+
+**The same result is good news there.** If 8-bit weights are perceptually free on musical
+material, the ECP5 memory arithmetic gets easy — A2-Full stops being marginal at 12-bit
+and becomes comfortable at 8.
 
 ## Global versus chunked scaling
 
