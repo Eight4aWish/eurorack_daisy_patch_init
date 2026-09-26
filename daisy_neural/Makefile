@@ -24,7 +24,14 @@ BUILD_DIR ?= build
 
 # Sources
 CPP_SOURCES = src/main.cpp \
+              src/capture_store.cpp \
               $(_P_UP1)/common/oled_soft_i2c.cpp
+
+# FatFS long-filename support. libDaisy compiles ff.c with LFN enabled but does
+# not build the code-page table it needs, so anything that walks a directory
+# (f_readdir -> get_fileinfo -> ff_convert/ff_wtoupper) fails to link. ccsbcs.c
+# is the single-byte code-page table that supplies both.
+C_SOURCES += $(LIBDAISY_DIR)/Middlewares/Third_Party/FatFs/src/option/ccsbcs.c
 
 # Additional include paths
 C_INCLUDES += -I$(_P_UP1)/common
