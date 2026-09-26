@@ -27,6 +27,26 @@ equivalent:
 vanishes through the stack, slightly too large and it saturates or blows up. The
 measurements below say which happened, so read them before listening.
 
+PRIOR ART — this is not a new idea, and do not say it is:
+
+    Randomized Overdrive Neural Networks, Christian J. Steinmetz and Joshua D.
+    Reiss, submitted October 2020, final August 2021 (arXiv:2010.04237).
+    Randomly weighted TCNs used deliberately as audio effects, with code and a
+    real-time plugin released. Their results match what is measured here:
+    architecture shapes character, and effects run from overdrive through to
+    delay- and reverb-like as the receptive field grows. A2 reaches only 239
+    samples, about 5 ms, which is why this lands as distortion rather than
+    reverb.
+
+    Steerable discovery of neural audio effects (arXiv:2112.02926) is the
+    follow-up on making them controllable — the same problem the seed and tilt
+    controls are trying to solve. Read it before claiming either is new.
+
+    What is arguably different here is narrower: a fixed architecture designed
+    for amp modelling rather than one chosen for the experiment, running on an
+    MCU in a Eurorack module under CV, with the SEED as the control surface
+    instead of the architecture.
+
 Usage:
     python3 tools/random_weights.py
     python3 tools/random_weights.py --seed 7 --peak 0.3
