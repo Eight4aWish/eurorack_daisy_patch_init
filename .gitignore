@@ -28,3 +28,4 @@ daisy_neural/amp_compare/
 # Python
 __pycache__/
 *.pyc
+daisy_neural/random_weights/
