@@ -55,6 +55,35 @@ REGIONS = [("rechannel", 0, 3), ("conv", 3, 1407),
            ("per-layer", 1407, 1821), ("head", 1821, 1869), ("tail", 1869, 1871)]
 
 
+# The conv region is 156 taps of 9 floats each — the runtime lays out every
+# tap as a 3x3 channel matrix, which `z0 += s0*w[0] + s1*w[3] + s2*w[6]` shows.
+CONV_A, CONV_B = 3, 1407
+
+
+def apply_tilt(w, amount):
+    """Brightness. Alternating the sign of successive TAPS turns each dilated
+    convolution from an average into a difference, and a difference is a high
+    pass.
+
+    This is where brightness lives, and it took ruling out the obvious
+    candidate to find it: the 16-tap head is a LINEAR output stage, so tilting
+    it barely moves the spectrum and scaling it only changes level (measured —
+    identical centroid, double the RMS). The darkness is the conv stack
+    averaging, so that is what has to change.
+
+    Measured, 0 -> 1 moves the centroid roughly 1.7x to 2.3x: seed 1 from 1426
+    to 2483 Hz, seed 12 from 521 to 1219. It costs level, so anything using it
+    wants auto-gain.
+    """
+    if not amount:
+        return w
+    out = list(w)
+    for i in range(CONV_A, CONV_B):
+        if ((i - CONV_A) // 9) % 2:
+            out[i] *= (1.0 - 2.0 * amount)
+    return out
+
+
 def gauss_global(ref, rng):
     s = statistics.pstdev(ref)
     return [rng.gauss(0.0, s) for _ in ref]
@@ -119,6 +148,20 @@ def sanitise(sig):
     return bad
 
 
+def centroid(sig, sr=48000):
+    """Cheap spectral-centroid proxy: RMS of the first difference over RMS of
+    the signal, scaled back to Hz. For a sinusoid that is ~2.pi.f/fs. More
+    robust than zero crossings, which anything hovering near zero confuses."""
+    n = len(sig)
+    if n < 2:
+        return 0.0
+    rms = math.sqrt(sum(v * v for v in sig) / n)
+    if rms <= 0:
+        return 0.0
+    d = math.sqrt(sum((sig[i] - sig[i - 1]) ** 2 for i in range(1, n)) / (n - 1))
+    return (d / rms) * sr / (2.0 * math.pi)
+
+
 def describe(sig, sr=48000):
     n = len(sig) or 1
     peak = max((abs(v) for v in sig), default=0.0)
@@ -139,6 +182,9 @@ def main():
                          "trained capture and is the only usable value: 23 "
                          "layers compound, so 0.5 vanishes (output RMS drops "
                          "13x per halving) and 1.5 explodes (peak 1429)")
+    ap.add_argument("--tilt", type=float, default=0.0,
+                    help="brightness, 0 (dark, averaging) to 1 (bright, "
+                         "differencing). Costs level; see apply_tilt")
     ap.add_argument("--seeds", type=int, nargs="+", default=[1, 2, 3],
                     help="each seed is a different untrained network")
     ap.add_argument("--out", default=str(PROJECT / "random_weights"))
@@ -162,8 +208,8 @@ def main():
 
     print(f"reference  {args.capture}, seed {args.seed}, input peak {args.peak}")
     print()
-    print(f"  {'weights':<14} {'peak':>7} {'rms':>8} {'gain':>7} {'dc':>8} "
-          f"{'zc Hz':>7}  note")
+    print(f"  {'weights':<14} {'peak':>7} {'rms':>8} {'gain':>7} "
+          f"{'bright Hz':>10}  note")
 
     ipk, irms, _, izc = describe(audio)
 
@@ -171,7 +217,7 @@ def main():
     write_wav(workdir / "out_trained.wav", trained)
     pk, rms, dc, zc = describe(trained)
     print(f"  {'(trained)':<14} {pk:>7.4f} {rms:>8.5f} {rms/irms:>7.2f} "
-          f"{dc:>+8.5f} {zc:>7.0f}  the real capture")
+          f"{centroid(trained):>10.0f}  the real capture")
 
     # Every maker at one seed, to show how they differ...
     rng = random.Random(args.seed)
@@ -185,7 +231,7 @@ def main():
                 "exploded" if pk > 10 else "alive")
         write_wav(workdir / f"out_{name}.wav", out)
         print(f"  {name:<14} {pk:>7.4f} {rms:>8.5f} {rms/irms:>7.2f} "
-              f"{dc:>+8.5f} {zc:>7.0f}  {note}")
+              f"{centroid(out):>10.0f}  {note}")
 
     # ...then the region-matched one across seeds, which is the interesting
     # axis: each seed is a different nonlinearity that never existed.
@@ -195,6 +241,7 @@ def main():
         w = gauss_region(ref, rng)
         if args.scale != 1.0:
             w = [x * args.scale for x in w]
+        w = apply_tilt(w, args.tilt)
         out = dcblock(run_engine(w, audio, workdir, f"seed{seed}"))
         sanitise(out)
         pk, rms, dc, zc = describe(out)
@@ -204,15 +251,17 @@ def main():
         write_wav(workdir / f"out_seed{seed}.wav",
                   array.array("f", [v * 0.7 / m for v in out]))
         print(f"  {'seed ' + str(seed):<14} {pk:>7.4f} {rms:>8.5f} {rms/irms:>7.2f} "
-              f"{dc:>+8.5f} {zc:>7.0f}  normalised for listening")
+              f"{centroid(out):>10.0f}  normalised for listening")
 
     print(f"\n  {'(dry input)':<14} {ipk:>7.4f} {irms:>8.5f} {1.0:>7.2f} "
-          f"{'':>8} {izc:>7.0f}")
+          f"{centroid(audio):>10.0f}")
     print(f"\nfiles in {workdir}")
     print()
-    print("zc Hz is zero crossings per second — a crude brightness proxy, not a")
-    print("pitch. Much higher than the input means added harmonics or noise;")
-    print("much lower means the stack has low-passed it into mush.")
+    print("bright Hz is a spectral-centroid proxy — RMS of the first difference")
+    print("over RMS of the signal, scaled to Hz. The input is ~990 and a trained")
+    print("capture ~4320, so untrained networks land well below both: random")
+    print("dilated convolutions average, and averaging is a low pass. --tilt")
+    print("turns the taps into differences and buys most of that back.")
 
 
 if __name__ == "__main__":
