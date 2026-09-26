@@ -298,12 +298,16 @@ capturing a grid of settings. That limitation is the point of this phase.
   does not transfer to phase 5's platform, so do it only if you want a good-sounding
   Daisy build for its own sake. Record how bad the aliasing is and move on otherwise.
 
-**Expect this to fail on the tail, and watch how.** A2's dilations reach 239 samples —
-about 5ms at 48kHz — while the vactrol's decay runs to tens of milliseconds. The
-architecture cannot see far enough back to reproduce it, so it should learn some average
-of the tail and smear the ping. That failure is not a disappointment, it is the
-measurement that justifies phase 4: a recurrent network carries state and has no such
-window.
+**Watch the tail, and measure how it fails.** A2's largest *dilation* is 239 samples, but
+that is not how far back it sees. Each layer reaches (kernel − 1) × dilation samples, and
+the kernels are 6 taps (15 on two layers), so the 23 layers sum to **6,331 samples, about
+132ms at 48kHz** (`kKernelSizes`/`kDilations` in `nam/nam_a2_runtime.h`; the 76.5KB
+history buffer is that window × 3 channels). An earlier version of this brief read the
+239 as the window, called it 5ms, and predicted the ping would smear. It will not smear
+for that reason: 132ms covers a decay of tens of milliseconds. Whether A2 reproduces the
+tail is now an open measurement, not a foregone failure. If it does fail, the argument for
+phase 4 is the knob, not the window: a recurrent network carries state with no fixed
+horizon, and conditioning needs a network that takes the CV as an input.
 
 **Done when:** a capture holds up under sustained audio at a fixed setting, *and* the
 ping response is compared against the real gate and against the phase 2 white-box
