@@ -409,6 +409,18 @@ oversampling, and fits entirely in BRAM — no PSRAM, no tiering, none of the pl
 problem that constrains the Daisy build. The mesh in Silver and Gold is a far harder
 workload than any of this.
 
+**Precision is measured, not assumed** (`tools/quantisation_study.py`, run against the
+real engine compiled natively). A2's weights at 16-bit sit at −63 dB ESR with per-64
+scaling; 12-bit reaches −39.8 dB, about where differences stop being obvious; 8-bit is
+unusable. Scaling granularity is worth 1.5–2 bits on its own. Weights only — activations
+and accumulators are still float in that study, so read it as a veto, not a permit.
+
+That result is what makes A2-**Full** arguable on this board: 13,066 weights and a
+204 KB float history come to ~128 KB at 16-bit against 126 KB of BRAM, but ~96 KB at
+12-bit, and the 18×18 DSP slices cost the same either way. No M7 can run A2-Full at all
+(7× A2-Lite's ~1,660 MAC/sample puts it at 210–427% CPU), so the FPGA is not merely
+better there — it is the only platform where the larger architecture is on the table.
+
 What it actually costs, which is not silicon and not skills:
 
 - **It is a third bitstream, not an addition.** Silver takes 22 of 28 multipliers at

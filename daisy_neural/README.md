@@ -212,6 +212,55 @@ NAM Core model format whose weight ordering is NAM Core's, not this runtime's �
 translation would load cleanly and sound wrong, which is the worst kind of bench bug. The
 CRC is there so a bad card is caught rather than fed to the network as weights.
 
+## Quantisation study
+
+How few bits A2's weights survive — the question worth answering before any
+fixed-point work on the Tiliqua, and it needs nothing but the Mac.
+
+```sh
+c++ -std=c++17 -O2 -I. -o tools/a2_host tools/a2_host.cpp
+python3 tools/quantisation_study.py --keep-wavs
+```
+
+The float reference is the **real engine**, not a reimplementation:
+`nam_a2_runtime.h` is portable, so `tools/a2_host.cpp` compiles it natively and the
+script drives it. Quantising the weights and handing them back to the same engine
+isolates one variable — everything else is bit-identical between reference and test. A
+numpy rewrite of A2 would have risked measuring its own bugs instead.
+
+Error-to-signal ratio against the float reference, JCM800, plucked-string test signal:
+
+| bits | global scale | per-64 scale |
+|---|---|---|
+| 16 | −53.0 dB | **−63.4 dB** |
+| 14 | −46.0 dB | −51.3 dB |
+| 12 | −28.9 dB | **−39.8 dB** |
+| 10 | −25.2 dB | −29.1 dB |
+| 8 | −9.2 dB | −18.7 dB |
+| 7 | collapses (ESR 1.0) | −15.2 dB |
+
+Three things fall out of it:
+
+- **Scaling granularity is worth ~1.5–2 bits.** One scale per 64 weights beats a single
+  global scale by 7–11 dB throughout. In hardware that costs a small table of scales,
+  and it is the difference between 12-bit being usable and not.
+- **12-bit with per-chunk scaling lands at −39.8 dB**, about where differences stop being
+  obvious on most material. That is the plausible floor.
+- **8-bit is out** either way, and global scaling collapses completely at 7 bits — the
+  output goes to silence.
+
+This matters for the ECP5 beyond curiosity. A2-**Full** at 16-bit needs roughly 128 KB
+against 126 KB of block RAM — just over. At 12-bit it is about 96 KB, which fits with
+room to spare, and the 18×18 DSP slices multiply 12-bit and 16-bit operands at the same
+cost, so the saving is pure memory. Quantisation is what makes the larger architecture
+arguable at all.
+
+**What this does not measure:** weights only. A real fixed-point engine also quantises
+activations and accumulators, which stay float here. Treat the numbers as a veto rather
+than a permit — they can rule a precision out, not rule one in.
+
+WAVs land in `quant_study/` for A/B listening, which is the judge that counts.
+
 ## Next — at the bench
 
 In rough order, because each answers something the next depends on:
