@@ -19,7 +19,6 @@
  *   CV_1 (+ CV_5 jack)   input trim into the engine, -20..+20 dB, unity at noon
  *   CV_2 (+ CV_6 jack)   output level, 0..1
  *   CV_3 (+ CV_7 jack)   select capture off the card
- *   CV_4 (+ CV_8 jack)   weight depth, 16 bits (transparent) down to 4
  *   B7 short press       bypass on/off, to A/B the engine against the dry input
  *   B7 long press        change page, RUN <-> DC
  *   CV_OUT_2 LED         lit when the engine is in circuit, dark when bypassed
@@ -215,91 +214,11 @@ static float        g_xf_gain   = 1.f;
 // feel like a gap when auditioning captures back to back.
 static constexpr float kXfStep = 0.1f;
 
-// Two buffers: the capture as read off the card, and the version handed to the
-// engine. Keeping the original means the depth knob can be turned back up
-// without rereading the card, and stops repeated quantisation compounding —
-// requantising an already-quantised array would ratchet the damage.
-// ~7.3 KB each in ordinary .bss (DTCMRAM under BOOT_SRAM, which has room), and
-// both are only touched while muted.
-static float g_weight_raw[nam_a2_daisy::kA2WeightCount];
+// Weights land here on the way from the card to the engine. ~7.3 KB in
+// ordinary .bss (DTCMRAM under BOOT_SRAM, which has room), touched only while
+// muted.
 static float g_weight_buf[nam_a2_daisy::kA2WeightCount];
 
-// ---------------------------------------------------------------------------
-// Weight depth — the parameter, not the defect
-// ---------------------------------------------------------------------------
-// Rounding the weights to fewer bits does not add noise to the signal, it
-// moves the model: the learned transfer curve itself gets coarser, so you get
-// a different nonlinearity rather than a degraded one. In the guitar world
-// that is pure loss, because the whole product is fidelity to one amp. Here
-// there is no target, so it is a timbre control.
-//
-// Range set by measurement, not taste (tools/quantisation_study.py, JCM800):
-//   16..12  transparent, -63 to -40 dB ESR. Nothing to hear.
-//   10..8   audibly a different amp, level and shape intact. The useful part.
-//   7..6    clearly different, still coherent. -15 to -13 dB.
-//   5       marginal; collapses at chunk 64 and only half survives at chunk 8.
-//   4       dead at every chunk size — output goes to silence.
-// So the floor is 6. A knob that can reach silence is a trap, and the flat
-// transparent region at the top is a feature: "off" wants to be easy to find,
-// especially while the pot scaling is still unconfirmed.
-static constexpr int kBitsMax = 16;
-static constexpr int kBitsMin = 6;
-
-// Scale granularity. CHUNKED gives every run of this many weights its own
-// scale; see the README for why that is worth 1.5-2 bits. Smaller chunks buy a
-// little more at the bottom (8 bits goes from -18.7 to -22 dB at chunk 8) at
-// the cost of more scales to store. Set to 0 for a single global scale, which
-// sounds coarser sooner and collapses to silence below 8 bits — a destructive
-// variant worth exposing once the panel has a control free for it.
-static constexpr int kQuantChunk = 64;
-
-static volatile int g_want_bits   = kBitsMax;
-static volatile int g_active_bits = kBitsMax;
-
-/** Symmetric uniform quantisation, src -> dst. Not real-time safe (it walks
- *  the whole array); main loop only, with the output muted. */
-static void QuantiseWeights(const float* src, float* dst, size_t n, int bits, int chunk)
-{
-    if(bits >= kBitsMax)
-    {
-        memcpy(dst, src, n * sizeof(float));
-        return;
-    }
-
-    const float qmax = (float)((1 << (bits - 1)) - 1);
-    const size_t step = (chunk > 0) ? (size_t)chunk : n;
-
-    for(size_t start = 0; start < n; start += step)
-    {
-        const size_t end = (start + step < n) ? start + step : n;
-
-        float peak = 0.f;
-        for(size_t i = start; i < end; i++)
-        {
-            const float a = fabsf(src[i]);
-            if(a > peak)
-                peak = a;
-        }
-        if(peak <= 0.f)
-        {
-            for(size_t i = start; i < end; i++)
-                dst[i] = 0.f;
-            continue;
-        }
-
-        const float scale = peak / qmax;
-        const float inv   = 1.f / scale;
-        for(size_t i = start; i < end; i++)
-        {
-            float q = roundf(src[i] * inv);
-            if(q > qmax)
-                q = qmax;
-            if(q < -qmax)
-                q = -qmax;
-            dst[i] = q * scale;
-        }
-    }
-}
 
 static constexpr float kLedVolts = 2.0f;
 
@@ -413,31 +332,12 @@ void AudioCallback(AudioHandle::InputBuffer  in,
             g_want = idx;
     }
 
-    // --- weight depth -----------------------------------------------------
-    // CV_4 from transparent down to coarse. Stepped, with the same half-step
-    // hysteresis as the capture selector so a knob on a boundary does not sit
-    // reloading. 16 bits means "leave the weights alone".
-    {
-        const float d = fclamp(patch.GetAdcValue(CV_4) + patch.GetAdcValue(CV_8), 0.f, 1.f);
-        const int   steps = kBitsMax - kBitsMin + 1;
-        const float span  = 1.f / (float)steps;
-        int         k     = (int)((1.f - d) * (float)steps);  // knob up = transparent
-        if(k >= steps)
-            k = steps - 1;
-        const int bits = kBitsMax - k;
-
-        const int   cur    = kBitsMax - g_want_bits;
-        const float centre = ((float)cur + 0.5f) * span;
-        if(bits != g_want_bits && fabsf((1.f - d) - centre) > span * 0.75f)
-            g_want_bits = bits;
-    }
-
     // Drive the crossfade. The load itself happens in the main loop; all the
     // callback does is get the output to silence first and pick it up after.
     switch(g_xf)
     {
         case Xf::Run:
-            if(n_caps > 0 && (g_want != g_active || g_want_bits != g_active_bits))
+            if(g_want != g_active && n_caps > 0)
                 g_xf = Xf::FadeOut;
             break;
         case Xf::FadeOut:
@@ -528,28 +428,18 @@ void AudioCallback(AudioHandle::InputBuffer  in,
 // Reads a capture off the card and hands it to the engine. Both halves are
 // slow — a file read, then prewarm() over the whole network — so this must
 // only ever run with the output muted, which is what Xf::Swap guarantees.
-static bool SwapCapture(int index, int bits)
+static bool SwapCapture(int index)
 {
     const captures::Entry* e = captures::Get(index);
     if(!e)
         return false;
 
-    // Reread only when the capture itself changes; a depth change requantises
-    // the copy already in RAM, which keeps the knob responsive and spares the
-    // card a read per step.
-    if(index != g_active)
-    {
-        if(!captures::Load(index, g_weight_raw, nam_a2_daisy::kA2WeightCount))
-            return false;
-    }
-
-    QuantiseWeights(g_weight_raw, g_weight_buf, (size_t)e->weight_count, bits, kQuantChunk);
-
+    if(!captures::Load(index, g_weight_buf, nam_a2_daisy::kA2WeightCount))
+        return false;
     if(!engine.Load(g_weight_buf, (size_t)e->weight_count, e->gain, e->name))
         return false;
 
-    g_active      = index;
-    g_active_bits = bits;
+    g_active = index;
     return true;
 }
 
@@ -590,13 +480,12 @@ static void DrawRunPage()
     const int raw_n  = captures::Count();
     const int n_caps = raw_n > 99 ? 99 : raw_n;
     const int shown  = (g_active >= 0 && g_active < 99) ? g_active + 1 : 0;
-    const int bits = g_active_bits < 4 ? 4 : (g_active_bits > 16 ? 16 : g_active_bits);
     if(n_caps > 0 && shown > 0)
-        snprintf(line, sizeof(line), "C%d/%d B%d", shown, n_caps, bits);
+        snprintf(line, sizeof(line), "CAP %d/%d", shown, n_caps);
     else if(n_caps > 0)
         // Card present but the fallback is playing — a load failed. The name
         // line already carries the trailing * that marks the compiled-in one.
-        snprintf(line, sizeof(line), "C-/%d B%d", n_caps, bits);
+        snprintf(line, sizeof(line), "CAP -/%d", n_caps);
     else
         snprintf(line, sizeof(line), "%.10s", captures::Status());
     display.DrawString(0, 34, line, false);
@@ -676,7 +565,7 @@ int main(void)
     captures::Init();
     if(captures::Count() > 0)
     {
-        SwapCapture(0, kBitsMax);
+        SwapCapture(0);
         g_want = g_active = 0;
     }
 
@@ -708,13 +597,12 @@ int main(void)
         // work here — file read plus prewarm() — then hand it back to fade in.
         if(g_xf == Xf::Swap)
         {
-            if(!SwapCapture(g_want, g_want_bits))
+            if(!SwapCapture(g_want))
             {
                 // Failed: keep whatever is loaded and stop asking for this
                 // index, or we would sit here retrying it every block.
                 // captures::Status() carries the reason to the display.
-                g_want      = g_active;
-                g_want_bits = g_active_bits;
+                g_want = g_active;
             }
             g_xf            = Xf::FadeIn;
             g_display_dirty = true;
