@@ -38,6 +38,13 @@ C_INCLUDES += -I$(_P_UP1)/common
 # Project root, so src/main.cpp can include the lifted engine as "nam/...".
 C_INCLUDES += -I$(_P_DIR)
 
+# The lifted A2 runtime uses inline variables, which are C++17. GCC accepts
+# them at the core Makefile's gnu++14 default as an extension, but warns
+# fifteen times a build — noise that would hide a real warning. The core sets
+# CPP_STANDARD with ?=, so setting it here takes precedence. Only our own
+# translation units are affected; libdaisy.a is prebuilt.
+CPP_STANDARD = -std=gnu++17
+
 # Linker configuration
 LDFLAGS += -u _printf_float
 

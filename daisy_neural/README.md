@@ -50,6 +50,7 @@ against the input rather than against a level change.
 | **CV_1** (+ CV_5 jack) | Input trim into the engine, −20…+20 dB, unity at noon |
 | **CV_2** (+ CV_6 jack) | Output level, 0…1 |
 | **CV_3** (+ CV_7 jack) | Select capture, across however many the card holds |
+| **CV_4** (+ CV_8 jack) | Weight depth, 16 bits (transparent) down to 6 |
 | **B7** short press | Bypass on/off |
 | **B7** long press (600 ms) | Change page, RUN ↔ HPF |
 | **CV_OUT_2** LED | Lit when the engine is in circuit, dark when bypassed |
@@ -169,9 +170,9 @@ to 48 kHz with 48-sample blocks, so the two line up with no buffering.
 
 | Region | Used | Size | % | holds |
 |---|---|---|---|---|
-| SRAM | 136,816 B | 480 KB | 27.8% | the program, incl. FatFS |
+| SRAM | 137,328 B | 480 KB | 27.9% | the program, incl. FatFS |
 | RAM_D2 | **76,672 B** | 256 KB | 29.3% | the A2 history buffer |
-| DTCMRAM | 38,848 B | 128 KB | 29.6% | hot weights, work buffers, load buffer |
+| DTCMRAM | 46,336 B | 128 KB | 35.4% | hot weights, work buffers, 2 weight buffers |
 | QSPIFLASH | 0 | 7936 KB | 0% | free for a capture bank |
 
 That is the engine's intended tiering, and the 128 KB internal-flash ceiling the
@@ -211,6 +212,69 @@ output gain, name, CRC32) followed by 1,871 float32 in exactly the order the eng
 NAM Core model format whose weight ordering is NAM Core's, not this runtime's — a wrong
 translation would load cleanly and sound wrong, which is the worst kind of bench bug. The
 CRC is there so a bad card is caught rather than fed to the network as weights.
+
+## Weight depth — the parameter, not the defect
+
+Rounding the weights to fewer bits **does not add noise to the signal, it moves the
+model**. The learned transfer curve itself gets coarser, so you get a *different*
+nonlinearity rather than a degraded one. In the guitar world that is pure loss, because
+the entire product is fidelity to one specific amp. Here there is no target, so it is a
+timbre control.
+
+That also explains why it is easy to null and hard to A/B: the error is harmonically
+locked to the signal, not laid over it, and with no reference in the room a 22% RMS
+deviation just sounds like a slightly different amp.
+
+It is not a bitcrusher. A bitcrusher quantises the **signal**, adding grit on top of
+whatever passes through. This quantises the **model**, so the distortion characteristic
+changes shape and a clean input stays clean.
+
+CV_4 sets it, and the range is measured rather than chosen:
+
+| bits | what happens |
+|---|---|
+| 16–12 | transparent, −63 to −40 dB ESR. Nothing to hear. |
+| 10–8 | audibly a different amp, level and shape intact. **The useful part.** |
+| 7–6 | clearly different, still coherent. −15 to −13 dB. |
+| 5 | marginal — collapses at chunk 64, half survives at chunk 8 |
+| 4 | dead at every chunk size, output goes to silence |
+
+So the floor is 6. A knob that can reach silence is a trap, and the flat transparent
+region at the top is a feature — "off" wants to be easy to find, especially while the pot
+scaling is unconfirmed.
+
+Changing depth reuses the capture-swap path: requantise from the untouched original in
+RAM, crossfade, reload. Keeping the original matters — requantising an already-quantised
+array would ratchet the damage rather than reproduce it.
+
+## Global versus chunked scaling
+
+Quantising to B bits gives you 2^(B−1)−1 steps either side of zero. The **scale** is what
+one step is worth, and it has to be large enough that the biggest weight is still
+representable: `scale = peak / qmax`.
+
+**Global** uses one scale for all 1,871 weights, set by the single largest weight
+anywhere in the network. If one weight is 5.0 and most are 0.05, then at 6 bits one step
+is 5/31 ≈ 0.16 — and every weight of 0.05 rounds to **zero**. Enough of the network is
+zeroed that nothing propagates, which is why global collapses to actual silence below
+7 bits rather than just sounding worse.
+
+It is the metre rule problem: measure a building and a matchbox with the same one, and
+the matchbox reads zero.
+
+**Chunked** gives each run of 64 weights its own scale, set by that chunk's own largest
+weight. A chunk of small weights gets fine steps, a chunk of large ones gets coarse
+steps, and nothing is annihilated merely because something elsewhere in the network is
+big. It costs a table of ~30 scales and a lookup, which is nothing.
+
+Measured, that granularity is worth **1.5–2 bits throughout** — 7 to 11 dB better at
+every depth. Smaller chunks buy a little more at the bottom (8 bits goes from −18.7 to
+−22 dB at chunk 8). A production engine would align chunks to the network's actual layer
+or channel boundaries rather than to an arbitrary 64; that would do better still.
+
+The two also **fail differently**, which is musically useful rather than merely academic:
+chunked stays coherent all the way down to 6, global falls off a cliff. One is a
+character control, the other has a destruction edge with a hard wall just past it.
 
 ## Quantisation study
 
