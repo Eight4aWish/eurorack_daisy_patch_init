@@ -17,8 +17,9 @@
  *   on top — measured RMS 20.4 of which 20.4 was DC. The audio underneath is
  *   fine. main.cpp blocks it on the way out.
  *
- *   AUTO-GAIN. Output level varies about 13x across seeds (RMS 0.023 to 0.308),
- *   so without normalising, turning the seed knob is mostly a volume control.
+ *   AUTO-GAIN. Output level varies about 50x across seeds (RMS 0.006 to 0.304,
+ *   measured on this generator), so without normalising, turning the seed knob
+ *   is mostly a volume control.
  */
 
 #pragma once

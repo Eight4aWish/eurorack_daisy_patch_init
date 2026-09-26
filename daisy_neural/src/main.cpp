@@ -138,8 +138,8 @@ class EngineSlot
             out[i] *= gain_;
     }
 
-    /** Re-level after a seed change. Untrained networks vary about 13x in
-     *  output level (RMS 0.023 to 0.308 measured), so without this the seed
+    /** Re-level after a seed change. Untrained networks vary about 50x in
+     *  output level (RMS 0.006 to 0.304 measured on the device generator), so without this the seed
      *  knob is mostly a volume control. Runs a short tone through the engine,
      *  measures it, then resets the state it just disturbed. */
     void AutoGain(float target_rms)
