@@ -177,8 +177,11 @@ def run_engine(weights, audio, workdir, tag):
     opath = workdir / f"out_{tag}.f32"
 
     wpath.write_bytes(array.array("f", weights).tobytes())
-    if not ipath.exists():
-        ipath.write_bytes(array.array("f", audio).tobytes())
+    # Always rewrite. This used to skip when the file existed, which meant a
+    # second run with a different --signal or --input silently reused the first
+    # run's audio — and comparing WAVs from two such runs would show no
+    # difference for reasons that had nothing to do with quantisation.
+    ipath.write_bytes(array.array("f", audio).tobytes())
 
     r = subprocess.run([str(HARNESS), str(wpath), str(ipath), str(opath)],
                        capture_output=True, text=True)
@@ -273,6 +276,19 @@ def main():
             print(f"    {bits:>4}  {esr:>12.3e}  {db:>8.1f}  {perr:>9.5f}")
             if args.keep_wavs:
                 write_wav(workdir / f"out_{tag}bit.wav", out)
+                # The residual, ref minus test. This is literally what ESR
+                # measures, and it is the honest way to hear the error: if the
+                # residual sounds like a quiet copy of the same guitar tone
+                # rather than like noise, the quantised weights have not
+                # degraded the model, they have moved it — a slightly different
+                # amp, which is indistinguishable in isolation and obvious in a
+                # null test. Written at true level, so a quiet file means a
+                # small error.
+                n = min(len(ref), len(out))
+                diff = array.array("f", bytes(4 * n))
+                for i in range(n):
+                    diff[i] = ref[i] - out[i]
+                write_wav(workdir / f"diff_{tag}bit.wav", diff)
         print()
 
     print(f"files in {workdir}")
