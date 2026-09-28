@@ -126,8 +126,24 @@ successful write to a `:leave` address still exits 74.
 Under `BOOT_SRAM` this writes to QSPI at `0x90040000` and the bootloader loads it into
 SRAM at power-on, so **the bootloader has to be installed first** — once, on the fresh
 unit. `DFU_ADDR` follows `APP_TYPE` via libDaisy, so the same `make flash` is correct in
-either mode. Put the Patch SM into DFU mode (hold BOOT, tap RESET, release BOOT), run
-`make flash`, then tap RESET.
+either mode.
+
+There are two different DFU modes, and each step needs its own. `make dfu-list` tells them
+apart by the region it offers:
+
+| Step | Enter it by | `dfu-list` shows |
+|---|---|---|
+| `make program-boot` (once) | hold BOOT, tap RESET, release BOOT — the chip's ROM DFU | `@Internal Flash /0x08000000…` |
+| `make flash` (every update) | the Daisy bootloader's own DFU | `@Flash /0x90000000…/0x90040000…` |
+
+Done this way on the fresh unit, 2026-09-28: `program-boot` from ROM DFU (it exits 74 on
+the `:leave`, the same harmless quirk), after which the bootloader, finding no app, sat in
+its own DFU on its own and `make flash` went straight in. For later updates, with an app
+already present, the bootloader only listens for about 2 s after RESET (the
+`intdfu-2000ms` build libDaisy installs); libDaisy's docs say pressing BOOT during that
+window keeps it there. That part is not yet tried on this unit — check `make dfu-list`
+shows the `0x90040000` region before flashing. The ROM DFU cannot write QSPI, so
+BOOT+RESET is the wrong mode for `make flash`.
 
 With no module attached, `make flash` builds the binary and then stops with
 `No DFU device found for 0483:df11` — so the path is verified as far as it can be without

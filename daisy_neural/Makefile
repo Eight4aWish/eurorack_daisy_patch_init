@@ -123,8 +123,9 @@ DFU_VIDPID ?= 0483:df11
 DFU_SERIAL ?=
 DFU_ALT    ?= 0
 # Follows APP_TYPE via libDaisy: internal flash (0x08000000) for BOOT_NONE,
-# QSPI (0x90040000) for BOOT_SRAM/BOOT_QSPI. BOOT_NONE here, so this writes
-# straight to internal flash and needs no bootloader on the unit.
+# QSPI (0x90040000) for BOOT_SRAM/BOOT_QSPI. The default is BOOT_SRAM, so this
+# writes to QSPI through the Daisy bootloader's own DFU, not the ROM DFU that
+# BOOT+RESET gives — see the README's Flashing section.
 DFU_ADDR   ?= $(FLASH_ADDRESS):leave
 
 .PHONY: dfu-list dfu-check program-dfu-local flash
