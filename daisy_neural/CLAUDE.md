@@ -217,6 +217,11 @@ found, and no NAM or ToneX capture of any Eurorack module. Open ground.
 **Done when:** a downloaded A2 capture processes guitar audio on patch.init at 48kHz with
 no dropouts, and the measured CPU load is recorded here.
 
+**Done 2026-09-28.** All five captures run off the card on a fresh patch.init and sound
+like their amps. **CPU load 64%** average and peak (`BOOT_SRAM`, history in RAM_D2; 1% in
+bypass), just above the references' 30–61%. The card needs a FAT32 partition of 2 GB or
+less — see the README.
+
 1. **Hear it on the Mac first.** Download an **A2** overdrive or fuzz *pedal* capture
    from TONE3000 (no cabinet IR needed) and play it in the NAM plugin.
 2. ~~**Set up the build in `daisy_neural/`**, copying the Makefile pattern from

@@ -271,10 +271,20 @@ static int SeedSlot() { return captures::Count(); }
 
 // Seed mode's two controls. SEED picks which network — stepped, a character
 // lottery. TILT sets brightness — continuous, and the one worth modulating.
-static constexpr uint32_t kSeedMax   = 999;
+// 64, not 999: with 999 one step was 0.001 of the pot's travel, below its own
+// noise, so the seed jittered and every change forced a muted reload — seed
+// mode did little but reload. SEED is a set-once knob; 64 positions are
+// findable by hand. The seeds measured so far (1-12) are all in range.
+static constexpr uint32_t kSeedMax   = 64;
 static volatile uint32_t  g_want_seed   = 1;
 static volatile uint32_t  g_active_seed = 0;
 static volatile float     g_tilt        = 0.f;
+// TILT is baked into the weights when they are generated, so a change means a
+// new network and a muted swap. Stepped at 0.1 so a CV wobbling on TILT does
+// not sit there reloading; audio-rate TILT would need the flip done inside the
+// engine rather than in the weights.
+static volatile float     g_active_tilt = 0.f;
+static constexpr float    kTiltStep     = 0.1f;
 
 // What AutoGain aims for: roughly what a trained capture produces from this
 // input, so switching between card captures and seeds is not a level jump.
@@ -414,8 +424,11 @@ void AudioCallback(AudioHandle::InputBuffer  in,
         const uint32_t s = 1u + (uint32_t)(k * (float)(kSeedMax - 1));
         // One step of hysteresis: reloading the network every block while a
         // knob sits on a boundary would be audible and pointless.
+        // Hysteresis of three-quarters of a step past the current seed's
+        // position, so pot noise cannot flick between neighbours.
         if(s != g_want_seed
-           && fabsf(k - ((float)(g_want_seed - 1) / (float)(kSeedMax - 1))) > 1.5f / (float)kSeedMax)
+           && fabsf(k - ((float)(g_want_seed - 1) / (float)(kSeedMax - 1)))
+                  > 0.75f / (float)(kSeedMax - 1))
             g_want_seed = s;
 
         g_tilt = fclamp(patch.GetAdcValue(CV_8), 0.f, 1.f);
@@ -427,7 +440,9 @@ void AudioCallback(AudioHandle::InputBuffer  in,
     {
         case Xf::Run:
             if(g_want != g_active
-               || (g_want == SeedSlot() && g_want_seed != g_active_seed))
+               || (g_want == SeedSlot()
+                   && (g_want_seed != g_active_seed
+                       || fabsf(g_tilt - g_active_tilt) >= kTiltStep)))
                 g_xf = Xf::FadeOut;
             break;
         case Xf::FadeOut:
@@ -474,7 +489,12 @@ void AudioCallback(AudioHandle::InputBuffer  in,
         scratch[i] = g_bypass ? x : (x * trim);
     }
 
-    if(!g_bypass)
+    // Not while the main loop is swapping: it is rewriting this engine's weights
+    // and state (and, for a seed, probing it for auto-gain), and running the
+    // network from here at the same time feeds it half-written numbers. The
+    // output is muted during Swap anyway. Found 2026-09-28: a seed could go NaN
+    // this way, and the DC blocker below then held the NaN forever.
+    if(!g_bypass && g_xf != Xf::Swap)
         engine.ProcessBlock(scratch, scratch, n);
 
     // DC blocker, ~20Hz one-pole. Needed for the seed slot, which is
@@ -489,9 +509,19 @@ void AudioCallback(AudioHandle::InputBuffer  in,
     for(size_t i = 0; i < n; i++)
     {
         const float raw = scratch[i] * out_gain;
-        const float y   = raw - dcb_x1 + kDcR * dcb_y1;
-        dcb_x1          = raw;
-        dcb_y1          = y;
+        float       y   = raw - dcb_x1 + kDcR * dcb_y1;
+        // A recursive filter keeps a NaN or Inf forever, so one bad block from
+        // an untrained network would silence the module until power-off.
+        if(!std::isfinite(y))
+        {
+            y = 0.f;
+            dcb_x1 = dcb_y1 = 0.f;
+        }
+        else
+        {
+            dcb_x1 = raw;
+            dcb_y1 = y;
+        }
         out[0][i]       = y;
         out[1][i]       = y;
     }
@@ -531,6 +561,26 @@ void AudioCallback(AudioHandle::InputBuffer  in,
 // only ever run with the output muted, which is what Xf::Swap guarantees.
 static bool SwapCapture(int index)
 {
+    // The seed slot generates its weights instead of reading them. This branch
+    // was missing when the slot was added (2026-09-26): the knob reached it,
+    // captures::Get() returned nothing for it, and the swap quietly reverted to
+    // the last capture — found on the bench, 2026-09-28.
+    if(index == SeedSlot())
+    {
+        const uint32_t seed = g_want_seed;
+        const float    tilt = g_tilt;
+        seedweights::Generate(seed, tilt, g_weight_buf, nam_a2_daisy::kA2WeightCount);
+        char name[16];
+        seedweights::Name(seed, name, sizeof(name));
+        if(!engine.Load(g_weight_buf, nam_a2_daisy::kA2WeightCount, 1.f, name))
+            return false;
+        engine.AutoGain(kSeedTargetRms);
+        g_active_seed = seed;
+        g_active_tilt = tilt;
+        g_active      = index;
+        return true;
+    }
+
     const captures::Entry* e = captures::Get(index);
     if(!e)
         return false;

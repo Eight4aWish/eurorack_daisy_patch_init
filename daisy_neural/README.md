@@ -13,9 +13,13 @@ going on a **fresh patch.init()** rather than repurposing the MultiFX one, so th
 reason not to. `BOOT_SRAM` is also what the engine was written for: weights in DTCMRAM,
 history in RAM_D2, both on-chip.
 
-**Builds clean. Not yet run on hardware** — every behaviour below is written but
-unobserved, including whether it makes any sound at all, so the first bench session is
-also the first test. The one number that matters most, CPU load, is on the RUN page.
+**Runs on hardware (first bench session, 2026-09-28).** All five captures load off the
+card and sound like the amps they are; CV_3 steps through them and on to the seed slot and
+back. **CPU load: 64%** average and peak with the engine in (1% in bypass), against the
+references' 30–61% for A2 on a 480 MHz H7 — so phase 1's number is recorded. The seed
+slot works and its first result is best described as an evil cello: a technique with
+potential rather than the sound being looked for. What the landscape of seeds sounds like
+needs more design decisions before more building.
 
 ## What it does today
 
@@ -141,9 +145,15 @@ the `:leave`, the same harmless quirk), after which the bootloader, finding no a
 its own DFU on its own and `make flash` went straight in. For later updates, with an app
 already present, the bootloader only listens for about 2 s after RESET (the
 `intdfu-2000ms` build libDaisy installs); libDaisy's docs say pressing BOOT during that
-window keeps it there. That part is not yet tried on this unit — check `make dfu-list`
-shows the `0x90040000` region before flashing. The ROM DFU cannot write QSPI, so
-BOOT+RESET is the wrong mode for `make flash`.
+window keeps it there — confirmed on this unit, several times: tap RESET, then press BOOT
+while the LED pulses, and `make dfu-list` shows the `0x90040000` region. The ROM DFU
+cannot write QSPI, so BOOT+RESET is the wrong mode for `make flash`.
+
+**Or skip USB: update from the card.** The bootloader checks the card root for a `.bin` at
+every boot and flashes it when it differs from what is installed. Copy
+`build/daisy_neural.bin` to the card (`cp -X`), put it in, power-cycle. Keep exactly one
+`.bin` in the root — the bootloader takes the first it finds — and leave it there; it is
+not re-flashed while unchanged. This is the easier route for iterating.
 
 With no module attached, `make flash` builds the binary and then stops with
 `No DFU device found for 0483:df11` — so the path is verified as far as it can be without
@@ -217,10 +227,23 @@ so **it works with no card at all**. The network models nothing: it is a nonline
 that has never existed, and the same seed gives the same one on any unit, forever. A seed
 is an address, not a preset.
 
-CV_4 picks the seed, CV_8 tilts it from dark to bright. Those two are read *separately*
-rather than summed like the other pot/jack pairs, because they do different jobs — the
-pot chooses a network and is set once, the jack modulates brightness and is worth a CV.
-Unpatched, CV_8 reads ~0, which is the dark default the seeds were measured at.
+CV_4 picks the seed, one of 64; CV_8 tilts it from dark to bright. Those two are read
+*separately* rather than summed like the other pot/jack pairs, because they do different
+jobs — the pot chooses a network and is set once, the jack sets brightness. Unpatched,
+CV_8 reads ~0, which is the dark default the seeds were measured at.
+
+TILT is baked into the weights when they are generated, so a change is a new network and
+a short muted reload, stepped at 0.1 so a wobbling CV does not sit there reloading. That
+makes it a slow control, not a modulation input yet; audio-rate TILT would need the sign
+flip done inside the engine rather than in the weights.
+
+**Three bugs found on the bench, all fixed:** the swap never generated a seed at all (the
+knob reached the slot and the swap quietly reverted); the audio callback kept running the
+engine while the main loop rewrote it, which could turn a seed's output to NaN; and the
+DC blocker then held that NaN forever, so the module stayed silent even back on a capture.
+The callback now skips the engine during a swap and the blocker resets on a non-finite
+value. SEED also went from 999 positions to 64 — at 999 a step was below the pot's noise
+and the slot did little but reload.
 
 **Not a new idea, and worth saying so.** Steinmetz and Reiss published randomly-weighted
 networks as audio effects in 2020 ([arXiv:2010.04237](https://arxiv.org/abs/2010.04237)),
@@ -449,18 +472,19 @@ In rough order, because each answers something the next depends on:
 0. **Install the Daisy bootloader** on the fresh unit — once, then `make flash` works.
    Card with a 2 GB FAT32 partition and the five `.a2nb` files at the root. **Done
    2026-09-28**; `CAP 1/5` on the RUN page.
-1. **Flash it and confirm it makes a sound.** Guitar or a line source into IN_L, trim at
-   noon. Short-press B7 to A/B against dry.
-2. **Read the CPU load off the RUN page and write it here.** That is what closes phase 1.
-   The references put A2 on a 480 MHz H7 between 30% and 61%; this build's history buffer
-   is in the slower AXI SRAM rather than D2, so expect the high end or worse. If it is
-   uncomfortable, `BOOT_SRAM` plus `nam/nam_a2_sections.lds` is the fix.
-3. **Bench check 2**, while the unit is out: bypass on, one LFO to both IN_L and CV_5, long-press
+1. ~~Flash it and confirm it makes a sound.~~ **Done 2026-09-28**: all five captures sound
+   like their amps.
+2. ~~Read the CPU load.~~ **64%** average and peak, `BOOT_SRAM` with the history in D2 —
+   phase 1 closed.
+3. **Design the seed landscape** before building more: what range of distortions the seed
+   and tilt controls should span, and how to audition it. The first seed result was an
+   evil cello.
+4. **Bench check 2**, while the unit is out: bypass on, one LFO to both IN_L and CV_5, long-press
    to the HPF page, sweep the LFO and find where RAT hits 0.71. Record the corner in
    [CLAUDE.md](CLAUDE.md) under Hardware.
 
 If the trim range or the meter ballistics turn out wrong in use, those are one-line
-changes — none of it has been heard yet.
+changes.
 
 ## Note on the captures
 
