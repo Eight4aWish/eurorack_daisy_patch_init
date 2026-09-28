@@ -297,8 +297,24 @@ python3 tools/export_captures.py
 ```
 
 All five — BE-100, JCM800, Ampeg, Mesa and 1959BJA — export at 7,516 bytes each. Copy
-them to the root of a FAT32 card. They are numbered `0_`…`4_` so the on-module order
+them to the root of the card. They are numbered `0_`…`4_` so the on-module order
 matches the table they came from, whatever order the filesystem returns them in.
+
+**The card needs a FAT32 partition of 2 GB or less.** Not exFAT (libDaisy builds FatFs
+without it), and not one full-size FAT32 volume on a big card. Found on the first bench
+session, 2026-09-28, with a 64 GB card: formatted as one 64 GB FAT32 volume it failed
+at card start-up (`hal 100000` on the `CAP` line); repartitioned to a single 2 GB FAT32
+volume with the rest left unallocated, all five captures loaded. The card itself is
+fine — the partition size is what matters. Why is not known. On a Mac, with the card at
+`/dev/diskN` (check with `diskutil list external` first — this erases it):
+
+```sh
+diskutil partitionDisk /dev/diskN MBR "MS-DOS FAT32" DAISY 2G "Free Space" REST R
+cp -X captures/*.a2nb /Volumes/DAISY/
+```
+
+`cp -X` leaves out macOS's `._` metadata files, which end in `.a2nb` and would otherwise
+be offered as captures and fail their CRC.
 
 The container is deliberately minimal: 32-byte header (magic, version, weight count,
 output gain, name, CRC32) followed by 1,871 float32 in exactly the order the engine's
@@ -431,7 +447,8 @@ WAVs land in `quant_study/` for A/B listening, which is the judge that counts.
 In rough order, because each answers something the next depends on:
 
 0. **Install the Daisy bootloader** on the fresh unit — once, then `make flash` works.
-   Card formatted FAT32 with the five `.a2nb` files at the root.
+   Card with a 2 GB FAT32 partition and the five `.a2nb` files at the root. **Done
+   2026-09-28**; `CAP 1/5` on the RUN page.
 1. **Flash it and confirm it makes a sound.** Guitar or a line source into IN_L, trim at
    noon. Short-press B7 to A/B against dry.
 2. **Read the CPU load off the RUN page and write it here.** That is what closes phase 1.

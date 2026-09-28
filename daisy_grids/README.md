@@ -166,6 +166,13 @@ cause isn't found yet. [user_bank.h](include/user_bank.h) records what was ruled
 out. The sample player will need that path working, so it's worth returning to.
 Until then a personal bank has to be compiled in.
 
+**First thing to try when it is picked up:** the card's partition size. daisy_neural,
+with the same bootloader and SD stack, failed on a card formatted as one 64 GB FAT32
+volume and worked once the card was repartitioned to a single 2 GB FAT32 volume
+(2026-09-28, see that README's "Captures on the microSD card"). It failed at a
+different step there, card start-up rather than reads, so this is a lead, not a
+diagnosis — but it costs one reformat to test.
+
 Derived from a personal EZdrummer library — 916 patterns from its 808, 606,
 RY-30 and HR-16 folders — it produced the most coherent map of the lot at 44%
 against Club's 35%. Purpose-programmed machine patterns beat sixty thousand rock

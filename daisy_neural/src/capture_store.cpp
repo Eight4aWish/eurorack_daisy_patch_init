@@ -5,17 +5,49 @@
 
 using namespace daisy;
 
+// libDaisy's HAL handle for SDMMC1, a plain global in per/sdmmc.cpp.
+extern SD_HandleTypeDef hsd1;
+
 namespace captures
 {
 namespace
 {
 
-// The SD peripheral and FatFS state. DMA_BUFFER_MEM_SECTION for the same reason
-// daisy_grids uses it: these are touched by DMA and must not sit in DTCMRAM,
-// which the D-cache and the SDMMC controller do not agree about.
-SdmmcHandler                  s_sd;
-FatFSInterface DMA_BUFFER_MEM_SECTION s_fsi;
-FIL            DMA_BUFFER_MEM_SECTION s_file;
+// Where the card's DMA lands. SDRAM, which is the configuration that works on
+// hardware (2026-09-28). The SDMMC1 DMA cannot reach DTCMRAM, where BOOT_SRAM
+// puts ordinary .bss. These were moved here from D2 (DMA_BUFFER_MEM_SECTION)
+// while chasing a mount failure that turned out to be the card's partition size
+// (see Init), so whether D2 would also have worked is untested; SDRAM is kept
+// because it is what has been seen to work. libDaisy's own SD example is
+// BOOT_NONE, whose .bss is AXI SRAM. sd_diskio.c does the cache maintenance
+// that cacheable SDRAM needs.
+//
+// FatFS keeps its sector window inside the FATFS object and each FIL has its
+// own sector buffer (_FS_TINY 0), so both objects must be reachable.
+SdmmcHandler                s_sd;
+FatFSInterface DSY_SDRAM_BSS s_fsi;
+FIL DSY_SDRAM_BSS            s_file;
+
+// Whole-sector reads bypass FIL's buffer and DMA straight into the caller's
+// destination, and the engine's weight buffer is in DTCMRAM. So weights come
+// through here first. 8 KB covers A2-Lite's 7,484 bytes.
+constexpr size_t kBounceBytes = 8192;
+alignas(32) uint8_t DSY_SDRAM_BSS s_bounce[kBounceBytes];
+
+// Status text with FatFS's own result code appended, e.g. "mount 1". The stage
+// says where it stopped; the code says why.
+char s_status_buf[12];
+const char* Fail(const char* stage, int code)
+{
+    snprintf(s_status_buf, sizeof(s_status_buf), "%s %d", stage, code);
+    return s_status_buf;
+}
+// Same, for the HAL's error bitfield (HAL_SD_ERROR_* in stm32h7xx_hal_sd.h).
+const char* FailHex(const char* stage, uint32_t bits)
+{
+    snprintf(s_status_buf, sizeof(s_status_buf), "%s %lx", stage, (unsigned long)bits);
+    return s_status_buf;
+}
 
 Entry       s_entries[kMaxFiles];
 int         s_count  = 0;
@@ -115,21 +147,67 @@ bool Init()
     System::Delay(250);
 
     s_status = "sd init";
-    if(s_sd.Init(cfg) != SdmmcHandler::Result::OK)
+    const auto sd = s_sd.Init(cfg);
+    if(sd != SdmmcHandler::Result::OK)
+    {
+        s_status = Fail("sd init", (int)sd);
         return false;
+    }
 
     s_status = "fs init";
     s_fsi.Init(FatFSInterface::Config::MEDIA_SD);
 
-    s_status = "mount";
-    if(f_mount(&s_fsi.GetSDFileSystem(), s_fsi.GetSDPath(), 1) != FR_OK)
+    // Run BSP_SD_Init()'s four steps here, so a card the driver refuses shows
+    // which step and the HAL's error bits instead of a bare FR_NOT_READY from
+    // f_mount. f_mount repeats them afterwards, which is harmless.
+    //
+    // THE CARD MUST HAVE A FAT32 PARTITION OF 2 GB OR LESS. Found 2026-09-28: a
+    // 64 GB card formatted as one full-size FAT32 volume failed right here with
+    // "hal 100000" (WP_ERASE_SKIP, a status that makes no sense during
+    // identification). The same card repartitioned to a single 2 GB FAT32
+    // volume, rest unallocated, loaded all five captures. Why is not known;
+    // the Daisy bootloader also reads the card at every boot, which is one
+    // place the volume size could matter before the app ever sees it.
+    s_status = "hal";
+    if(HAL_SD_Init(&hsd1) != HAL_OK)
+    {
+        s_status = FailHex("hal", hsd1.ErrorCode);
         return false;
+    }
+    if(HAL_SD_ConfigWideBusOperation(&hsd1, hsd1.Init.BusWide) != HAL_OK)
+    {
+        s_status = FailHex("wide", hsd1.ErrorCode);
+        return false;
+    }
+    if(HAL_SD_ConfigSpeedBusOperation(&hsd1, SDMMC_SPEED_MODE_AUTO) != HAL_OK)
+    {
+        s_status = FailHex("spd", hsd1.ErrorCode);
+        return false;
+    }
+    const HAL_SD_CardStateTypeDef cs = HAL_SD_GetCardState(&hsd1);
+    if(cs != HAL_SD_CARD_TRANSFER)
+    {
+        s_status = Fail("state", (int)cs);
+        return false;
+    }
+
+    s_status = "mount";
+    const FRESULT mr = f_mount(&s_fsi.GetSDFileSystem(), s_fsi.GetSDPath(), 1);
+    if(mr != FR_OK)
+    {
+        s_status = Fail("mount", (int)mr);
+        return false;
+    }
 
     s_status = "scan";
     DIR     dir;
     FILINFO info;
-    if(f_opendir(&dir, s_fsi.GetSDPath()) != FR_OK)
+    const FRESULT dr = f_opendir(&dir, s_fsi.GetSDPath());
+    if(dr != FR_OK)
+    {
+        s_status = Fail("scan", (int)dr);
         return false;
+    }
 
     while(s_count < kMaxFiles)
     {
@@ -174,7 +252,8 @@ bool Load(int index, float* dst, size_t dst_capacity)
     const Entry* e = Get(index);
     if(!e || !dst)
         return false;
-    if((size_t)e->weight_count > dst_capacity)
+    if((size_t)e->weight_count > dst_capacity
+       || (size_t)e->weight_count * sizeof(float) > kBounceBytes)
     {
         s_status = "too big";
         return false;
@@ -198,26 +277,25 @@ bool Load(int index, float* dst, size_t dst_capacity)
     const uint32_t want_crc = Rd32(hdr + 28);
     const size_t   bytes    = (size_t)e->weight_count * sizeof(float);
 
-    // Read straight into dst, then check the CRC. If it fails the caller is
-    // told and must not use dst — which is why the engine is only handed these
-    // weights after this returns true.
+    // Read into the SDRAM bounce buffer (see kBounceBytes), check the CRC, and
+    // only then copy into dst — so a failed load leaves dst untouched.
     got = 0;
-    const bool read_ok
-        = (f_read(&s_file, dst, (UINT)bytes, &got) == FR_OK) && (got == bytes);
+    const FRESULT rr = f_read(&s_file, s_bounce, (UINT)bytes, &got);
     f_close(&s_file);
 
-    if(!read_ok)
+    if(rr != FR_OK || got != bytes)
     {
-        s_status = "read fail";
+        s_status = Fail("read", (int)rr);
         return false;
     }
 
-    if(Crc32((const uint8_t*)dst, bytes) != want_crc)
+    if(Crc32(s_bounce, bytes) != want_crc)
     {
         s_status = "bad crc";
         return false;
     }
 
+    memcpy(dst, s_bounce, bytes);
     s_status = "ok";
     return true;
 }
