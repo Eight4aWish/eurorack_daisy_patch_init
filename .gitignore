@@ -24,6 +24,7 @@ daisy_neural/amp_compare/
 
 # Natively-compiled host harness — machine-specific, built on demand
 **/tools/a2_host
+**/tools/a2_host_steer
 
 # Python
 __pycache__/

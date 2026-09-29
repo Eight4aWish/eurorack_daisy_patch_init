@@ -1,7 +1,10 @@
 // Lifted from bkshepherd/DaisySeedProjects @ ccae0f2 (2026-09-08)
 // Software/GuitarPedal/Effect-Modules/Nam/nam_a2_runtime.h
 // MIT, Copyright (c) 2023 Keith Shepherd — see ../LICENSE-daisyseedprojects.txt
-// Unmodified.
+// MODIFIED 2026-09-29 for daisy_neural: the `bend` hooks (network bending
+// between layers, used by the not-amp slots). Inactive by default, and while
+// inactive the output is bit-identical to the unmodified runtime — checked with
+// tools/a2_host against the original. Everything else is as lifted.
 #pragma once
 /*
     nam_a2_runtime.h
@@ -126,6 +129,62 @@ inline constexpr int kKernelSizes[kNumLayers] = {
 inline constexpr int kDilations[kNumLayers] = {
     1, 3, 7, 17, 41, 101, 239, 1, 3, 7, 17, 41, 101, 239, 1, 13, 1, 3, 7, 17, 41, 101, 239
 };
+
+// ---------------------------------------------------------------------------
+// Network bending (daisy_neural addition). Operations applied to a layer's
+// output, between layers, while the network plays. Nothing here runs unless
+// active[layer] is set, so a capture played normally takes the original path.
+// ---------------------------------------------------------------------------
+namespace bend
+{
+inline bool  active[23]    = {};
+inline float blend[23]     = {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1}; // 1 normal, 0 = layer bypassed
+inline float offset[23][3] = {};   // added to a lane
+inline float fold[23]      = {};   // >0: triangle-fold all lanes into [-t, t]
+inline int   freezeP[23]   = {};   // >0: hold the output for this many samples
+inline float held[23][3]   = {};
+inline int   heldCount[23] = {};
+
+inline void Clear()
+{
+    for (int l = 0; l < 23; ++l)
+    {
+        active[l] = false; blend[l] = 1.f; fold[l] = 0.f; freezeP[l] = 0; heldCount[l] = 0;
+        for (int c = 0; c < 3; ++c) { offset[l][c] = 0.f; held[l][c] = 0.f; }
+    }
+}
+
+inline float Fold(float x, float t)
+{
+    const float p = 4.f * t;
+    float y = x + t;
+    y = y - p * __builtin_floorf(y / p);
+    return (y < 2.f * t ? y : 4.f * t - y) - t;
+}
+
+// in: the layer's input block, out: its output block, 48 samples x 3 lanes.
+inline void After(int li, const float* in, float* out)
+{
+    if (blend[li] != 1.f)
+        for (int i = 0; i < 48 * 3; ++i) out[i] = in[i] + blend[li] * (out[i] - in[i]);
+    for (int n = 0; n < 48; ++n)
+    {
+        float* v = out + n * 3;
+        for (int c = 0; c < 3; ++c)
+        {
+            float x = v[c] + offset[li][c];
+            if (fold[li] > 0.f) x = Fold(x, fold[li]);
+            v[c] = x;
+        }
+        if (freezeP[li] > 0)
+        {
+            if (heldCount[li] == 0) for (int c = 0; c < 3; ++c) held[li][c] = v[c];
+            for (int c = 0; c < 3; ++c) v[c] = held[li][c];
+            if (++heldCount[li] >= freezeP[li]) heldCount[li] = 0;
+        }
+    }
+}
+} // namespace bend
 
 static constexpr int kKernelSum = 156;
 static constexpr int kConvWeightCount = kKernelSum * kChannels * kChannels; // 1404
@@ -640,6 +699,9 @@ NAM_A2_NOINLINE void process_block_48(A2State& st,
             process_layer_kernel6_dual(st, hot, sw, li, input, in, out);
         else
             process_layer_kernel<15>(st, hot, sw, li, input, in, out);
+
+        if (bend::active[li])
+            bend::After(li, in, out);
 
         float* tmp = in;
         in = out;

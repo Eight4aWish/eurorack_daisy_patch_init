@@ -14,12 +14,14 @@ reason not to. `BOOT_SRAM` is also what the engine was written for: weights in D
 history in RAM_D2, both on-chip.
 
 **Runs on hardware (first bench session, 2026-09-28).** All five captures load off the
-card and sound like the amps they are; CV_3 steps through them and on to the seed slot and
-back. **CPU load: 64%** average and peak with the engine in (1% in bypass), against the
-references' 30–61% for A2 on a 480 MHz H7 — so phase 1's number is recorded. The seed
-slot works and its first result is best described as an evil cello: a technique with
-potential rather than the sound being looked for. What the landscape of seeds sounds like
-needs more design decisions before more building.
+card and sound like the amps they are. **CPU load: 64%** average and peak with the engine
+in (1% in bypass), against the references' 30–61% for A2 on a 480 MHz H7 — so phase 1's
+number is recorded.
+
+**Two banks since 2026-09-29: AMPS and NOT-AMPS.** The random-seed slot came out: every
+seed was a variation on one "evil cello". In its place are nine *not-amps*, real captures
+bent inside the network, each with one control that CV can steer while it plays. See
+"The not-amps" below. **Not yet run on hardware.**
 
 ## What it does today
 
@@ -53,11 +55,11 @@ against the input rather than against a level change.
 |---|---|
 | **CV_1** (+ CV_5 jack) | Input trim into the engine, −20…+20 dB, unity at noon |
 | **CV_2** (+ CV_6 jack) | Output level, 0…1 |
-| **CV_3** (+ CV_7 jack) | Slot: the card's captures, then **SEED** at the top |
-| **CV_4** | **SEED** — which untrained network (seed slot only) |
-| **CV_8** | **TILT** — brightness, dark to bright (seed slot only) |
+| **CV_3** (+ CV_7 jack) | Slot within the current bank |
+| **CV_4** (+ CV_8 jack) | **STEER** — the not-amp's one control. Does nothing in AMPS, on purpose |
 | **B7** short press | Bypass on/off |
 | **B7** long press (600 ms) | Change page, RUN ↔ HPF |
+| **B7** longer press (1.5 s) | Change bank, AMPS ↔ NOT-AMPS |
 | **CV_OUT_2** LED | Lit when the engine is in circuit, dark when bypassed |
 
 The trim exists so the signal can be set to the level the capture was trained at, which is
@@ -220,61 +222,52 @@ whenever the linker setup or the engine object is touched**:
 If flash ever gets tight again, dropping `-u _printf_float` and formatting the HPF page
 with integer maths is the largest single saving.
 
-## The seed slot
+## The not-amps
 
-The last slot generates its weights from a number instead of reading them off the card,
-so **it works with no card at all**. The network models nothing: it is a nonlinearity
-that has never existed, and the same seed gives the same one on any unit, forever. A seed
-is an address, not a preset.
+Nine slots in the NOT-AMPS bank, each a real capture bent inside the network, with one
+control on the steer knob (CV_4 + the CV_8 jack) that can move while it plays:
 
-CV_4 picks the seed, one of 64; CV_8 tilts it from dark to bright. Those two are read
-*separately* rather than summed like the other pot/jack pairs, because they do different
-jobs — the pot chooses a network and is set once, the jack sets brightness. Unpatched,
-CV_8 reads ~0, which is the dark default the seeds were measured at.
+| OLED | Built from | Steer controls |
+|---|---|---|
+| `FREEZE` | JCM800, layer 11's output held | hold length, 1 → 1,024 samples |
+| `PAST JCM` | the Ampeg's weights pushed past the JCM800 | how far past, 1.0 → 1.3× |
+| `PAST BJA` | the Ampeg's weights pushed past the 1959BJA | how far past, 1.0 → 1.3× |
+| `NO LONG` | JCM800, the three gap-239 layers faded out | fade, in → out |
+| `FOLDED` | JCM800, a wavefolder on all lanes at layer 11 | fold threshold, 1.0 → 0.3 |
+| `PAST MESA` | BE-100's weights pushed past the Mesa | how far past, 1.0 → 1.3× |
+| `OFFSET` | JCM800, an offset on one lane at layer 3 | offset −2 → +2; the plain amp at noon |
+| `MUTATE` | JCM800 plus a fixed noise vector | noise amount, 0 → 0.4 |
+| `FREEZE ERL` | JCM800, layer 3's output held | hold length, 1 → 1,024 samples |
 
-TILT is baked into the weights when they are generated, so a change is a new network and
-a short muted reload, stepped at 0.1 so a wobbling CV does not sit there reloading. That
-makes it a slow control, not a modulation input yet; audio-rate TILT would need the sign
-flip done inside the engine rather than in the weights.
+They are built from the captures on the card, found by name, so those five captures must be
+there; a missing one shows `N need cap`. The RUN page shows `N3/9 S0.42`: not-amp 3 of 9,
+steer at 0.42.
 
-**Three bugs found on the bench, all fixed:** the swap never generated a seed at all (the
-knob reached the slot and the swap quietly reverted); the audio callback kept running the
-engine while the main loop rewrote it, which could turn a seed's output to NaN; and the
-DC blocker then held that NaN forever, so the module stayed silent even back on a capture.
-The callback now skips the engine during a swap and the blocker resets on a non-finite
-value. SEED also went from 999 positions to 64 — at 999 a step was below the pot's noise
-and the slot did little but reload.
+**How they were chosen.** On the Mac, through the real engine: first a sweep of other ways
+to draw random weights, then network bending (operations inserted between layers while it
+plays, after Broad, Leymarie and Grierson), then a steerability test on the candidates —
+how far one control moves the sound, how smoothly, and how much the level changes. The
+morph ranges stop at 1.3× because past that the network's gain climbs about 20 dB for
+every eighth of a step. `tools/notamp_design.py` holds the nine definitions and generates
+`src/notamps.h`: the definitions, a nine-point level-correction table for each so the
+steer changes the sound rather than the volume, and MUTATE's noise vector (the exact one
+auditioned). `tools/a2_host_steer` renders any of them with the control swept, as CV would
+move it.
 
-**Not a new idea, and worth saying so.** Steinmetz and Reiss published randomly-weighted
-networks as audio effects in 2020 ([arXiv:2010.04237](https://arxiv.org/abs/2010.04237)),
-with code and a real-time plugin. What is different here is narrower: a fixed
-amp-modelling architecture rather than one chosen for the experiment, on an MCU, in a
-rack, with the seed as the control surface instead of the architecture.
+**The bends live in the engine.** `nam/nam_a2_runtime.h` carries a small `bend` addition —
+blend, offset, fold and freeze applied to a layer's output. Inactive, the output is
+bit-identical to the unmodified runtime, and a real amp always plays with every bend
+cleared. MORPH and MUTATE move by rewriting the weights with no prewarm, in the audio
+callback so it never overlaps the engine; on the Mac that matches the real engine exactly.
 
-Two things it needs that a trained capture does not, both measured rather than assumed:
-
-**A DC blocker.** Untrained LeakyReLU stacks are asymmetric and nothing has trained that
-out, so they sit on a large offset with the audio riding on top — measured RMS 20.4 of
-which 20.4 was DC, with perfectly good audio underneath. The output now has a ~20 Hz
-one-pole blocker. Even trained captures show a small offset, and `daisy_multifx_oled`
-blocks DC for the same reason, so this was overdue regardless.
-
-**Auto-gain.** Levels vary about 50× across seeds (RMS 0.006 to 0.304 measured on the
-device generator). Without normalising, the seed knob would mostly be a volume control.
-On each seed change the engine runs a brief 220 Hz tone through itself, measures the
-result, sets a gain and resets the state it disturbed — all inside the existing muted
-crossfade window.
-
-**Why they sound the way they do.** Random dilated convolutions average, and averaging is
-a low pass, so untrained networks are dark by default. TILT alternates the sign of
-successive conv taps, turning each convolution from an average into a difference, which
-is a high pass — worth 1.7× to 2.3× on the spectral centroid. The 16-tap head looks like
-the obvious place to do that and is the wrong one: it is a linear output stage, so
-tilting it changes level and leaves the spectrum alone.
-
-They also distort differently from a real amp — second-harmonic dominant where a trained
-capture is third. Asymmetric and warm rather than symmetric and aggressive. That is the
-most musically distinctive thing about the slot, not a defect.
+**The seed slot, retired.** Random weights drawn with one amp's statistics all came out as
+variations on one resonant, octave-flavoured sound — deep networks with random weights go
+toward delay and resonance (Steinmetz and Reiss, 2020, [arXiv:2010.04237](https://arxiv.org/abs/2010.04237)).
+Its generator also assumed the weights file grouped all conv weights first; the file
+interleaves each layer's conv weights with its extras, so its per-region spreads and its
+TILT landed on the wrong parameters. It is in git history (`src/seed_weights.*`, removed
+2026-09-29). The DC blocker it needed stays: even trained captures show a small offset,
+and some bends move it.
 
 ## Getting more captures
 
@@ -476,9 +469,8 @@ In rough order, because each answers something the next depends on:
    like their amps.
 2. ~~Read the CPU load.~~ **64%** average and peak, `BOOT_SRAM` with the history in D2 —
    phase 1 closed.
-3. **Design the seed landscape** before building more: what range of distortions the seed
-   and tilt controls should span, and how to audition it. The first seed result was an
-   evil cello.
+3. ~~Design the seed landscape.~~ Replaced by the nine not-amps (2026-09-29). **Next: hear
+   them on the module** — each across its steer range, then with a CV on CV_8.
 4. **Bench check 2**, while the unit is out: bypass on, one LFO to both IN_L and CV_5, long-press
    to the HPF page, sweep the LFO and find where RAT hits 0.71. Record the corner in
    [CLAUDE.md](CLAUDE.md) under Hardware.

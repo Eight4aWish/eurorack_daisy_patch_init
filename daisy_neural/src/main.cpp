@@ -18,21 +18,19 @@
  * Controls
  *   CV_1 (+ CV_5 jack)   input trim into the engine, -20..+20 dB, unity at noon
  *   CV_2 (+ CV_6 jack)   output level, 0..1
- *   CV_3 (+ CV_7 jack)   slot: the card's captures, then SEED at the top
- *   CV_4                 SEED — which untrained network (seed slot only)
- *   CV_8                 TILT — brightness, dark to bright (seed slot only)
+ *   CV_3 (+ CV_7 jack)   slot within the current bank
+ *   CV_4 (+ CV_8 jack)   STEER — the not-amp's one control (not-amps bank only)
  *   B7 short press       bypass on/off, to A/B the engine against the dry input
- *   B7 long press        change page, RUN <-> DC
+ *   B7 long press        change page, RUN <-> DC (600 ms)
+ *   B7 longer press      change bank, AMPS <-> NOT-AMPS (1.5 s)
  *   CV_OUT_2 LED         lit when the engine is in circuit, dark when bypassed
  *
- * The last slot is SEED: weights generated on the fly from a number rather
- * than read off the card, so it works with no card at all. It models nothing —
- * a nonlinearity that has never existed, and the same seed gives the same one
- * on any unit, forever. See src/seed_weights.h, and the prior art noted there.
- *
- * CV_4 and CV_8 are read separately rather than summed as the other pairs are,
- * because they do different jobs: the pot chooses a network, the jack
- * modulates brightness.
+ * Two banks. AMPS: the captures on the card, played exactly as captured; the
+ * steer knob does nothing there, on purpose. NOT-AMPS: nine real captures
+ * bent inside the network — frozen, folded, faded, offset, mutated, or morphed
+ * past another amp — each with one steer control that can move while playing.
+ * Designed on the Mac with tools/notamp_design.py, which generates
+ * src/notamps.h; the bends themselves live in nam/nam_a2_runtime.h.
  *
  * Audio: IN_L -> trim -> engine slot -> level -> DC block -> OUT_L and OUT_R.
  * Bypass takes the dry input to the same output level, so an A/B compares the
@@ -46,7 +44,7 @@
 #include "daisysp.h"
 #include "oled_soft_i2c.h"
 #include "capture_store.h"
-#include "seed_weights.h"
+#include "notamps.h"
 #include <cmath>
 #include <cstdio>
 
@@ -138,45 +136,17 @@ class EngineSlot
             out[i] *= gain_;
     }
 
-    /** Re-level after a seed change. Untrained networks vary about 50x in
-     *  output level (RMS 0.006 to 0.304 measured on the device generator), so without this the seed
-     *  knob is mostly a volume control. Runs a short tone through the engine,
-     *  measures it, then resets the state it just disturbed. */
-    void AutoGain(float target_rms)
+    /** Rewrite the weights while playing, with no prewarm. Used when a morph
+     *  or mutation not-amp's steer moves. Audio-callback only: it must not
+     *  overlap ProcessBlock, and in the callback it cannot. Rewriting every
+     *  block matches the real engine exactly (tools/a2_host_steer). */
+    void RewriteWeights(const float* weights)
     {
-        if(!loaded_)
-            return;
-        gain_ = 1.f;
-
-        float in[kA2BlockSize], out[kA2BlockSize];
-        double acc = 0.0;
-        int    n   = 0;
-        float  ph  = 0.f;
-        for(int b = 0; b < 12; b++)  // ~12ms of 220Hz, enough to settle
-        {
-            for(size_t i = 0; i < kA2BlockSize; i++)
-            {
-                in[i] = 0.4f * sinf(ph);
-                ph += 2.f * (float)M_PI * 220.f / 48000.f;
-                if(ph > 2.f * (float)M_PI)
-                    ph -= 2.f * (float)M_PI;
-            }
-            player_.process_block_48(in, out);
-            if(b >= 4)  // discard the first blocks; the history is still filling
-            {
-                for(size_t i = 0; i < kA2BlockSize; i++)
-                {
-                    acc += (double)out[i] * out[i];
-                    n++;
-                }
-            }
-        }
-        player_.reset();  // undo the probe
-
-        const float rms = (n > 0) ? sqrtf((float)(acc / n)) : 0.f;
-        // Clamped: a near-silent network must not be handed enormous gain.
-        gain_ = (rms > 1e-4f) ? fclamp(target_rms / rms, 0.05f, 20.f) : 1.f;
+        if(loaded_)
+            nam_a2_daisy::load_weights(player_.weights(), weights, nam_a2_daisy::kA2WeightCount);
     }
+
+    void SetGain(float g) { gain_ = g; }
 
     bool        Loaded() const { return loaded_; }
     const char* Name() const { return loaded_ ? name_ : "NO CAP"; }
@@ -258,37 +228,43 @@ enum class Xf
 };
 
 static volatile Xf  g_xf      = Xf::Run;
+// A slot is a bank and an index, packed as bank*100 + index. -1 = the
+// compiled-in fallback.
 static volatile int g_want    = 0;   // slot CV_3 is asking for
-static volatile int g_active  = -1;  // slot currently loaded, -1 = fallback
+static volatile int g_active  = -1;  // slot currently loaded
+static volatile int g_bad     = -2;  // a slot that failed to load; not retried until the knob moves off it
 static float        g_xf_gain = 1.f;
 
-// Slots are the card's captures plus one more: the seed slot, where weights
-// are generated on the fly instead of read. It is always the last slot, so it
-// is always at the clockwise end of the knob however many captures the card
-// holds.
-static int SlotCount() { return captures::Count() + 1; }
-static int SeedSlot() { return captures::Count(); }
+enum class Bank
+{
+    Amps    = 0,  // the card's captures, as captured
+    NotAmps = 1,  // captures bent inside the network, with a steer control
+};
+static volatile Bank g_bank = Bank::Amps;
 
-// Seed mode's two controls. SEED picks which network — stepped, a character
-// lottery. TILT sets brightness — continuous, and the one worth modulating.
-// 64, not 999: with 999 one step was 0.001 of the pot's travel, below its own
-// noise, so the seed jittered and every change forced a muted reload — seed
-// mode did little but reload. SEED is a set-once knob; 64 positions are
-// findable by hand. The seeds measured so far (1-12) are all in range.
-static constexpr uint32_t kSeedMax   = 64;
-static volatile uint32_t  g_want_seed   = 1;
-static volatile uint32_t  g_active_seed = 0;
-static volatile float     g_tilt        = 0.f;
-// TILT is baked into the weights when they are generated, so a change means a
-// new network and a muted swap. Stepped at 0.1 so a CV wobbling on TILT does
-// not sit there reloading; audio-rate TILT would need the flip done inside the
-// engine rather than in the weights.
-static volatile float     g_active_tilt = 0.f;
-static constexpr float    kTiltStep     = 0.1f;
+static int  Slot(Bank b, int i) { return (int)b * 100 + i; }
+static Bank SlotBank(int slot) { return slot >= 100 ? Bank::NotAmps : Bank::Amps; }
+static int  SlotIndex(int slot) { return slot % 100; }
+// Not-amps are built from the card's captures, so with no card there are none.
+static int BankSize(Bank b)
+{
+    return b == Bank::Amps ? captures::Count() : (captures::Count() > 0 ? notamps::kCount : 0);
+}
 
-// What AutoGain aims for: roughly what a trained capture produces from this
-// input, so switching between card captures and seeds is not a level jump.
-static constexpr float kSeedTargetRms = 0.16f;
+// The steer control, 0..1: knob 4 plus the CV_8 jack, summed like the other
+// pairs. Smoothed over ~20 ms so a knob or CV does not step audibly.
+static volatile float g_steer = 0.f;
+
+// The loaded not-amp: its source weights (A, and B for a morph or the noise for
+// a mutation), the weights being played, and the capture gain its level table
+// is relative to. Ordinary .bss, DTCMRAM under BOOT_SRAM. Touched by the main
+// loop only while muted (Swap), and by the callback otherwise.
+static float g_na_a[nam_a2_daisy::kA2WeightCount];
+static float g_na_b[nam_a2_daisy::kA2WeightCount];
+static float g_na_w[nam_a2_daisy::kA2WeightCount];
+static int   g_na      = -1;   // which not-amp is loaded, -1 = none
+static float g_na_gain = 1.f;  // the reference capture's header gain
+static float g_na_last = -1.f; // last morph/mutation parameter written, to skip rewrites
 
 // ~5ms at 48kHz/48, which is long enough not to click and short enough not to
 // feel like a gap when auditioning captures back to back.
@@ -319,6 +295,7 @@ static void ResetDcHold()
 // Controls
 // ================================================================
 static constexpr uint32_t kLongPressMs = 600;
+static constexpr uint32_t kBankPressMs = 1500;
 
 static bool     g_btn_held        = false;
 static uint32_t g_btn_press_start = 0;
@@ -347,7 +324,11 @@ static void ProcessNav()
     const uint32_t dur = now - g_btn_press_start;
     g_btn_held         = false;
 
-    if(dur >= kLongPressMs)
+    if(dur >= kBankPressMs)
+    {
+        g_bank = (g_bank == Bank::Amps) ? Bank::NotAmps : Bank::Amps;
+    }
+    else if(dur >= kLongPressMs)
     {
         g_page = (g_page == Page::Run) ? Page::Dc : Page::Run;
         if(g_page == Page::Dc)
@@ -359,6 +340,64 @@ static void ProcessNav()
         SetLed(!g_bypass);
     }
     g_display_dirty = true;
+}
+
+// ================================================================
+// Not-amps
+// ================================================================
+static float SteerParam(const notamps::Def& d, float u)
+{
+    return d.log_map ? expf(logf(d.lo) + (logf(d.hi) - logf(d.lo)) * u) : d.lo + (d.hi - d.lo) * u;
+}
+
+// Set the loaded not-amp's bend (or rewrite its weights) and level for steer u.
+// Audio callback only, so it never overlaps the engine running.
+static void ApplySteer(float u)
+{
+    using namespace nam_a2_daisy;
+    const notamps::Def& d = notamps::kDefs[g_na];
+    const float v = SteerParam(d, u);
+    switch(d.kind)
+    {
+        case notamps::Kind::Freeze:
+            bend::active[d.layer]  = true;
+            bend::freezeP[d.layer] = (int)lroundf(v);
+            break;
+        case notamps::Kind::Fold:
+            bend::active[d.layer] = true;
+            bend::fold[d.layer]   = v;
+            break;
+        case notamps::Kind::Offset:
+            bend::active[d.layer]          = true;
+            bend::offset[d.layer][d.lane]  = v;
+            break;
+        case notamps::Kind::Blend:
+            for(uint8_t l : notamps::kBlendLayers)
+            {
+                bend::active[l] = true;
+                bend::blend[l]  = v;
+            }
+            break;
+        case notamps::Kind::Morph:
+        case notamps::Kind::Mutate:
+            // Weights = A + v*(B - A) for a morph, A + v*noise for a mutation.
+            // Rewritten only when the parameter has moved, which it rarely does
+            // by more than the smoothing lets through.
+            if(fabsf(v - g_na_last) > 0.0005f)
+            {
+                const bool morph = d.kind == notamps::Kind::Morph;
+                for(int i = 0; i < kA2WeightCount; i++)
+                    g_na_w[i] = morph ? g_na_a[i] + v * (g_na_b[i] - g_na_a[i]) : g_na_a[i] + v * g_na_b[i];
+                engine.RewriteWeights(g_na_w);
+                g_na_last = v;
+            }
+            break;
+    }
+    // Level correction, interpolated from the nine-point table.
+    const float x  = u * 8.f;
+    const int   k  = x >= 8.f ? 7 : (int)x;
+    const float db = d.gain_db[k] + (d.gain_db[k + 1] - d.gain_db[k]) * (x - (float)k);
+    engine.SetGain(g_na_gain * powf(10.f, db / 20.f));
 }
 
 // ================================================================
@@ -394,55 +433,43 @@ void AudioCallback(AudioHandle::InputBuffer  in,
     const float trim  = powf(10.f, (trim_k * 2.f - 1.f));
     const float level = level_k;
 
-    // --- capture selection ------------------------------------------------
-    // CV_3 across however many captures the card turned up. Hysteresis of half
-    // a step, so a knob sitting on a boundary does not sit there reloading the
-    // network every block.
-    const int n_slots = SlotCount();
-    if(n_slots > 1)
+    // --- slot selection ---------------------------------------------------
+    // CV_3 across the current bank. Hysteresis of a quarter step past the
+    // boundary, so a knob sitting on one does not reload the network every
+    // block. Changing bank picks whatever the knob points at in the new bank.
+    const Bank bank = g_bank;
+    const int  n_bank = BankSize(bank);
+    if(n_bank > 0)
     {
         const float sel  = fclamp(patch.GetAdcValue(CV_3) + patch.GetAdcValue(CV_7), 0.f, 1.f);
-        const float span = 1.f / (float)n_slots;
-        int         idx  = (int)(sel * (float)n_slots);
-        if(idx >= n_slots)
-            idx = n_slots - 1;
-
-        const float centre = ((float)g_want + 0.5f) * span;
-        if(idx != g_want && fabsf(sel - centre) > span * 0.75f)
-            g_want = idx;
+        const float span = 1.f / (float)n_bank;
+        int         idx  = (int)(sel * (float)n_bank);
+        if(idx >= n_bank)
+            idx = n_bank - 1;
+        const int cur = (SlotBank(g_want) == bank) ? SlotIndex(g_want) : -1;
+        int want = g_want;
+        if(cur < 0)
+            want = Slot(bank, idx);
+        else if(idx != cur && fabsf(sel - ((float)cur + 0.5f) * span) > span * 0.75f)
+            want = Slot(bank, idx);
+        if(want != g_bad)
+            g_want = want;
+        else if(SlotIndex(want) != idx)
+            g_bad = -2;  // the knob has moved on; allow a retry next time
     }
 
-    // --- seed mode -------------------------------------------------------
-    // CV_4 and CV_8 are read SEPARATELY here rather than summed as elsewhere,
-    // because they do different jobs: the pot chooses a network (stepped, set
-    // once), the jack modulates brightness (continuous, worth a CV). Unpatched
-    // CV_8 reads ~0, which is tilt 0 — the dark default the seeds were
-    // measured at.
-    if(g_want == SeedSlot())
-    {
-        const float k   = fclamp(patch.GetAdcValue(CV_4), 0.f, 1.f);
-        const uint32_t s = 1u + (uint32_t)(k * (float)(kSeedMax - 1));
-        // One step of hysteresis: reloading the network every block while a
-        // knob sits on a boundary would be audible and pointless.
-        // Hysteresis of three-quarters of a step past the current seed's
-        // position, so pot noise cannot flick between neighbours.
-        if(s != g_want_seed
-           && fabsf(k - ((float)(g_want_seed - 1) / (float)(kSeedMax - 1)))
-                  > 0.75f / (float)(kSeedMax - 1))
-            g_want_seed = s;
-
-        g_tilt = fclamp(patch.GetAdcValue(CV_8), 0.f, 1.f);
-    }
+    // --- steer ------------------------------------------------------------
+    const float steer_raw = fclamp(patch.GetAdcValue(CV_4) + patch.GetAdcValue(CV_8), 0.f, 1.f);
+    g_steer += 0.05f * (steer_raw - g_steer);
+    if(g_na >= 0 && g_xf != Xf::Swap)
+        ApplySteer(g_steer);
 
     // Drive the crossfade. The load itself happens in the main loop; all the
     // callback does is get the output to silence first and pick it up after.
     switch(g_xf)
     {
         case Xf::Run:
-            if(g_want != g_active
-               || (g_want == SeedSlot()
-                   && (g_want_seed != g_active_seed
-                       || fabsf(g_tilt - g_active_tilt) >= kTiltStep)))
+            if(g_want != g_active)
                 g_xf = Xf::FadeOut;
             break;
         case Xf::FadeOut:
@@ -561,37 +588,66 @@ void AudioCallback(AudioHandle::InputBuffer  in,
 // only ever run with the output muted, which is what Xf::Swap guarantees.
 static bool SwapCapture(int index)
 {
-    // The seed slot generates its weights instead of reading them. This branch
-    // was missing when the slot was added (2026-09-26): the knob reached it,
-    // captures::Get() returned nothing for it, and the swap quietly reverted to
-    // the last capture — found on the bench, 2026-09-28.
-    if(index == SeedSlot())
-    {
-        const uint32_t seed = g_want_seed;
-        const float    tilt = g_tilt;
-        seedweights::Generate(seed, tilt, g_weight_buf, nam_a2_daisy::kA2WeightCount);
-        char name[16];
-        seedweights::Name(seed, name, sizeof(name));
-        if(!engine.Load(g_weight_buf, nam_a2_daisy::kA2WeightCount, 1.f, name))
-            return false;
-        engine.AutoGain(kSeedTargetRms);
-        g_active_seed = seed;
-        g_active_tilt = tilt;
-        g_active      = index;
-        return true;
-    }
-
     const captures::Entry* e = captures::Get(index);
     if(!e)
         return false;
 
     if(!captures::Load(index, g_weight_buf, nam_a2_daisy::kA2WeightCount))
         return false;
+    nam_a2_daisy::bend::Clear();  // a real amp is played exactly as captured
+    g_na = -1;
     if(!engine.Load(g_weight_buf, (size_t)e->weight_count, e->gain, e->name))
         return false;
-
-    g_active = index;
     return true;
+}
+
+// Build a not-amp from the captures it names, then load and prewarm it at the
+// current steer position. Main loop only, while muted.
+static bool SwapNotAmp(int i)
+{
+    using namespace nam_a2_daisy;
+    const notamps::Def& d = notamps::kDefs[i];
+    const int ia = captures::Find(d.cap_a);
+    const int ir = captures::Find(d.cap_ref);
+    if(ia < 0 || ir < 0)
+        return false;
+    if(!captures::Load(ia, g_na_a, kA2WeightCount))
+        return false;
+    if(d.kind == notamps::Kind::Morph)
+    {
+        const int ib = captures::Find(d.cap_b);
+        if(ib < 0 || !captures::Load(ib, g_na_b, kA2WeightCount))
+            return false;
+    }
+    else if(d.kind == notamps::Kind::Mutate)
+    {
+        for(int k = 0; k < kA2WeightCount; k++)
+            g_na_b[k] = notamps::kMutateNoise[k];
+    }
+
+    bend::Clear();
+    g_na = -1;  // nothing in the callback touches the engine until this is set
+    const float v = SteerParam(d, g_steer);
+    const bool  w = d.kind == notamps::Kind::Morph || d.kind == notamps::Kind::Mutate;
+    for(int k = 0; k < kA2WeightCount; k++)
+        g_na_w[k] = !w ? g_na_a[k]
+                       : (d.kind == notamps::Kind::Morph ? g_na_a[k] + v * (g_na_b[k] - g_na_a[k])
+                                                         : g_na_a[k] + v * g_na_b[k]);
+    g_na_gain = captures::Get(ir)->gain;
+    if(!engine.Load(g_na_w, kA2WeightCount, g_na_gain, d.name))
+        return false;
+    g_na_last = w ? v : -1.f;
+    g_na      = i;
+    return true;
+}
+
+static bool SwapSlot(int slot)
+{
+    const bool ok = SlotBank(slot) == Bank::Amps ? SwapCapture(SlotIndex(slot))
+                                                 : SwapNotAmp(SlotIndex(slot));
+    if(ok)
+        g_active = slot;
+    return ok;
 }
 
 // ================================================================
@@ -631,13 +687,17 @@ static void DrawRunPage()
     const int raw_n  = captures::Count();
     const int n_caps = raw_n > 99 ? 99 : raw_n;
     const int shown  = (g_active >= 0 && g_active < 99) ? g_active + 1 : 0;
-    if(g_active == SeedSlot())
+    if(g_active >= 100)
     {
-        // Seed mode: the seed IS the sound, so it goes on screen where the
-        // capture number would be, with tilt beside it.
-        const unsigned long s = (unsigned long)(g_active_seed % 1000u);
-        snprintf(line, sizeof(line), "S%03lu T%.1f", s, (double)g_tilt);
+        // A not-amp: which one of how many, and where the steer sits, since
+        // the steer is the not-amp's whole character.
+        const int k = SlotIndex(g_active) + 1;
+        snprintf(line, sizeof(line), "N%d/%d S%.2f", k > 9 ? 9 : k, notamps::kCount, (double)g_steer);
     }
+    else if(g_bank == Bank::NotAmps && n_caps > 0)
+        // Asked for the not-amps but still on an amp: a not-amp failed to load,
+        // usually because a capture it is built from is missing from the card.
+        snprintf(line, sizeof(line), "N need cap");
     else if(n_caps > 0 && shown > 0)
         snprintf(line, sizeof(line), "CAP %d/%d", shown, n_caps);
     else if(n_caps > 0)
@@ -723,8 +783,8 @@ int main(void)
     captures::Init();
     if(captures::Count() > 0)
     {
-        SwapCapture(0);
-        g_want = g_active = 0;
+        SwapSlot(Slot(Bank::Amps, 0));
+        g_want = g_active;
     }
 
     // ~50 ms one-pole for the DC reading: slow enough to be readable, fast
@@ -755,11 +815,12 @@ int main(void)
         // work here — file read plus prewarm() — then hand it back to fade in.
         if(g_xf == Xf::Swap)
         {
-            if(!SwapCapture(g_want))
+            if(!SwapSlot(g_want))
             {
-                // Failed: keep whatever is loaded and stop asking for this
-                // index, or we would sit here retrying it every block.
-                // captures::Status() carries the reason to the display.
+                // Failed: keep whatever is loaded, and mark the slot so the
+                // selection does not ask for it again every block. Usually a
+                // not-amp whose source capture is not on the card.
+                g_bad  = g_want;
                 g_want = g_active;
             }
             g_xf            = Xf::FadeIn;

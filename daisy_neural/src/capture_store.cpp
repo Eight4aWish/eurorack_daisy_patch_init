@@ -127,6 +127,16 @@ const Entry* Get(int index)
     return &s_entries[index];
 }
 
+int Find(const char* name)
+{
+    if(!name)
+        return -1;
+    for(int i = 0; i < s_count; i++)
+        if(strcmp(s_entries[i].name, name) == 0)
+            return i;
+    return -1;
+}
+
 bool Init()
 {
     s_count = 0;

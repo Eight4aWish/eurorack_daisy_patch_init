@@ -22,7 +22,7 @@ namespace captures
 // Ten characters is the panel budget; the format allows 11 plus a NUL.
 constexpr size_t kNameLen  = 12;
 constexpr size_t kPathLen  = 64;
-constexpr int    kMaxFiles = 8;
+constexpr int    kMaxFiles = 32;  // room for more amps on the card
 
 // Must match tools/export_captures.py.
 constexpr uint32_t kMagic       = 0x424E3241;  // 'A2NB' little-endian
@@ -43,6 +43,9 @@ bool Init();
 
 int          Count();
 const Entry* Get(int index);
+
+/** Index of the capture with this name (the name in its header), or -1. */
+int Find(const char* name);
 
 /** Read one capture's weights into dst. Verifies magic, version, count and
  *  CRC32 before touching dst, so a corrupt card cannot feed garbage to the
