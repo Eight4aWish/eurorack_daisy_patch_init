@@ -94,11 +94,13 @@ make DAISY_ROOT=/path/to/daisy
 - `daisy_scanned/` – scanned-synthesis engine source for `daisy_multiosc` (no standalone build)
 - `daisy_neural/` – **in progress**: neural audio networks on the patch.init, all aimed at one module — the Dual Pingable LPG from [eurorack_electronics](https://github.com/Eight4aWish/eurorack_electronics), whose vactrol has the slow memory a static curve cannot reproduce. A NAM A2 capture first, then a CV-conditioned GRU so the gate gets a real knob. The NAM A2 engine and a JCM800 capture are in and it fits `BOOT_NONE`, so it is flashable and listenable without the bootloader; bypass doubles as the pass-through firmware the AC/DC coupling bench check needs. Builds clean, not yet run on hardware. The A2 engine and the shipped captures are from [bkshepherd/DaisySeedProjects](https://github.com/bkshepherd/DaisySeedProjects) (MIT — see [`daisy_neural/LICENSE-daisyseedprojects.txt`](daisy_neural/LICENSE-daisyseedprojects.txt)) — see its [README](daisy_neural/README.md) and [CLAUDE.md](daisy_neural/CLAUDE.md)
 - `daisy_bytebeat/` – **BYTEBEAT** engine source for `daisy_multiosc` (no standalone build): dual-voice bytebeat with a 100-formula bank in five families and a lo-fi Tone macro, ported from [Ogham](https://github.com/keeos-io/ogham) by Steven Collins (Keeos.io, MIT — see [`daisy_bytebeat/LICENSE-ogham.txt`](daisy_bytebeat/LICENSE-ogham.txt))
+- `daisy_chaos/` – **Secret** — **planning**: chaotic-attractor oscillator for the Hermetic Modular **Alchemy Lab** (V2), with V/Oct and a TAME control from free chaos to locked pitch. Successor to the Teensy **Chaos** module in `eurorack_modules`. Unlike the other apps it will build with CMake against the Alchemy SDK. See its [README](daisy_chaos/README.md) and [docs/SECRET.md](docs/SECRET.md)
 
 ## Shared code
 
 - `common/multiosc_core/` – host/framework for `daisy_multiosc`: the `Engine` interface, boot chooser, B7 gestures (short = cycle, long = Play/Edit), soft-takeover, and the OLED legend. See its [README](common/multiosc_core/README.md).
 - `common/multifx_core/` – portable, DaisySP-only MultiFX DSP/UI core (reverb, delay, tone and misc effect banks, output voicing, and a Bank/Patch navigation model) shared by `daisy_multifx_oled` (and its homebrew Daisy Seed variant), and intended for reuse on other Daisy boards. See its [README](common/multifx_core/README.md).
+- `common/chaos_core/` – platform-independent chaotic-attractor DSP (`<math.h>` only): the `ChaosBase` interface, six RK4 attractors, the `Voice` renderer, and host tools (`characterise`, `periodmap`, `pitchmap`). Moved here from `eurorack_modules`. See its [README](common/chaos_core/README.md).
 - `common/voct_cal.h` + `common/joy_dsp.h` – shared by **Joy** and **Joy Lite**: the two-point V/Oct calibration math, and the envelope + fixed-point DSP helpers. Only each build's front-end (OLED navigator vs screenless LED/toggle) differs.
 - `common/` also holds the shared `oled_soft_i2c` SSD1306 driver used by the OLED projects.
 - `common/tools/` – host-side **panel checks** (`make check`): builds the real OLED driver and the real legend/menu layout with a PC compiler and asserts nothing falls off the 64x48 screen. The panel fails silently — a row one pixel too low draws nothing at all — so this catches layout bugs without a bench cycle. See its [README](common/tools/README.md).
@@ -119,7 +121,7 @@ the ports here are community works and are not official or endorsed.
 | `daisy_interval_osc` (**INTVL**) – IntervalOsc patch + the DSP behind the multiosc engine | Nick Donaldson ([ndonald2/DaisyPatches](https://github.com/ndonald2/DaisyPatches)), after Electrosmith DaisyExamples | MIT ([notice](daisy_interval_osc/LICENSE-daisypatches.txt)) |
 | `daisy_bytebeat` (**BYTEBEAT**) – bytebeat engine, formula bank, Tone macro | Steven Collins (Keeos.io, [`ogham`](https://github.com/keeos-io/ogham)) | MIT ([notice](daisy_bytebeat/LICENSE-ogham.txt)) |
 | `daisy_grids` (**Sorrow**) – Grids pattern generator | Émilie Gillet (Mutable Instruments) | **GPL-3.0-or-later** |
-| `daisy_multiosc` (host + SCAN engine), `daisy_scanned`, `daisy_fm4op`, `daisy_multifx_*`, `common/`, integration and the ports of the above | David Baghurst | MIT |
+| `daisy_multiosc` (host + SCAN engine), `daisy_scanned`, `daisy_fm4op`, `daisy_multifx_*`, `daisy_chaos`, `common/`, integration and the ports of the above | David Baghurst | MIT |
 
 Notes:
 
