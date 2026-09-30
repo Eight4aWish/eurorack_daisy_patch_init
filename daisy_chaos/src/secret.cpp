@@ -13,21 +13,22 @@
 // the attractor's state. The rings show the knobs, CV included.
 //
 //   P1 TUNE   27.5-880 Hz, exponential; + V/OCT (J3)
-//   P2 CHAOS  the bifurcation parameter; + CV (J4)
+//   P2 CHAOS  the bifurcation parameter; + CV (J5)
 //   P3 CHAR   the secondary parameter
-//   P4 TAME   free chaos (0) to a locked note (1); + CV (J5)
+//   P4 TAME   free chaos (0) to a locked note (1); + CV (J6)
 //   P5 AD     envelope attack + decay
 //   P6 SR     envelope sustain + release
 //
 //   B1        model: Rossler, Van der Pol, Lorenz, Chua, Duffing, Coupled Rossler
-//   B2        envelope: Drone (VCA open) or Gated by J6
+//   B2        envelope: Drone (VCA open) or Gated by J4
 //   B3        TAME mode: Auto, Force, Sync (Auto = the model's own choice)
 //
-//   J3 V/OCT in   J4 CHAOS CV in   J5 TAME CV in   J6 GATE in
+//   J3 V/OCT in   J4 GATE in       J5 CHAOS CV in  J6 TAME CV in
 //   J7 X CV out   J8 Y CV out      J9 L (X) audio  J10 R (Y) audio
 //
-// A rising edge on GATE re-seeds the attractor, as on the Teensy: the transient
-// back onto the attractor is the percussive part of a hit.
+// In Gated mode a rising edge on GATE re-seeds the attractor, as on the Teensy:
+// the transient back onto the attractor is the percussive part of a hit. Drone
+// ignores GATE entirely.
 //
 // Boot gestures belong to the board, not this firmware: hold B3 at power-on for
 // DFU (flashing), B1 + B2 for the factory CV calibration.
@@ -56,10 +57,12 @@ static_assert(std::is_same_v<AlchemyLab, AlchemyLabV2>,
               "Secret needs the Alchemy Lab V2 (-DALCHEMY_BOARD_V2)");
 
 /* ── Jacks: indices into hw.cv[] / hw.cv_jacks[], which start at J3 ─────── */
+// V/OCT and GATE side by side, the pair a sequencer drives; then the two
+// modulation inputs in knob order.
 static constexpr uint8_t kJackVoct  = 0;   // J3
-static constexpr uint8_t kJackChaos = 1;   // J4
-static constexpr uint8_t kJackTame  = 2;   // J5
-static constexpr uint8_t kJackGate  = 3;   // J6
+static constexpr uint8_t kJackGate  = 1;   // J4
+static constexpr uint8_t kJackChaos = 2;   // J5
+static constexpr uint8_t kJackTame  = 3;   // J6
 static constexpr uint8_t kJackX     = 4;   // J7, STM32 DAC: fast
 static constexpr uint8_t kJackY     = 5;   // J8, STM32 DAC: fast
 
@@ -196,8 +199,13 @@ static uint32_t s_retrig   = 0;
 
 static void Poll(uint32_t /*t_ms*/)
 {
-    const float g = hw.cv_jacks[kJackGate].Volts();
-    if (!s_gateHigh && g > kGateOn)       { s_gateHigh = true; ++s_retrig; }
+    // Only Gated re-seeds on a GATE edge, where the envelope's attack starts from
+    // silence at the same instant and hides the jump. In Drone the gate has no
+    // job -- the envelope ignores it -- and a re-seed with the VCA open was a
+    // click on every sequenced note.
+    const bool  gated = s_env != 0;
+    const float g     = hw.cv_jacks[kJackGate].Volts();
+    if (!s_gateHigh && g > kGateOn)       { s_gateHigh = true; if (gated) ++s_retrig; }
     else if (s_gateHigh && g < kGateOff)  { s_gateHigh = false; }
 
     const uint8_t model = s_model < N_ALGOS ? s_model : 0;

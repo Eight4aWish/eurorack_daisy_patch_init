@@ -76,16 +76,16 @@ and one can live in Settings if it's missed.
 | J1 | **EXT DRIVE**: audio into a forced system | AC coupling is fine for audio |
 | J2 | **SYNC** in (edge-triggered reset) | AC coupling passes edges |
 | J3 | **V/OCT** | 16-bit in; calibrate per unit |
-| J4 | CHAOS CV | |
-| J5 | CHAR or TAME CV, via `CvRouter` | |
-| J6 | **GATE** | DC path needed for a held gate |
+| J4 | **GATE** | DC path needed for a held gate. Next to V/OCT: the pair a sequencer drives (moved from J6 after the first bench session) |
+| J5 | CHAOS CV | |
+| J6 | CHAR or TAME CV, via `CvRouter` | |
 | J7 / J8 | **X / Y CV out** | fast STM32 DAC: audio-rate CV |
 | J9 / J10 | audio L / R | 24-bit DC-coupled |
 
 Every jack is used. J1 and J2 get jobs because AC coupling is harmless for audio
 and for edges. The Teensy build had nothing like EXT DRIVE: an external signal as
 the forcing term of Duffing, Ueda or forced Van der Pol turns the module into a
-chaotic resonator. Check `CvRouter` before hard-coding J5; it may make CHAR CV and
+chaotic resonator. Check `CvRouter` before hard-coding J6; it may make CHAR CV and
 TAME CV both routable for free.
 
 ## 2. Taming for pitch: what Ogham does, and what chaos needs
@@ -360,7 +360,7 @@ the Teensy's OLED phase plot, and at a much larger size.
 - **Colour wants a third variable.** A 3-D attractor on an X/Y scope loses z;
   putting z on `in3` gives the missing depth. Every jack is currently allocated,
   but on V2 any of J3–J6 can be an output. So a "scope" setting could turn one
-  input (J5, the CHAR/TAME CV) into a Z out. Decide once there's hardware.
+  input (J6, the CHAR/TAME CV) into a Z out. Decide once there's hardware.
 - **The scope is also a tuning aid.** A locked pitch draws a stationary closed
   figure, and slips show as the figure precessing. A sync reset draws a jump,
   which is the crossfade's job to hide.
@@ -372,9 +372,9 @@ the Teensy's OLED phase plot, and at a much larger size.
    `pitchmap` before it gets a slot.
 2. **TAME in `Voice`. Done**, and measured by `tametest`: see section 2. Next is
    listening to the `tamerender` WAVs and settling the two ear questions there.
-3. **Alchemy platform layer. Built, not yet flashed**
+3. **Alchemy platform layer. Flashed 2026-09-30**
    ([`daisy_chaos/`](../daisy_chaos/)): audio at 48 kHz / 24-sample blocks, the
-   six pots, V/Oct on J3, CHAOS and TAME CV, gate on J6, X/Y CV out on J7/J8,
+   six pots, V/Oct on J3, gate on J4, CHAOS and TAME CV on J5/J6, X/Y CV out on J7/J8,
    model / envelope / TAME-mode on B1–B3, and a load governor. Next is the bench
    checklist in its README, which includes the TAME listening tests.
 4. **Banks B and D.** Forced and delay systems give the biggest pitch-tracking

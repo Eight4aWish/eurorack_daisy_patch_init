@@ -1,7 +1,11 @@
 # daisy_chaos: Secret
 
-> **Status: first firmware, builds, not yet run on hardware.** The plan and the
-> measurements behind it are in [`docs/SECRET.md`](../docs/SECRET.md).
+> **Status: running on the Alchemy Lab since 2026-09-30.** First bench session:
+> sound and the gated envelope work. GATE moved from J6 to J4, and Drone now
+> ignores GATE, because its re-seed clicked on every sequenced note. The TAME
+> listening tests, V/Oct accuracy and the scope check (steps 3, 4 and 6 below)
+> are still to do. The plan and the measurements behind it are in
+> [`docs/SECRET.md`](../docs/SECRET.md).
 
 A chaotic oscillator for the **Hermetic Modular Alchemy Lab (V2)**. It runs
 continuous strange attractors as audio, with V/Oct, and a **TAME** control that
@@ -17,21 +21,21 @@ firmware is frozen and whose hardware will be repurposed.
 | Control | Job |
 | --- | --- |
 | P1 **TUNE** | 27.5–880 Hz, exponential; plus V/OCT on J3 |
-| P2 **CHAOS** | the bifurcation parameter; plus CV on J4 |
+| P2 **CHAOS** | the bifurcation parameter; plus CV on J5 |
 | P3 **CHAR** | the secondary parameter |
-| P4 **TAME** | free chaos (0) to a locked note (1); plus CV on J5 |
+| P4 **TAME** | free chaos (0) to a locked note (1); plus CV on J6 |
 | P5 **AD** | envelope attack + decay |
 | P6 **SR** | envelope sustain + release |
 | B1 | model: Rössler, Van der Pol, Lorenz, Chua, Duffing, Coupled Rössler |
-| B2 | envelope: Drone (VCA open) or Gated by J6 |
+| B2 | envelope: Drone (VCA open) or Gated by J4 |
 | B3 | TAME mode: Auto, Force, Sync (Auto is the model's own choice) |
 
 | Jack | Job |
 | --- | --- |
 | J3 | V/OCT in |
-| J4 | CHAOS CV in |
-| J5 | TAME CV in |
-| J6 | GATE in: a rising edge re-seeds the attractor, as on the Teensy |
+| J4 | GATE in, above +1.2 V. In Gated mode a rising edge opens the envelope and re-seeds the attractor, as on the Teensy. Drone ignores it: a re-seed with the VCA open clicks |
+| J5 | CHAOS CV in |
+| J6 | TAME CV in |
 | J7 / J8 | X / Y CV out: the raw attractor, for a scope (Tiliqua `xbeam`) |
 | J9 / J10 | audio L (X) / R (Y) |
 
@@ -88,7 +92,7 @@ In order, so a failure points at one thing:
    from a quantiser (Scales) and check octaves. TUNE trims the offset. If
    octaves come out consistently stretched or squeezed, that's the input gain,
    and the reason for the calibration below.
-5. **Gate.** B2 to Gated, a clock or gate into J6, AD and SR to taste.
+5. **Gate.** B2 to Gated, a clock or gate into J4, AD and SR to taste.
 6. **Scope.** J7/J8 into Tiliqua's `xbeam` as X/Y.
 
 The Seed's own LED lights if the load governor ever holds the pitch back. It may
