@@ -281,6 +281,29 @@ of sync, so they can join the oscillator suite and don't need a percussion mode.
 Mandelbrot/Julia and cellular automata stay out: their pitch comes from orbit
 length, which V/Oct can't set.
 
+### What's already in Eurorack, and where Secret differs
+
+A quick check (web search 2026-09-30, not exhaustive) found the shipping six are
+largely covered already:
+
+- **Lorenz and Rössler** are CV generators in Ornament & Crime (the Low-rents
+  app, and Hemisphere's Lorenz applet). The O&C in the rack runs Phazerville, so
+  these may already be in the rack.
+- **Double scroll (Chua family)** is Joranalogue **Orbit 3**, an analogue
+  double-scroll oscillator with calibrated pitch tracking, 2.4 mHz–22 kHz.
+  It's the benchmark for a pitched scroll.
+- **Jerk circuits** are NLC's **Sloth** family, but as slow CV only, with orbits
+  of seconds to minutes.
+- VCV Rack has software versions of most of the named attractors. That isn't
+  hardware, but it means the equations themselves are well known.
+
+No hardware turned up for the **driven** systems (Duffing, Ueda, forced Van der
+Pol, driven pendulum), the **delay** systems (Mackey–Glass, chaotic
+Karplus–Strong), the circle map, Hindmarsh–Rose, or the less famous flows
+(Arneodo, Moore–Spiegel, Rabinovich–Fabrikant, Shimizu–Morioka). So Secret's
+distinctive parts are Banks B and D, EXT DRIVE, and TAME across every model.
+Bank A and C's classics are table stakes; they don't set it apart.
+
 ### A first 16, in four banks
 
 The V2 doc sets 16 as the ceiling (`DrawSlotIndicator`). One bank per family, so
@@ -292,6 +315,30 @@ B1 + a ring picks the family and the TAME behaviour is predictable within a bank
 | **B: Driven** (drive-tamed) | Duffing, Forced Van der Pol, Ueda, Driven pendulum |
 | **C: Scroll** (sync-tamed) | Lorenz, Chua, Lü, Thomas |
 | **D: Locked** (exact) | Mackey–Glass, Chaotic Karplus–Strong, Circle map, Hindmarsh–Rose |
+
+## Visualising on Tiliqua
+
+Tiliqua's **`xbeam`** bitstream is a vectorscope: `in0` = X, `in1` = Y,
+`in2` = intensity, `in3` = colour, with per-channel scale and offset. It replaces
+the Teensy's OLED phase plot, and at a much larger size.
+
+- **Patch J7/J8 (X/Y CV out) to scope X/Y, not the audio outs.** J9/J10 have been
+  through the output chain: a `tanh` soft-limiter flattens the lobes, the 4.9 Hz
+  DC blocker skews the shape at slow rates, and the envelope scales it. J7/J8
+  carry raw state times `cvScaleX/Y`, at audio rate on the fast DAC, so they show
+  the true attractor. 12 bits is plenty for a picture.
+- **What each model draws** (current `getX()`/`getY()` pairs): Rössler x–y, the
+  spiral. Lorenz x vs z−ρ, the butterfly. Chua x–z, the double scroll. Van der
+  Pol x–y, a limit cycle. Duffing x–ẋ. Coupled Rössler is the exception: x₁ vs x₂
+  is two oscillators against each other, so it draws a Lissajous figure that
+  beats towards a diagonal as they sync, not an attractor.
+- **Colour wants a third variable.** A 3-D attractor on an X/Y scope loses z;
+  putting z on `in3` gives the missing depth. Every jack is currently allocated,
+  but on V2 any of J3–J6 can be an output. So a "scope" setting could turn one
+  input (J5, the CHAR/TAME CV) into a Z out. Decide once there's hardware.
+- **The scope is also a tuning aid.** A locked pitch draws a stationary closed
+  figure, and slips show as the figure precessing. A sync reset draws a jump,
+  which is the crossfade's job to hide.
 
 ## 4. Order of work
 
