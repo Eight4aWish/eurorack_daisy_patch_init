@@ -22,9 +22,29 @@ namespace chaos_core {
         float stepsPerSample = 1.0f;
     };
 
+    // Natural rotation frequency over the CHAOS x CHAR plane, measured on the host
+    // by tools/pitchmap.cpp and emitted into PitchTables.h. f[] is row-major,
+    // `rows` CHAOS values from cLo to cHi by `cols` CHAR values from hLo to hHi, in
+    // cycles per unit of simulated time. refCentre/refAmp describe X (mean, and
+    // sqrt(2) x standard deviation), so a reference cosine can sit where X swings.
+    struct PitchGrid {
+        int   rows, cols;
+        float cLo, cHi, hLo, hHi;
+        const float* f;
+        float refCentre, refAmp;
+    };
+
+    // How TAME pulls a voice onto the requested pitch (docs/SECRET.md, section 2).
+    enum PitchClass : unsigned char {
+        PITCH_COHERENT,     // rotation rate barely moves: scale + drive
+        PITCH_FORCED,       // locked to an internal drive: scale by that drive + drive
+        PITCH_INCOHERENT    // no stable rotation: scale + Ogham-style sync
+    };
+
     // ─── ChaosBase ────────────────────────────────────────────────────────────────
     // Abstract base for all chaotic algorithms. Subclasses populate metadata fields
-    // in their constructors and implement the four pure-virtual methods.
+    // in their constructors and implement the pure-virtual methods: init,
+    // setParams, stepSample, getX, getY, and saveState/loadState for TAME's sync.
     class ChaosBase {
     public:
         const char* name       = "?";
@@ -111,8 +131,16 @@ namespace chaos_core {
         // it the step is held at dtBase and the extra time is bought with more
         // steps, which is what keeps stiff systems bounded under V/Oct.
         StepSchedule scheduleFor(float simRate, float sampleRate) const {
+            return scheduleFor(simRate, sampleRate, dtBase);
+        }
+
+        // As above, with the step held to `maxDt` rather than dtBase: stableDt(),
+        // where the safe step depends on a parameter. Identical arithmetic when
+        // maxDt == dtBase.
+        StepSchedule scheduleFor(float simRate, float sampleRate, float maxDt) const {
             StepSchedule s;
             if (!(sampleRate > 0.0f)) return s;              // false for NaN too
+            if (!(maxDt > 0.0f) || maxDt > dtBase) maxDt = dtBase;
 
             // The CPU ceiling is per second, so how many steps that allows per
             // sample falls as the sample rate rises — which is correct: a higher
@@ -120,13 +148,75 @@ namespace chaos_core {
             const float maxSteps = maxStepsPerSecond / sampleRate;
 
             float desiredDt = simRate / sampleRate;
-            const float hi  = dtBase * (maxSteps > 1.0f ? maxSteps : 1.0f);
+            const float hi  = maxDt * (maxSteps > 1.0f ? maxSteps : 1.0f);
             if (!(desiredDt > 1.0e-5f)) desiredDt = 1.0e-5f;  // false for NaN too
             else if (desiredDt > hi)    desiredDt = hi;
 
-            if (desiredDt <= dtBase) { s.stepDt = desiredDt; s.stepsPerSample = 1.0f; }
-            else                     { s.stepDt = dtBase;    s.stepsPerSample = desiredDt / dtBase; }
+            if (desiredDt <= maxDt) { s.stepDt = desiredDt; s.stepsPerSample = 1.0f; }
+            else                    { s.stepDt = maxDt;     s.stepsPerSample = desiredDt / maxDt; }
             return s;
+        }
+
+        // ─── Pitch and TAME ───────────────────────────────────────────────────
+        //
+        // Voice::setPitch() plays a note in Hz rather than a simulated-time rate:
+        // simRate = hz / naturalFreq(), so the attractor's own rotation lands on
+        // the note. How exactly it lands, and how TAME tightens it, is per class.
+        PitchClass       pitchClass  = PITCH_COHERENT;
+        const PitchGrid* pitchGrid   = nullptr;   // set from PitchTables.h
+        float            fNatDefault = 0.16f;     // cycles per sim time, if no grid
+
+        // Largest numerically safe step at these parameters. dtBase unless the
+        // system's stiffness moves with a parameter, as Van der Pol's does with mu.
+        virtual float stableDt(float chaos, float charV) const {
+            (void)chaos; (void)charV; return dtBase;
+        }
+
+        // Natural rotation frequency, in cycles per unit of simulated time:
+        // bilinear in the measured grid, clamped at its edges (MOD CV can push
+        // CHAOS past the pot range the grid covers).
+        virtual float naturalFreq(float chaos, float charV) const {
+            const PitchGrid* g = pitchGrid;
+            if (!g || g->rows < 2 || g->cols < 2) return fNatDefault;
+            float u = (chaos - g->cLo) / (g->cHi - g->cLo) * (float)(g->rows - 1);
+            float v = (charV - g->hLo) / (g->hHi - g->hLo) * (float)(g->cols - 1);
+            if (!(u > 0.0f)) u = 0.0f; else if (u > (float)(g->rows - 1)) u = (float)(g->rows - 1);
+            if (!(v > 0.0f)) v = 0.0f; else if (v > (float)(g->cols - 1)) v = (float)(g->cols - 1);
+            int i = (int)u; if (i > g->rows - 2) i = g->rows - 2;
+            int j = (int)v; if (j > g->cols - 2) j = g->cols - 2;
+            const float fu = u - (float)i, fv = v - (float)j;
+            const float* r0 = g->f + i * g->cols;
+            const float* r1 = r0 + g->cols;
+            const float a = r0[j] + (r0[j + 1] - r0[j]) * fv;
+            const float b = r1[j] + (r1[j + 1] - r1[j]) * fv;
+            return a + (b - a) * fu;
+        }
+        float refCentre() const { return pitchGrid ? pitchGrid->refCentre : 0.0f; }
+        float refAmp()    const { return pitchGrid ? pitchGrid->refAmp    : 1.0f; }
+
+        // TAME's drive, written by Voice before every step: a cosine at the note,
+        // sampled at the start (D0), middle (DH) and end (D1) of the step so RK4
+        // sees it as the smooth forcing it is. Each algorithm adds it to dx.
+        //
+        // Pure forcing, not diffusive coupling. K(ref - x) was tried first, and
+        // its -Kx half is extra damping on X: it changed the system it was meant
+        // to entrain, pulling Rossler up to 160 cents flat before it locked.
+        // Forcing leaves the autonomous dynamics alone and only pulls. Zero leaves
+        // every trajectory bit-identical to an unforced one.
+        float tameD0 = 0.0f, tameDH = 0.0f, tameD1 = 0.0f;
+
+        // State access for TAME's sync: a snapshot on the attractor is taken
+        // once, then the state is pulled back to it every cycle.
+        static constexpr int kMaxState = 8;
+        virtual int  saveState(float* s) const = 0;   // returns the count written
+        virtual void loadState(const float* s) = 0;
+        // Move `w` of the way from the current state to `snap` (w = 1 is a full
+        // re-seed). Override where a state variable is an angle.
+        virtual void blendState(const float* snap, float w) {
+            float s[kMaxState];
+            const int n = saveState(s);
+            for (int i = 0; i < n; i++) s[i] += w * (snap[i] - s[i]);
+            loadState(s);
         }
 
         virtual ~ChaosBase() {}

@@ -5,6 +5,7 @@
 // platform layer reads those rather than hard-coding any of it.
 
 #include "chaos_core/ChaosBase.h"
+#include "chaos_core/PitchTables.h"
 
 namespace chaos_core {
 
@@ -32,21 +33,26 @@ namespace chaos_core {
             xMin       = -11.0f; xRange   = 24.0f;
             yMin       = -11.0f; yRange   = 22.0f;
             cvScaleX   = 0.50f;  cvScaleY = 0.50f;
+            pitchClass = PITCH_COHERENT;   // f_nat 0.175-0.179 along CHAOS at mid CHAR
+            pitchGrid  = &kPitchGrid_ROSSLER;
         }
         void init() override { x_ = 0.1f; y_ = 0.0f; z_ = 0.0f; }
+        int  saveState(float* s) const override { s[0] = x_; s[1] = y_; s[2] = z_; return 3; }
+        void loadState(const float* s) override { x_ = s[0]; y_ = s[1]; z_ = s[2]; }
         void setParams(float chaos, float rate, float charV) override {
             c_ = chaos; dt_ = rate; a_ = charV;
         }
         void stepSample() override {
-            float dx1 = -y_ - z_;
+            const float D0 = tameD0, DH = tameDH, D1 = tameD1;
+            float dx1 = -y_ - z_ + D0;
             float dy1 = x_ + a_*y_;
             float dz1 = b_ + z_*(x_ - c_);
             float x2 = x_ + 0.5f*dt_*dx1, y2 = y_ + 0.5f*dt_*dy1, z2 = z_ + 0.5f*dt_*dz1;
-            float dx2 = -y2 - z2, dy2 = x2 + a_*y2, dz2 = b_ + z2*(x2 - c_);
+            float dx2 = -y2 - z2 + DH, dy2 = x2 + a_*y2, dz2 = b_ + z2*(x2 - c_);
             float x3 = x_ + 0.5f*dt_*dx2, y3 = y_ + 0.5f*dt_*dy2, z3 = z_ + 0.5f*dt_*dz2;
-            float dx3 = -y3 - z3, dy3 = x3 + a_*y3, dz3 = b_ + z3*(x3 - c_);
+            float dx3 = -y3 - z3 + DH, dy3 = x3 + a_*y3, dz3 = b_ + z3*(x3 - c_);
             float x4 = x_ + dt_*dx3, y4 = y_ + dt_*dy3, z4 = z_ + dt_*dz3;
-            float dx4 = -y4 - z4, dy4 = x4 + a_*y4, dz4 = b_ + z4*(x4 - c_);
+            float dx4 = -y4 - z4 + D1, dy4 = x4 + a_*y4, dz4 = b_ + z4*(x4 - c_);
             x_ += dt_/6.0f*(dx1 + 2*dx2 + 2*dx3 + dx4);
             y_ += dt_/6.0f*(dy1 + 2*dy2 + 2*dy3 + dy4);
             z_ += dt_/6.0f*(dz1 + 2*dz2 + 2*dz3 + dz4);
@@ -81,8 +87,24 @@ namespace chaos_core {
             xMin       = -3.0f;  xRange   = 6.0f;
             yMin       = -8.0f;  yRange   = 16.0f;
             cvScaleX   = 2.00f;  cvScaleY = 0.60f;
+            // Periodic, but its frequency falls 1.35 octaves across mu: the grid
+            // is what keeps it in tune. TAME's drive makes it a forced Van der
+            // Pol, but at FORCE's 5% it simply locks: the forced system's chaos
+            // needs a far stronger drive, which is a job for its dead CHAR.
+            pitchClass = PITCH_COHERENT;
+            pitchGrid  = &kPitchGrid_VAN_DER_POL;
         }
         void init() override { x_ = 2.0f; y_ = 0.0f; }
+        int  saveState(float* s) const override { s[0] = x_; s[1] = y_; return 2; }
+        void loadState(const float* s) override { x_ = s[0]; y_ = s[1]; }
+        // The clamp setParams() applies, exposed so the scheduler plans with it.
+        // Left hidden, it made the voice run flat at high mu: the schedule asked
+        // for more simulated time per step than setParams() then allowed.
+        float stableDt(float chaos, float charV) const override {
+            (void)charV;
+            const float d = chaos + 2.0f;
+            return (d > 0.0f) ? fminf(dtBase, 1.0f / d) : dtBase;
+        }
         void setParams(float chaos, float rate, float charV) override {
             mu_ = chaos;
             // Cap dt for numerical stability: VdP stiffness ∝ mu; RK4 diverges if dt*mu too large
@@ -90,14 +112,15 @@ namespace chaos_core {
             (void)charV;
         }
         void stepSample() override {
-            float dx1 = y_;
+            const float D0 = tameD0, DH = tameDH, D1 = tameD1;
+            float dx1 = y_ + D0;
             float dy1 = mu_*(1.0f - x_*x_)*y_ - x_;
             float x2 = x_ + 0.5f*dt_*dx1, y2 = y_ + 0.5f*dt_*dy1;
-            float dx2 = y2, dy2 = mu_*(1.0f - x2*x2)*y2 - x2;
+            float dx2 = y2 + DH, dy2 = mu_*(1.0f - x2*x2)*y2 - x2;
             float x3 = x_ + 0.5f*dt_*dx2, y3 = y_ + 0.5f*dt_*dy2;
-            float dx3 = y3, dy3 = mu_*(1.0f - x3*x3)*y3 - x3;
+            float dx3 = y3 + DH, dy3 = mu_*(1.0f - x3*x3)*y3 - x3;
             float x4 = x_ + dt_*dx3, y4 = y_ + dt_*dy3;
-            float dx4 = y4, dy4 = mu_*(1.0f - x4*x4)*y4 - x4;
+            float dx4 = y4 + D1, dy4 = mu_*(1.0f - x4*x4)*y4 - x4;
             x_ += dt_/6.0f*(dx1 + 2*dx2 + 2*dx3 + dx4);
             y_ += dt_/6.0f*(dy1 + 2*dy2 + 2*dy3 + dy4);
             if (diverged(x_) || nonFinite(y_)) init();
@@ -161,21 +184,29 @@ namespace chaos_core {
             xMin       = -58.0f; xRange   = 116.0f;
             yMin       = -120.0f; yRange  = 235.0f;  // z-rho, measured -118.7..+112.9
             cvScaleX   = 0.085f; cvScaleY = 0.041f;  // full state -> +/-4.9 V, was set for rho<=32
+            // Lobe switching has no steady rate outside the periodic windows, so
+            // TAME defaults to sync. The grid (X crossings, i.e. lobe switches)
+            // only sets how much trajectory fits in one cycle.
+            pitchClass = PITCH_INCOHERENT;
+            pitchGrid  = &kPitchGrid_LORENZ;
         }
         void init() override { x_ = 0.1f; y_ = 0.0f; z_ = 0.0f; }
+        int  saveState(float* s) const override { s[0] = x_; s[1] = y_; s[2] = z_; return 3; }
+        void loadState(const float* s) override { x_ = s[0]; y_ = s[1]; z_ = s[2]; }
         void setParams(float chaos, float rate, float charV) override {
             rho_ = chaos; dt_ = rate; sigma_ = charV;
         }
         void stepSample() override {
-            float dx1 = sigma_*(y_ - x_);
+            const float D0 = tameD0, DH = tameDH, D1 = tameD1;
+            float dx1 = sigma_*(y_ - x_) + D0;
             float dy1 = x_*(rho_ - z_) - y_;
             float dz1 = x_*y_ - beta_*z_;
             float x2 = x_ + 0.5f*dt_*dx1, y2 = y_ + 0.5f*dt_*dy1, z2 = z_ + 0.5f*dt_*dz1;
-            float dx2 = sigma_*(y2-x2), dy2 = x2*(rho_-z2)-y2, dz2 = x2*y2-beta_*z2;
+            float dx2 = sigma_*(y2-x2) + DH, dy2 = x2*(rho_-z2)-y2, dz2 = x2*y2-beta_*z2;
             float x3 = x_ + 0.5f*dt_*dx2, y3 = y_ + 0.5f*dt_*dy2, z3 = z_ + 0.5f*dt_*dz2;
-            float dx3 = sigma_*(y3-x3), dy3 = x3*(rho_-z3)-y3, dz3 = x3*y3-beta_*z3;
+            float dx3 = sigma_*(y3-x3) + DH, dy3 = x3*(rho_-z3)-y3, dz3 = x3*y3-beta_*z3;
             float x4 = x_ + dt_*dx3, y4 = y_ + dt_*dy3, z4 = z_ + dt_*dz3;
-            float dx4 = sigma_*(y4-x4), dy4 = x4*(rho_-z4)-y4, dz4 = x4*y4-beta_*z4;
+            float dx4 = sigma_*(y4-x4) + D1, dy4 = x4*(rho_-z4)-y4, dz4 = x4*y4-beta_*z4;
             x_ += dt_/6.0f*(dx1 + 2*dx2 + 2*dx3 + dx4);
             y_ += dt_/6.0f*(dy1 + 2*dy2 + 2*dy3 + dy4);
             z_ += dt_/6.0f*(dz1 + 2*dz2 + 2*dz3 + dz4);
@@ -212,8 +243,12 @@ namespace chaos_core {
             xMin       = -5.0f;  xRange   = 10.0f;
             yMin       = -6.0f;  yRange   = 12.0f;  // z axis for phase plot
             cvScaleX   = 1.30f;  cvScaleY = 1.00f;
+            pitchClass = PITCH_INCOHERENT;   // scroll switching, like Lorenz: sync
+            pitchGrid  = &kPitchGrid_CHUA;
         }
         void init() override { x_ = 0.5f; y_ = 0.0f; z_ = 0.0f; }
+        int  saveState(float* s) const override { s[0] = x_; s[1] = y_; s[2] = z_; return 3; }
+        void loadState(const float* s) override { x_ = s[0]; y_ = s[1]; z_ = s[2]; }
         // Chua's unbounded region sits *inside* its own pot range: above a~9.25
         // the attractor only stays bounded while b clears a floor that rises with
         // a (measured at dtBase: b >= 12.0 + 1.6*(a - 9.25)). Deliberately NOT
@@ -227,17 +262,18 @@ namespace chaos_core {
             alpha_ = chaos; dt_ = rate; beta_ = charV;
         }
         void stepSample() override {
+            const float D0 = tameD0, DH = tameDH, D1 = tameD1;
             float h1 = chuaF(x_);
-            float dx1 = alpha_*(y_ - x_ - h1),  dy1 = x_ - y_ + z_,  dz1 = -beta_*y_;
+            float dx1 = alpha_*(y_ - x_ - h1) + D0,  dy1 = x_ - y_ + z_,  dz1 = -beta_*y_;
             float x2 = x_+0.5f*dt_*dx1, y2 = y_+0.5f*dt_*dy1, z2 = z_+0.5f*dt_*dz1;
             float h2 = chuaF(x2);
-            float dx2 = alpha_*(y2 - x2 - h2), dy2 = x2 - y2 + z2, dz2 = -beta_*y2;
+            float dx2 = alpha_*(y2 - x2 - h2) + DH, dy2 = x2 - y2 + z2, dz2 = -beta_*y2;
             float x3 = x_+0.5f*dt_*dx2, y3 = y_+0.5f*dt_*dy2, z3 = z_+0.5f*dt_*dz2;
             float h3 = chuaF(x3);
-            float dx3 = alpha_*(y3 - x3 - h3), dy3 = x3 - y3 + z3, dz3 = -beta_*y3;
+            float dx3 = alpha_*(y3 - x3 - h3) + DH, dy3 = x3 - y3 + z3, dz3 = -beta_*y3;
             float x4 = x_+dt_*dx3, y4 = y_+dt_*dy3, z4 = z_+dt_*dz3;
             float h4 = chuaF(x4);
-            float dx4 = alpha_*(y4 - x4 - h4), dy4 = x4 - y4 + z4, dz4 = -beta_*y4;
+            float dx4 = alpha_*(y4 - x4 - h4) + D1, dy4 = x4 - y4 + z4, dz4 = -beta_*y4;
             x_ += dt_/6.0f*(dx1 + 2*dx2 + 2*dx3 + dx4);
             y_ += dt_/6.0f*(dy1 + 2*dy2 + 2*dy3 + dy4);
             z_ += dt_/6.0f*(dz1 + 2*dz2 + 2*dz3 + dz4);
@@ -285,29 +321,53 @@ namespace chaos_core {
             xMin       = -2.0f;  xRange   = 4.0f;
             yMin       = -2.5f;  yRange   = 5.0f;
             cvScaleX   = 3.00f;  cvScaleY = 2.50f;
+            // Locked to its drive, so the pitch is the drive's: omega / 2pi per
+            // unit simulated time, exactly, with no table. The subharmonic
+            // windows (period 3, 5) are then musical intervals below the note,
+            // which is the point -- a measured table would "correct" them away.
+            pitchClass = PITCH_FORCED;
+            pitchGrid  = &kPitchGrid_DUFFING;   // for refAmp only
+        }
+        float naturalFreq(float chaos, float charV) const override {
+            (void)chaos;
+            return charV * 0.15915494f;   // 1 / 2pi
         }
         void init() override { x_ = 1.0f; y_ = 0.0f; phi_ = 0.0f; }
+        int  saveState(float* s) const override { s[0] = x_; s[1] = y_; s[2] = phi_; return 3; }
+        void loadState(const float* s) override { x_ = s[0]; y_ = s[1]; phi_ = s[2]; }
+        // phi is an angle: blend along the short way round, never through pi.
+        void blendState(const float* snap, float w) override {
+            x_ += w * (snap[0] - x_);
+            y_ += w * (snap[1] - y_);
+            float d = snap[2] - phi_;
+            if (d >  3.14159265f) d -= 6.28318531f;
+            if (d < -3.14159265f) d += 6.28318531f;
+            phi_ += w * d;
+            if (phi_ < 0.0f)       phi_ += 6.28318531f;
+            if (phi_ > 6.28318f)   phi_ -= 6.28318531f;
+        }
         void setParams(float chaos, float rate, float charV) override {
             gamma_ = chaos; dt_ = rate; omega_ = charV;
         }
         void stepSample() override {
+            const float D0 = tameD0, DH = tameDH, D1 = tameD1;
             float c1 = cosf(phi_);
-            float dx1 = y_;
+            float dx1 = y_ + D0;
             float dy1 = -delta_*y_ - alpha_*x_ - beta_*x_*x_*x_ + gamma_*c1;
             float x2 = x_+0.5f*dt_*dx1, y2 = y_+0.5f*dt_*dy1;
             float p2 = phi_ + 0.5f*dt_*omega_;
             float c2 = cosf(p2);
-            float dx2 = y2;
+            float dx2 = y2 + DH;
             float dy2 = -delta_*y2 - alpha_*x2 - beta_*x2*x2*x2 + gamma_*c2;
             float x3 = x_+0.5f*dt_*dx2, y3 = y_+0.5f*dt_*dy2;
             // p3 = p2 (midpoint forcing phase is the same for both RK4 k2 and k3 stages)
             float c3 = c2;
-            float dx3 = y3;
+            float dx3 = y3 + DH;
             float dy3 = -delta_*y3 - alpha_*x3 - beta_*x3*x3*x3 + gamma_*c3;
             float x4 = x_+dt_*dx3, y4 = y_+dt_*dy3;
             float p4 = phi_ + dt_*omega_;
             float c4 = cosf(p4);
-            float dx4 = y4;
+            float dx4 = y4 + D1;
             float dy4 = -delta_*y4 - alpha_*x4 - beta_*x4*x4*x4 + gamma_*c4;
             x_   += dt_/6.0f*(dx1 + 2*dx2 + 2*dx3 + dx4);
             y_   += dt_/6.0f*(dy1 + 2*dy2 + 2*dy3 + dy4);
@@ -350,6 +410,18 @@ namespace chaos_core {
             xMin       = -13.0f; xRange   = 26.0f;
             yMin       = -11.0f; yRange   = 22.0f;
             cvScaleX   = 0.45f;  cvScaleY = 0.45f;
+            // TAME drives oscillator 1 (L) only. Oscillator 2 follows through
+            // its own coupling k, so high TAME with low k keeps a wild R against
+            // a tamed L, instead of collapsing the stereo.
+            pitchClass = PITCH_COHERENT;
+            pitchGrid  = &kPitchGrid_CPLROSSLER;
+        }
+        int saveState(float* s) const override {
+            s[0] = x1_; s[1] = y1_; s[2] = z1_; s[3] = x2_; s[4] = y2_; s[5] = z2_;
+            return 6;
+        }
+        void loadState(const float* s) override {
+            x1_ = s[0]; y1_ = s[1]; z1_ = s[2]; x2_ = s[3]; y2_ = s[4]; z2_ = s[5];
         }
         void init() override {
             x1_=0.1f; y1_=0.0f; z1_=0.0f;
@@ -360,6 +432,7 @@ namespace chaos_core {
         }
         void stepSample() override {
             // Derivatives — both oscillators coupled via x
+            const float D0 = tameD0, DH = tameDH, D1 = tameD1;
             auto deriv = [this](float x1, float y1, float z1,
                                 float x2, float y2, float z2,
                                 float& dx, float& dy, float& dz) {
@@ -370,24 +443,28 @@ namespace chaos_core {
             };
             float dx1a, dy1a, dz1a, dx2a, dy2a, dz2a;
             deriv(x1_,y1_,z1_, x2_,y2_,z2_, dx1a,dy1a,dz1a);
+            dx1a += D0;
             deriv(x2_,y2_,z2_, x1_,y1_,z1_, dx2a,dy2a,dz2a);
 
             float x1b=x1_+0.5f*dt_*dx1a, y1b=y1_+0.5f*dt_*dy1a, z1b=z1_+0.5f*dt_*dz1a;
             float x2b=x2_+0.5f*dt_*dx2a, y2b=y2_+0.5f*dt_*dy2a, z2b=z2_+0.5f*dt_*dz2a;
             float dx1b, dy1b, dz1b, dx2b, dy2b, dz2b;
             deriv(x1b,y1b,z1b, x2b,y2b,z2b, dx1b,dy1b,dz1b);
+            dx1b += DH;
             deriv(x2b,y2b,z2b, x1b,y1b,z1b, dx2b,dy2b,dz2b);
 
             float x1c=x1_+0.5f*dt_*dx1b, y1c=y1_+0.5f*dt_*dy1b, z1c=z1_+0.5f*dt_*dz1b;
             float x2c=x2_+0.5f*dt_*dx2b, y2c=y2_+0.5f*dt_*dy2b, z2c=z2_+0.5f*dt_*dz2b;
             float dx1c, dy1c, dz1c, dx2c, dy2c, dz2c;
             deriv(x1c,y1c,z1c, x2c,y2c,z2c, dx1c,dy1c,dz1c);
+            dx1c += DH;
             deriv(x2c,y2c,z2c, x1c,y1c,z1c, dx2c,dy2c,dz2c);
 
             float x1d=x1_+dt_*dx1c, y1d=y1_+dt_*dy1c, z1d=z1_+dt_*dz1c;
             float x2d=x2_+dt_*dx2c, y2d=y2_+dt_*dy2c, z2d=z2_+dt_*dz2c;
             float dx1d, dy1d, dz1d, dx2d, dy2d, dz2d;
             deriv(x1d,y1d,z1d, x2d,y2d,z2d, dx1d,dy1d,dz1d);
+            dx1d += D1;
             deriv(x2d,y2d,z2d, x1d,y1d,z1d, dx2d,dy2d,dz2d);
 
             x1_ += dt_/6.0f*(dx1a + 2*dx1b + 2*dx1c + dx1d);

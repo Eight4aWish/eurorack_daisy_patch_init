@@ -178,29 +178,51 @@ So TAME must not be a correction applied everywhere:
 Lorenz is therefore not simply "incoherent". It has real windows, and sync is
 for the chaotic stretches between them.
 
-### TAME: one control across all three
+### TAME: one control across all three (built and measured, 2026-09-30)
 
-The first version of the TAME pot should be a **single coupling strength `k` to a
-reference oscillator** running at the V/Oct frequency:
+The plan here was a coupling strength `k·(A·cos φ_ref − x)` on every coherent
+system. Building it changed three things. `common/chaos_core/README.md` ("Pitch
+and TAME") has the detail, and `tools/tametest.cpp` holds the numbers.
 
-- Coherent systems: add `k·(A·cos φ_ref − x)` to `dx`. This diffusive coupling
-  pulls the spiral into phase with the reference. As `k` rises you pass through
-  Arnold tongues: phase slips, then intermittent locking, then a hard lock. Scale
-  compensation still sets the base rate, so `k` only has to fix the last few cents.
-- Forced systems: TAME is the drive amplitude, which is the same thing under
-  another name.
-- Incoherent systems: TAME crossfades from free-running (0) to synced every N
-  cycles (1).
+- **Forcing, not diffusive coupling.** The `−k·x` half of diffusive coupling is
+  extra damping, which moved Rössler's own frequency up to 160 cents flat before
+  it locked. A pure drive, `+F·cos φ_ref` on dX, leaves the system alone.
+- **Drive only goes so far.** Up to ~5–7.5% of X's own rate, forced Rössler and
+  Coupled Rössler **phase-lock with their chaos intact**: the crossing rate is
+  exact while the waveform's clarity stays at 0.6–0.85. That's the pitched,
+  gritty middle, and it's a known effect in forced Rössler systems (phase
+  synchronisation of chaos). Past ~10% the drive breaks the lock into period-2
+  and chaos instead of tightening it.
+- **So the knob hands over.** FORCE runs the drive over TAME 0–0.5, then fades
+  in SYNC's per-cycle pull over 0.5–1. Lorenz and Chua don't entrain to forcing
+  at all, as expected, so they use SYNC across the whole knob, with a
+  `1 − (1 − t)²` taper. That puts their pitched-gritty zone (pull ~0.8–0.97,
+  clarity 0.75–0.9 on Chua) around TAME 0.6–0.8.
 
-So one knob goes from "noise" to "note" on every model. That's more playable than
-per-model logic, and it's the continuous version of the choice Ogham makes with a
-switch. B2 overrides the family default where a different mode sounds better.
+Measured at A1–A5 (55–880 Hz), three CHAOS settings each:
+
+| Model | TAME 0 (scale only) | Middle | TAME 1 |
+| --- | --- | --- | --- |
+| Rössler | 0–16 cents (crossing rate), clarity ~0.7 | locked within 0–6 cents, clarity 0.6–0.75 | exact |
+| Coupled Rössler | 0–3 cents, clarity ~0.85 | locked, clarity ~0.85 | exact |
+| Van der Pol | 1–26 cents, periodic | locked from TAME 0.125 | exact |
+| Duffing | on its ÷3 / ÷5 subharmonics, by design | locks from ~0.625 | exact |
+| Lorenz | chaotic; pitch 80–180 cents off | locks from ~0.75, sometimes the octave below at 0.6 | exact |
+| Chua | chaotic | exact pitch at 0.62–0.88, clarity 0.75–0.9 | exact |
+
+One knob goes from "noise" to "note" on every model, and **TAME 0 is the old
+voice**, with its sweet spots. Two ear questions stay open, and the renders exist
+for them (`tools/tamerender.cpp`):
+- whether SYNC's lower half (a jump each cycle into chaos that stays chaotic) is
+  useful grit or just noise;
+- whether FORCE's period-2 band around TAME 0.6 (an octave-down undertone) is a
+  feature.
 
 A later refinement is a **phase-locked loop.** For coherent systems,
 `φ = atan2(y, x)` is a good phase estimate. A PLL that trims the step rate to hold
 φ to the reference gives exact pitch with no coupling term and no reset, leaving
-the amplitude chaos untouched. It's worth trying if the diffusive coupling
-colours the tone too much.
+the amplitude chaos untouched. It's worth trying if the drive colours the tone too
+much.
 
 **FREEZE (B3)** covers the case these don't: capture N cycles of the tamed output
 into a buffer and play it as a wavetable. That's Ogham's decouple/drone applied to
@@ -342,14 +364,11 @@ the Teensy's OLED phase plot, and at a much larger size.
 
 ## 4. Order of work
 
-1. **Host first, no hardware.** `common/chaos_core/tools/pitchmap.cpp` (done)
-   maps `f_nat(chaos, char)` and the jitter per cell. Next, have it emit the
-   compensation table as a header. Every new algorithm gets characterised with
-   `characterise`, `periodmap` and `pitchmap` before it gets a slot.
-2. **TAME in `Voice`**, not in the platform layer, so it stays host-testable and portable:
-   the reference oscillator, the three modes, snapshot re-seed with crossfade. Test
-   it on the host by measuring pitch error in cents against the target across the
-   V/Oct range.
+1. **Host first, no hardware. Done.** `pitchmap --emit` writes `PitchTables.h`.
+   Every new algorithm gets characterised with `characterise`, `periodmap` and
+   `pitchmap` before it gets a slot.
+2. **TAME in `Voice`. Done**, and measured by `tametest`: see section 2. Next is
+   listening to the `tamerender` WAVs and settling the two ear questions there.
 3. **Alchemy platform layer**: audio callback at 48 kHz, J3 V/Oct with
    calibration, gate on J6, the six pots, and a bare selector. Port the six
    shipping algorithms and check on hardware that it sounds the same as the Teensy.

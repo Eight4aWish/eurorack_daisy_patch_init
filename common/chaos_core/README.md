@@ -12,15 +12,24 @@ for the reference consumer.
 
 ## Files
 
-- `include/chaos_core/ChaosBase.h` — abstract base: four pure-virtual methods plus
-  the metadata each algorithm publishes about itself
+- `include/chaos_core/ChaosBase.h`: abstract base, the metadata each algorithm
+  publishes about itself, and the pitch/TAME hooks (`naturalFreq`, `stableDt`,
+  the drive terms, state save/load)
+- `include/chaos_core/Voice.h`: one playable voice: oversampling schedule, TAME,
+  envelope, DC blocking, limiter
+- `include/chaos_core/PitchTables.h`: **generated** by `tools/pitchmap.cpp
+  --emit`; the natural-frequency grids `Voice::setPitch()` tunes with
 - `include/chaos_core/Attractors.h` — the six attractors, RK4 per `stepSample()`
 - `include/chaos_core/Registry.h` / `src/Registry.cpp` — `algos[]` and `N_ALGOS`,
   the shipping set in panel order
 - `tools/characterise.cpp`: bounds, cost and level gains (below)
 - `tools/periodmap.cpp`: where on the CHAOS × CHAR plane the attractor is periodic
-- `tools/pitchmap.cpp`: natural frequency and jitter per point, the input to TAME's
-  scale compensation ([`docs/SECRET.md`](../../docs/SECRET.md))
+- `tools/pitchmap.cpp`: natural frequency and jitter per point; `--emit` writes
+  `PitchTables.h`
+- `tools/tametest.cpp`: plays notes through `setPitch()` and measures them,
+  in cents and clarity, across pitch and TAME; fails unless TAME 1 is strictly
+  periodic at the note
+- `tools/tamerender.cpp`: audition WAVs of TAME sweeps and arpeggios
 
 This library moved here from `eurorack_modules/libs/chaos_core` on 2026-09-30,
 with the Alchemy Lab port (**Secret**, [`daisy_chaos/`](../../daisy_chaos/)). The
@@ -88,6 +97,27 @@ float outL = algo->getX(), outR = algo->getY();
 some algorithms, a stability clamp on `dt`. Swapping the active `ChaosBase*`
 is safe on a core with word-sized atomic pointer stores, but call `init()`
 before making a new one live.
+
+A platform normally drives a `Voice` rather than an attractor directly:
+
+```cpp
+#include "chaos_core/Registry.h"
+#include "chaos_core/Voice.h"
+using namespace chaos_core;
+
+Voice voice;
+voice.setSampleRate(48000.0f);
+voice.setAlgo(algos[0]);                       // Rössler
+
+// control rate (~1 kHz), audio held off across the call
+voice.setPitch(/*chaos*/ 5.6f, /*char*/ 0.23f, /*hz*/ 220.0f, /*tame*/ 0.4f);
+
+// audio callback
+voice.render(outL, outR, blockSize);           // floats, nominally -1..+1
+```
+
+On a gate edge that re-inits the attractor, also call `voice.invalidateSnapshot()`,
+or SYNC will pull the new trajectory straight back to the old one.
 
 ## Divergence guard
 
@@ -183,11 +213,64 @@ twice as permissive as the CPU budget it was measured against. The characterisat
 harness asserts both properties — identity with the old per-sample formula at
 44.1 kHz, and pitch invariance across 44.1 / 48 / 96 kHz.
 
+## Pitch and TAME
+
+`Voice::setPitch(chaos, char, hz, tame)` plays a note in Hz, where `setParams()`
+took a simulated-time rate. The full design and its measurements are in
+[`docs/SECRET.md`](../../docs/SECRET.md); in short:
+
+- **Scale.** The rate is `hz / naturalFreq(chaos, char)`: the attractor's own
+  rotation, measured by `pitchmap` over the whole CHAOS × CHAR plane, lands on the
+  note. That is TAME 0, the free voice. Duffing overrides `naturalFreq` with its
+  drive frequency, ω/2π, so its subharmonic windows stay intervals below the note.
+- **FORCE** (coherent and forced systems). TAME 0–0.5 adds a cosine at the note
+  to dX, up to 5% of X's own rate: free, then phase slips, then **phase-locked
+  chaos**, an exact pitch under a waveform that is still chaotic. TAME 0.5–1 holds
+  the drive and fades in SYNC's pull.
+- **SYNC** (incoherent systems: Lorenz, Chua). A snapshot is taken on the settled
+  attractor, and once per cycle of the note the state is pulled `1 − (1 − TAME)²`
+  of the way back to it. At 1 the voice is strictly periodic.
+
+What the measurements changed along the way, since each is a trap for the next
+edit:
+
+- **Forcing, not diffusive coupling.** `K(ref − x)` was tried first. Its `−Kx`
+  half is extra damping, which changed the system's own frequency, pulling Rössler
+  up to 160 cents flat before it locked. Pure forcing leaves the dynamics alone.
+- **Strong drive does not lock; it breaks.** Past ~10% of X's rate, forced Rössler
+  goes to period 2 and chaos rather than a cleaner lock. That is why the top of the
+  knob hands over to SYNC instead of driving harder.
+- **Snapshot only a settled trajectory.** Taken two cycles after a cold start,
+  before the drive had locked, every pull dragged the phase towards an unlocked
+  point, and Rössler slipped a cycle every ~36: periodic, and 45 cents flat. The
+  capture now waits eight cycles.
+- **Measure lock by zero crossings, not autocorrelation alone.** McLeod's method
+  reads a period-2 waveform (alternating big and small loops) as the octave below.
+  A phase-locked chaotic voice has an exact crossing rate. `tametest` shows both.
+
+`tools/tametest.cpp` holds the current results. At TAME 1 every algorithm is
+strictly periodic at 55–880 Hz (|error| < 5 cents, clarity > 0.97). With TAME off,
+`Voice` is bit-identical to the Teensy build's, trajectories and `setParams()`
+path both, checked against the frozen copy in `eurorack_modules`.
+
+Cost, host x86: FORCE adds ~60% per sample on Rössler (three reference cosines
+per step, against ~90 cycles of RK4). SYNC adds almost nothing. Reusing each
+step's end value as the next one's start would cut FORCE to two cosines.
+
 ## Adding an algorithm
 
 Subclass `ChaosBase` in `Attractors.h`, set the metadata in the constructor
 (including `maxStepsPerSecond`, scaled by the new system's per-step cost), then add
 an instance to `Registry.cpp` and bump `N_ALGOS`. No platform file changes.
+
+For TAME it also needs:
+
+- the drive, `D0` / `DH` / `D1`, added to dX at the four RK4 stages (start, the
+  two midpoints, end), exactly as the existing six do;
+- `saveState` / `loadState`, and `blendState` if a state variable is an angle;
+- a `pitchClass`, a `pitchGrid` from `PitchTables.h`, and `stableDt` if its safe
+  step moves with a parameter;
+- then regenerate the tables, `pitchmap --emit`, and run `tametest`.
 
 The metadata is the expensive part, because most of it can only be arrived at by
 measurement. `tools/characterise.cpp` does that sweep on a host compiler:
