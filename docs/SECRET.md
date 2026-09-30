@@ -27,18 +27,21 @@ live one.
 | Audio in | SGTL5000 line in (unused) | J1/J2, AC-coupled |
 | Pots | 4 (CHAOS, RATE, CHAR, DEPTH), ENV on a second page | **6, each with a 16-LED ring** |
 | Buttons | 1 (short/long press) | 3 + chords |
-| CV in | 4 × ADS1115, **~200 Hz per channel**, I²C, blocks `loop()` | Up to 6 × 16-bit, **audio rate**, ±10 V (~2.7 codes/cent) |
+| CV in | 4 × ADS1115, **~200 Hz per channel**, I²C, blocks `loop()` | Up to 6 × 16-bit, **1 kHz** through the SDK's smoothed `AnalogControl`, ±10 V (~2.7 codes/cent) |
 | CV out | 2 × MCP4822, 12-bit | J7/J8 STM32 DAC, 12-bit, **<1 µs**; J3–J6 MCP4728, ~70 µs |
-| Gate in | via ADS1115, up to 5 ms jitter | any J3–J8 at audio rate (not J1/J2: AC-coupled) |
+| Gate in | via ADS1115, up to 5 ms jitter | any J3–J8, 1 ms (not J1/J2: AC-coupled; those give edges at audio rate) |
 | Display | 128×64 OLED with live **phase plot** | 102 RGB LEDs, no screen |
 | Storage | none used | 16-slot CRC'd preset store, microSD |
 | USB | Serial (USB audio vestigial) | USB-C MIDI |
 | Framework | own (~600 lines) | `alchemy-sdk`, MIT, **beta**: `CvRouter`, `VirtualButton().Selector()`, `Presets` |
 | Status | breadboard/prototype, pins "TBD" | built, in the rack — **V2 hardware** (confirmed) |
 
-**What the port gains:** V/Oct and gates at audio rate instead of 200 Hz (the
-biggest single fix; it enables FM and sample-accurate sync), every control live
-with no page, 24-bit DC-coupled outs, presets, and SDRAM for delay-based systems.
+**What the port gains:** V/Oct and gates at 1 kHz with 1 ms timing instead of
+200 Hz and up to 5 ms (the biggest single fix), every control live with no page,
+24-bit DC-coupled outs, presets, and SDRAM for delay-based systems. *(Corrected
+2026-09-30, from the SDK source: CV is read at the 1 ms control tick, not at
+audio rate as first written here. Audio-rate FM would need to read the ADC
+buffer from the audio callback.)*
 
 **What it loses:** the phase-space plot, the one feature the Teensy has that the
 Lab can't reproduce. The nearest substitute is colour and brightness on the rings
@@ -347,8 +350,8 @@ the Teensy's OLED phase plot, and at a much larger size.
 - **Patch J7/J8 (X/Y CV out) to scope X/Y, not the audio outs.** J9/J10 have been
   through the output chain: a `tanh` soft-limiter flattens the lobes, the 4.9 Hz
   DC blocker skews the shape at slow rates, and the envelope scales it. J7/J8
-  carry raw state times `cvScaleX/Y`, at audio rate on the fast DAC, so they show
-  the true attractor. 12 bits is plenty for a picture.
+  carry raw state times `cvScaleX/Y` on the fast DAC, updated once per audio
+  block (2 kHz), so they show the true attractor. 12 bits is plenty for a picture.
 - **What each model draws** (current `getX()`/`getY()` pairs): Rössler x–y, the
   spiral. Lorenz x vs z−ρ, the butterfly. Chua x–z, the double scroll. Van der
   Pol x–y, a limit cycle. Duffing x–ẋ. Coupled Rössler is the exception: x₁ vs x₂
@@ -369,9 +372,11 @@ the Teensy's OLED phase plot, and at a much larger size.
    `pitchmap` before it gets a slot.
 2. **TAME in `Voice`. Done**, and measured by `tametest`: see section 2. Next is
    listening to the `tamerender` WAVs and settling the two ear questions there.
-3. **Alchemy platform layer**: audio callback at 48 kHz, J3 V/Oct with
-   calibration, gate on J6, the six pots, and a bare selector. Port the six
-   shipping algorithms and check on hardware that it sounds the same as the Teensy.
+3. **Alchemy platform layer. Built, not yet flashed**
+   ([`daisy_chaos/`](../daisy_chaos/)): audio at 48 kHz / 24-sample blocks, the
+   six pots, V/Oct on J3, CHAOS and TAME CV, gate on J6, X/Y CV out on J7/J8,
+   model / envelope / TAME-mode on B1–B3, and a load governor. Next is the bench
+   checklist in its README, which includes the TAME listening tests.
 4. **Banks B and D.** Forced and delay systems give the biggest pitch-tracking
    gain per line of code.
 5. Constant-rate oversampling and decimation (V2 doc), then FREEZE, EXT DRIVE and
@@ -379,13 +384,17 @@ the Teensy's OLED phase plot, and at a much larger size.
 
 ## Open questions
 
-- **The build is CMake, not this repo's Makefiles.** `alchemy-sdk` builds with
-  CMake + Ninja and pins **its own libDaisy** as a submodule (`vendor/libDaisy`
-  at `08f2965`), while `deps/daisy/libDaisy` here is at `f044cdc`. Its
-  recommended starting point is
-  [`alchemy-template`](https://github.com/hermetic-modular/alchemy-template).
-  Plan: add `alchemy-sdk` as `deps/alchemy-sdk` and build `daisy_chaos` with
-  CMake against the SDK's libDaisy, leaving the Makefile apps on theirs.
-  `chaos_core` needs only `<math.h>`, so it doesn't care which.
-- **How the SDK's calibration handles V/Oct.** A ±10 V front end gives 2.7 codes
-  per cent, which is enough only if noise stays under a code or two.
+- **How good is V/Oct on the stock calibration?** The factory calibration
+  measures each jack's zero code and the board's VDDA, but the input gain is a
+  design constant (`CvInput::SetCalibration`), so octave scale is only as good as
+  the resistors. The noise at 2.7 codes per cent also needs checking. Step 4 of
+  the bench checklist in [`daisy_chaos/README.md`](../daisy_chaos/README.md)
+  answers both. If octaves stretch, add a two-point calibration like Joy's
+  `common/voct_cal.h`.
+
+*Resolved:* the build. The SDK repo itself builds with CMake, but its
+recommended project,
+[`alchemy-template`](https://github.com/hermetic-modular/alchemy-template), is a
+standard Daisy Makefile, so `daisy_chaos` is one too. It builds against the SDK's
+pinned libDaisy (`deps/alchemy-sdk/vendor/libDaisy`, `08f2965`), not this repo's
+(`f044cdc`).

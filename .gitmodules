@@ -7,3 +7,6 @@
 [submodule "deps/daisy/DaisySP"]
 	path = deps/daisy/DaisySP
 	url = https://github.com/electro-smith/DaisySP.git
+[submodule "deps/alchemy-sdk"]
+	path = deps/alchemy-sdk
+	url = https://github.com/hermetic-modular/alchemy-sdk.git
