@@ -38,8 +38,10 @@ endif
 include $(_P_UP1)/make/common.mk
 
 # No DaisySP here, and libDaisy's core Makefile links -ldaisysp whenever
-# DAISYSP_DIR is defined at all -- which common.mk always does.
-undefine DAISYSP_DIR
+# DAISYSP_DIR is set -- which common.mk always does. Emptied rather than
+# `undefine`d: `ifdef` is false for an empty value, and macOS ships GNU make
+# 3.81, which has no `undefine` and stops with "missing separator".
+DAISYSP_DIR :=
 
 # ── App ──────────────────────────────────────────────────────────────────────
 CPP_SOURCES = \
