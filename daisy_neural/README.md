@@ -571,6 +571,34 @@ Dropped: every high-gain amp (Jubilee, KT66 Plexi, Mark IIC+, 5150 III) and the 
 For multi-capture packs this was one capture, the middle one by measured drive; the
 others in those packs are unheard on the module.
 
+**Starter set, decided 2026-10-01.** Twelve, all heard and kept on the module, chosen
+for spectral diversity (`tone shape at two input levels; greedy farthest-first from the
+17 kept`: closest pair 2.5 dB apart, against 1.9 dB for a hand-picked set), and a mix of
+names. Two gain settings per pack were measured and dropped: the Fender's cleanest and
+dirtiest sit 2.3 dB apart, nearer than the Fender is to the Orange, so drive differs more
+in feel than in tone shape and a second setting buys little diversity per slot.
+
+| # | Capture | File in the pack | Licence |
+|---|---|---|---|
+| 1 | Ampeg SVT-2 Pro | `Ampeg SVT-2 Pro_01_01` | CC-BY |
+| 2 | Orange TH100 | `031000ETH100Clean100WMV9` | CC-BY |
+| 3 | Fender '57 Custom Deluxe | `57 DLX JMP M9 I9 T9` | CC-BY |
+| 4 | Marshall Bluesbreaker pedal | `marshall-bluesbreaker-pedal-setting1` | CC-BY |
+| 5 | Klon Centaur | `KLON 2` | CC-BY |
+| 6 | pLEXI-LORE | `model (1)` | CC-BY |
+| 7 | Analogman Sun Bender MKIV | `SunBender MKIV F10 T2 V7` | CC-BY |
+| 8 | Two Rock Studio Signature | `BMD All 5s Traditional A1 Conversion` | CC-BY |
+| 9 | Kay 703 | `Kay 703 - G5 T5` | CC0 |
+| 10 | Traynor TS 120 B | `traynor 7 2 6 4` | CC0 |
+| 11 | Bugera G5 Infinium | `Bugera G5 Infinium Dist 0.5 USA DI` | CC0 |
+| 12 | DIY BJT drive | `diy_drive_pedal_bjt_silicon` | CC0 |
+
+Dropped as near-duplicates of something kept: RAT (~Bluesbreaker), Sunface (~Klon),
+1176 and Boss CE-1 (~each other), Studer (~Klon). They stay as links. pLEXI-LORE, Sun
+Bender and Bugera hiss at rest — idle output 7–16 dB under playing level, the module's
+input noise amplified, since A2 makes nothing from silence — so the set assumes an input
+noise gate. Without one, swap them for RAT, Sunface and 1176.
+
 **Not in this repo.** `nam/model_data_nam_a2.h` and `captures/*.a2nb` were committed
 here until 2026-10-01, when they were removed from the whole history; `.gitignore` now
 keeps them, and any `.nam`, out. They live on the working machine only. A fresh clone
