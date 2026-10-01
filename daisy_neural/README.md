@@ -513,6 +513,8 @@ here until 2026-10-01, when they were removed from the whole history; `.gitignor
 keeps them, and any `.nam`, out. They live on the working machine only. A fresh clone
 builds without them — no compiled-in fallback, so no card means pass-through and
 `NO CAP` — and gets captures by downloading the `.nam` files from the pages above with a
-TONE3000 account and running `tools/nam_to_a2nb.py`. With the header on disk the build
+TONE3000 account and running `tools/nam_to_a2nb.py`. `tools/match_captures.py` takes the downloaded zips as they
+come and says which `.nam` in them is each of the five, by comparing the network's own
+parameters with the header's — so a capture retrained since shows as a near miss. With the header on disk the build
 compiles the JCM800 fallback back in, and `export_captures.py` and the host tools that
 read it work as before.
