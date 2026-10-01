@@ -306,30 +306,94 @@ of sync, so they can join the oscillator suite and don't need a percussion mode.
 Mandelbrot/Julia and cellular automata stay out: their pitch comes from orbit
 length, which V/Oct can't set.
 
-### What's already in Eurorack, and where Secret differs
+### Prior art, searched properly (2026-10-01)
 
-A quick check (web search 2026-09-30, not exhaustive) found the shipping six are
-largely covered already:
+This replaces a quick check from 2026-09-30 that overstated what was new. Five
+parallel searches covered the whole catalogue: the web, all 565 VCV Library
+plugin manifests (cloned and grepped), GitHub code, the SuperCollider sources,
+and DAFx/NIME/ICMC papers. One question was asked of every candidate: is there a
+**V/Oct-pitched audio oscillator in Eurorack hardware** running this system?
+Audio rate versus slow CV, and calibrated V/Oct versus a free rate knob, were
+kept separate. Most chaos in Eurorack is slow CV.
 
-- **Lorenz and Rössler** are CV generators in Ornament & Crime (the Low-rents
-  app, and Hemisphere's Lorenz applet). The O&C in the rack runs Phazerville, so
-  these may already be in the rack.
-- **Double scroll (Chua family)** is Joranalogue **Orbit 3**, an analogue
-  double-scroll oscillator with calibrated pitch tracking, 2.4 mHz–22 kHz.
-  It's the benchmark for a pitched scroll.
-- **Jerk circuits** are NLC's **Sloth** family, but as slow CV only, with orbits
-  of seconds to minutes.
-- VCV Rack has software versions of most of the named attractors. That isn't
-  hardware, but it means the equations themselves are well known.
+**Coverage limits.** ModWiggler, lines, Reverb and Perfect Circuit returned 403,
+and ModularGrid's search only renders in a browser (single module pages loaded).
+The session's 200-search cap ran out, so Reddit, Hackaday, the Electro-Smith
+forum, Buchla/Serge/5U, pedals and the disting NT community plugins went largely
+unsearched. "No instance found" means none in what could be reached.
 
-No hardware turned up for the **driven** systems (Duffing, Ueda, forced Van der
-Pol, driven pendulum), the **delay** systems (Mackey–Glass, chaotic
-Karplus–Strong), the circle map, Hindmarsh–Rose, or the less famous flows
-(Arneodo, Moore–Spiegel, Rabinovich–Fabrikant, Shimizu–Morioka). So Secret's
-distinctive parts are Banks B and D, EXT DRIVE, and TAME across every model.
-Bank A and C's classics are table stakes; they don't set it apart.
+**The headline.** "A V/Oct chaotic oscillator with a tame control" is not new.
+Joranalogue **Orbit 3** (2021) is an analogue double scroll with calibrated V/Oct,
+22 Hz–22 kHz, hard sync, and a TAME/WILD switch. What is still open is narrower:
+
+1. **TAME as one continuous control** that ends with the attractor itself locked
+   to the V/Oct note. No instance found; the neighbours are listed below.
+2. **Named systems that nobody has pitched in hardware.**
+
+| Where it stands | Candidates |
+| --- | --- |
+| **No instance in any format** | Coupled Rössler · driven damped pendulum · forced Brusselator · chaotic Colpitts · Mackey–Glass with τ ∝ 1/f · Ikeda delay equation · Genesio–Tesi · Moore–Spiegel · Sprott D, E, G–K, N–R |
+| **Papers, or control-rate software, only** | Circle map (Essl, DAFx 2006; no product) · Lü, and the Lorenz–Lü–Chen morph (chaosrack, browser) · Shimizu–Morioka and Rikitake (math-sonify, 120 Hz control rate) · hyperchaotic Rössler (chaosrack) · discrete maps re-seeded every period (none; Nozori's de Jong VCO has V/Oct but never re-seeds) |
+| **Pitched audio in software, not hardware** | Forced Van der Pol with audio forcing (TriggerFish VDPO, VCV, 2018) · Hindmarsh–Rose (Coalescent Neuron·Soma, VCV, 2026) · Arneodo and Aizawa (among 36 in Attrattore, VST3) · Rössler with an uncalibrated V/Oct (ZetaCarinae Rossler Rustler) · Duffing with audio forcing (SuperCollider DoubleWell3, Gutter Synthesis) |
+| **In Eurorack hardware, but CV or unpitched audio** | Lorenz and Rössler (O&C Low-rents, disting NT Chaos) · Chen, Halvorsen, Aizawa, Dadras, Nosé–Hoover, Sprott B/C (Voltage Foundry ChaosForge, Pigatron OctaSource, 4ms MetaModule running Sapphire Zoo and Glee) · Thomas (Nozori 84, audio range, unpitched) · jerk circuits (NLC Sloth family as CV; IFM Sprott, omiindustriies Ah Jerk and Zlob Triple Cap Chaos at audio without V/Oct) · driven Duffing (Ian Fritz Double Well, Elby ChaQuO) · Ueda, which is exactly Gutter Synthesis's equation (forsitan `guttur`, on MetaModule) |
+| **Taken: pitched in Eurorack hardware** | Chua / double scroll (Orbit 3) · chaotic Karplus–Strong (Dobson & Fitch, ICMC 1995; Mutable Elements' tube model, Strymon Magneto, NLC Is Carp Lust Wrong?) |
+| **Taken as an idea** | EXT DRIVE (ChaQuO and Double Well in analogue; VDPO, `guttur`, stoermelder RAW in software) · chaotic phase distortion (SuperCollider FBSine, HetrickCV) |
+
+**The shipping six, reread.** Coupled Rössler has no instance anywhere.
+Rössler, Lorenz, Van der Pol and Duffing are new only as calibrated V/Oct audio
+voices in hardware. Chua is the one that has been done.
+
+**TAME's neighbours.** None found is a continuous control that ends in a
+guaranteed lock to the note:
+
+- **Orbit 3:** a binary TAME/WILD switch that changes the scrolling, and a reset
+  input used as hard sync. Patching its equilibrium output into reset forces a
+  stable oscillation.
+- **Sapphire Chaops** (VCV): trigger recall of a stored state, which is Sync at
+  100%.
+- **R_Ware Attractor Oscillator** (Cherry Audio): "tamed" by resetting the
+  trace, with a CHAOS knob that reintroduces chaos.
+- **Attrattore** (Creature From The Black, VST3): keeps 36 systems in tune
+  through an FM carrier locked to the MIDI note, with a CHAOS control from tame
+  to full. The musical idea is the same; the mechanism is not.
+- **Newfangled/Eventide Pendulate and Generate**: fade from a sine to chaos.
+  Generate's is a crossfade; Pendulate's mechanism is unpublished.
+- **`guttur` and VDPO**: lock as a side effect of high drive.
+- **chaosrack**: periodic windows "lock into tones".
+- **US 6,137,045** (University of New Hampshire, 2000, expired): steers a Chua
+  circuit onto periodic orbits for pitched waveforms.
+- **Weingartner, DAFx 2025**: lists forcing tunable nonlinear oscillators as
+  future work.
+
+**Two engineering notes** for the structurally new ideas:
+
+- A **circle map** iterated at the sample rate falls to a fixed point, which is
+  silence, at low pitch: at 440 Hz / 48 kHz once K exceeds about 0.06. Essl
+  reports the same. Run it at n·f with Ω near 1/n, so V/Oct sets the clock.
+- **Delay loops** (Mackey–Glass, Ikeda, chaotic Karplus–Strong) oscillate near
+  2τ plus the filter's lag, and period-double: Dobson & Fitch saw 3–4×L. Exact
+  pitch from τ ∝ 1/f has to be engineered, not assumed.
+
+**Key sources:**
+- [Orbit 3 manual](https://cdn.shopify.com/s/files/1/1594/2421/files/orbit-3-user-manual.pdf)
+- [TriggerFish VDPO](https://github.com/JTriggerFish/TriggerFish-VCV)
+- [forsitan `guttur`](https://github.com/gosub/forsitan-modulare)
+- [Coalescent](https://github.com/jeremycg/coalescent)
+- [Attrattore](https://www.kvraudio.com/product/attrattore-tetra---four-chaotic-attractor-synthesizer-by-creature-from-the-black)
+- [chaosrack](https://github.com/0magnet/chaosrack)
+- [Essl, DAFx 2006](https://dafx.de/paper-archive/details/n86HtWSo8MPOrwDvKC6Mhg)
+- [Dobson & Fitch, ICMC 1995](https://purehost.bath.ac.uk/ws/portalfiles/portal/665673/fractal_rev.html)
+- [Elby ChaQuO manual](https://www.analoguehaven.com/elby-designs/chaquo/manual.pdf)
+- [Mudd, xCoAx 2019](https://2019.xcoax.org/pdf/xCoAx2019-Mudd.pdf)
+- [Weingartner, DAFx 2025](https://dafx25.dii.univpm.it/wp-content/uploads/2025/09/DAFx25_paper_68.pdf)
+- [US 6,137,045](https://patents.google.com/patent/US6137045A/en)
 
 ### A first 16, in four banks
+
+*Drawn up on 2026-09-30 from the quick check. The search above changes its
+premise: Banks B and D were meant to be the distinctive ones, but forced Van der
+Pol, Ueda, Duffing with audio forcing and chaotic Karplus–Strong all turn out to
+exist. See the novelty-first proposal below.*
 
 The V2 doc sets 16 as the ceiling (`DrawSlotIndicator`). One bank per family, so
 B1 + a ring picks the family and the TAME behaviour is predictable within a bank:
@@ -340,6 +404,29 @@ B1 + a ring picks the family and the TAME behaviour is predictable within a bank
 | **B: Driven** (drive-tamed) | Duffing, Forced Van der Pol, Ueda, Driven pendulum |
 | **C: Scroll** (sync-tamed) | Lorenz, Chua, Lü, Thomas |
 | **D: Locked** (exact) | Mackey–Glass, Chaotic Karplus–Strong, Circle map, Hindmarsh–Rose |
+
+### A novelty-first next bank (proposal, 2026-10-01)
+
+Four systems with no musical instance as a pitched hardware voice. All are ODEs,
+so they fit the existing RK4 engine, TAME, the envelope and the panel with no
+new infrastructure:
+
+| Model | Why it's new | TAME class | Cost |
+| --- | --- | --- | --- |
+| **Driven damped pendulum** | No forced-pendulum voice in any format; only unforced pendulums exist, as CV. Rotation versus libration is a hard timbral switch | forced → FORCE | T (`sin θ`) |
+| **Lorenz–Lü–Chen unified system** | One parameter morphs through three famous attractors. Lü and the morph have no hardware instance | incoherent → SYNC | P |
+| **Hyperchaotic Rössler** (4-D) | Software only (chaosrack). Two positive exponents: denser than Rössler | measure | P |
+| **Moore–Spiegel** or **Genesio–Tesi** | No instance at all | coherent, probably → FORCE (measure) | P |
+
+The structurally newest ideas need engine work first, so they'd make a later
+bank: a **circle map** run at n·f (published by Essl in 2006, no product),
+**discrete maps re-seeded every period** (none found), and **Mackey–Glass** with
+engineered pitch. The **forced Brusselator** and **chaotic Colpitts** are
+unclaimed too, but that may only mean nobody has bothered. Hear them through
+`tamerender` before giving them a slot.
+
+Each needs a measured step cap on this board: the Chua episode on the bench
+showed that Teensy-era figures don't carry over to 400 MHz.
 
 ## Visualising on Tiliqua
 
@@ -377,8 +464,10 @@ the Teensy's OLED phase plot, and at a much larger size.
    six pots, V/Oct on J3, gate on J4, CHAOS and TAME CV on J5/J6, X/Y CV out on J7/J8,
    model / envelope / TAME-mode on B1–B3, and a load governor. Next is the bench
    checklist in its README, which includes the TAME listening tests.
-4. **Banks B and D.** Forced and delay systems give the biggest pitch-tracking
-   gain per line of code.
+4. **The next bank.** Formerly Banks B and D. The 2026-10-01 prior-art search
+   showed most of them already exist, so the next bank is now the
+   novelty-first proposal in section 3, pending a choice. Either way it needs
+   B1 to become the bank selector first.
 5. Constant-rate oversampling and decimation (V2 doc), then FREEZE, EXT DRIVE and
    the LED state display.
 
