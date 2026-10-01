@@ -16,10 +16,10 @@ credential, so it lives outside every repo:
 
 or in $T3K_SECRET. It is sent only as the Authorization header and never printed.
 
-    python3 tools/find_cc0.py --pages 1          # one page: check the key works
-    python3 tools/find_cc0.py                    # the lot, at ~90 requests a minute
-    python3 tools/find_cc0.py --start-page 400   # resume after an interruption
-    python3 tools/find_cc0.py --query "Vox AC30" --query "Fender Twin"
+    /usr/bin/python3 tools/find_cc0.py --pages 1          # one page: check the key works
+    /usr/bin/python3 tools/find_cc0.py                    # the lot, at ~90 requests a minute
+    /usr/bin/python3 tools/find_cc0.py --start-page 400   # resume after an interruption
+    /usr/bin/python3 tools/find_cc0.py --query "Vox AC30" --query "Fender Twin"
                                                  # top A2 tones per amp, any licence
 
 Writes cc0_tones.csv (tones you can ship) and licence_counts.txt to --out,
@@ -79,7 +79,12 @@ def fetch(key, page, query=None, gears=None):
             if e.code in (401, 403):
                 raise SystemExit(f"HTTP {e.code}: the key was refused") from None
             raise
-        except urllib.error.URLError:
+        except urllib.error.URLError as e:
+            # Not worth retrying: some Pythons (PlatformIO's, here) ship without a
+            # CA bundle, so every request fails the same way.
+            if "CERTIFICATE_VERIFY_FAILED" in str(e.reason):
+                raise SystemExit("this Python cannot verify HTTPS certificates; "
+                                 "run it with /usr/bin/python3") from None
             time.sleep(15 * (attempt + 1))
     raise SystemExit(f"page {page}: gave up after 5 attempts")
 
