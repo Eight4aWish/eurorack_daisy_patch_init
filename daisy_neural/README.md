@@ -603,13 +603,14 @@ Bender and Bugera hiss at rest — idle output 7–16 dB under playing level, th
 input noise amplified, since A2 makes nothing from silence — so the set assumes an input
 noise gate. Without one, swap them for RAT, Sunface and 1176.
 
-**The source decides the hiss** (David, on the module, 2026-10-01): through the same
-captures, analogue oscillators are much noisier than digital ones. An analogue voice has
-its own floor — hiss, hum, VCA bleed between notes — which a driven capture lifts far more
-than it lifts the notes; a digital source sits near zero between notes. So the module's
-own input noise is not the main contributor, and a gate's threshold has to be adjustable:
-one set for a digital source would stay open on an analogue one. CV_4 (+ CV_8), which does
-nothing in AMPS by design, is free to set it there and keep STEER in NOT-AMPS.
+**The source decides the noise** (David, on the module, 2026-10-01): through the same
+distorted captures, a digital oscillator is much noisier than an analogue one. The noise
+is the digital source's own — the hash of its processor and clocks riding on its output,
+the same character as OLED bus traffic but from a source with no OLED. Far below hearing
+through a clean path, it comes up through a capture that lifts low-level signal hardest,
+which is why only the distorted amps show it. So the module's own input is not the main
+contributor, and a gate's threshold has to be adjustable to the source. CV_4 (+ CV_8),
+which does nothing in AMPS by design, is free to set it there and keep STEER in NOT-AMPS.
 
 **Not in this repo.** `nam/model_data_nam_a2.h` and `captures/*.a2nb` were committed
 here until 2026-10-01, when they were removed from the whole history; `.gitignore` now
