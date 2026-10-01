@@ -49,6 +49,13 @@ def secret():
     key = os.environ.get("T3K_SECRET") or (KEY_FILE.read_text().strip() if KEY_FILE.exists() else "")
     if not key:
         raise SystemExit(f"no key: put it in {KEY_FILE} (see the docstring) or $T3K_SECRET")
+    # Checked before it goes anywhere near a request: a malformed header makes
+    # http.client raise with the header's value in the message, which would print
+    # the key. Say what is wrong without ever echoing it.
+    if not key.startswith("t3k_cs_") or any(c.isspace() for c in key):
+        hint = "it is the publishable key — use the secret one, t3k_cs_…" if key.startswith("t3k_") \
+            else "it does not start t3k_cs_, so the file holds something other than the secret key"
+        raise SystemExit(f"{KEY_FILE}: {len(key)} characters, but {hint}")
     return key
 
 
