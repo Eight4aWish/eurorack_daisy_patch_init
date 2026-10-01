@@ -180,8 +180,10 @@ is not in its repo, so its engine cannot be fed without writing one first. Both 
 and both are active; this is the one that reaches a first trial today.
 
 **Captures:** all five that ship with the runtime — BE-100, JCM800, Ampeg SVT, Mesa Dual
-Rectifier and Marshall 1959BJA — exported to the card by `tools/export_captures.py`. All
-are DI captures, so there is no cabinet baked in.
+Rectifier and Marshall 1959BJA — exported to the card by `tools/export_captures.py`. Not
+all the same kind: the BE-100 and JCM800 are DI amp captures, the Mesa is a preamp
+capture, and the Ampeg (MD 421) and 1959BJA were recorded through a cabinet and mic, so
+those two have a cab baked in. Sources and licences are under "Note on the captures".
 
 JCM800 also stays compiled in as a fallback and shows as `JCM800*`, the trailing asterisk
 marking it as the built-in rather than one off the card. The other four stay unreferenced
@@ -299,9 +301,12 @@ lstm.nam: unsupported architecture 'LSTM'. The engine runs A2-Lite only.
 ```
 
 **On licensing:** the A2 *architecture* is MIT and explicitly free to ship in commercial
-products. TONE3000's guide does **not** state terms for the individual captures, which
-are other people's work. Fine for your own rack; worth checking per-creator terms before
-any firmware with captures baked in goes out as a download.
+products. The captures are licensed one by one, by their creators, and each tone page
+shows which: TONE3000's own licence (T3K) or one of the Creative Commons set, CC0
+included. T3K lets anyone use a capture and publish what they play through it, but not
+"upload, republish, or distribute the data file without the author's permission" — so a
+T3K capture can go on your own card but not into a download. CC0 and CC-BY can ship;
+ND forbids the not-amps' bending, SA would bind the bent weights, NC is murky.
 
 ## Captures on the microSD card
 
@@ -480,9 +485,24 @@ changes.
 
 ## Note on the captures
 
-The engine code is MIT and attributed. The five captures are a different matter: they are
-other people's amp captures, redistributed in bkshepherd's repo without a stated licence
-of their own. Fine for bench work. Worth a thought before any firmware with them baked in
-goes on the site as a download — a capture made by someone else is their work, and the
-honest options are asking, swapping in a capture of your own gear, or shipping the
-firmware with an empty slot and a converter script.
+The engine code is MIT and attributed. The five captures are a different matter. bkshepherd's
+repo carries them with no licence of their own, but all five are on TONE3000 (checked
+2026-10-01), and all five are under its T3K licence: use, and publish the results, freely;
+do not redistribute the file without the author's permission.
+
+| Capture | File | TONE3000 page | Creator |
+|---|---|---|---|
+| BE-100 | `[AMP] BE100DLX-BE TEST - DI` | [Friedman BE100 Deluxe (EL34) community pack](https://www.tone3000.com/tones/friedman-be100-deluxe-el34-community-pack-41359) | @2dor |
+| JCM800 | `[AMP] JCM800-2203-MODIFIED-HI The Sound - DI` | [Marshall JCM800 2203 Modified (EL34) community pack](https://www.tone3000.com/tones/marshall-jcm800-2203-modified-el34-community-pack-44209) | @2dor |
+| Ampeg | `Ampeg SVT - Gain 10 Ultra Lo and Hi MD 421` | [Ampeg SVT Classic with 6x10](https://www.tone3000.com/tones/ampeg-svt-classic-with-6x10-28202) | TONE3000 |
+| Mesa | `3. MESA DUAL RECTIFIER 2025 _ RHYTHM #3` | [MESA DUAL RECTIFIER 2025](https://www.tone3000.com/tones/mesa-dual-rectifier-2025-45026) | @deathblossomaudio |
+| 1959BJA | `Marshall 1959BJA SUPER BOWL SETTINGS` | [Marshall 1959BJA](https://www.tone3000.com/tones/marshall-1959bja-78832) | @rjcproductions |
+
+The two @2dor files are the `- DI` variants; the free community pages list the `- SM57`
+and blend versions, and the JCM800 page says the DI ones are in the full pack. Whether
+these DI files came from a paid pack is worth asking @2dor directly.
+
+So: fine on your own card, not in a download. The options for a release are permission
+from four creators (TONE3000 itself is one), CC0/CC-BY A2 captures instead, captures of
+your own gear, or no captures at all and the converter. Only the first keeps NOT-AMPS as
+it is; the others need it to stop depending on these five by name.
