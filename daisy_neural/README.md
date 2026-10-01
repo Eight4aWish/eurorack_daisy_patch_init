@@ -272,6 +272,49 @@ TILT landed on the wrong parameters. It is in git history (`src/seed_weights.*`,
 2026-09-29). The DC blocker it needed stays: even trained captures show a small offset,
 and some bends move it.
 
+### How the nine were found, and what was left on the table
+
+Written up 2026-10-01 from the session that did the work (28–29 Sep), because until now it
+lived only in a transcript, and a later session re-proposed most of it as new.
+
+**Step 1 — 86 variants, by ear** (listening page: claude.ai/artifact/NASvpkmkPMvM6xZQUSqdHZ).
+Five directions came out of it, most promising first:
+
+| Direction | What was heard | Since |
+|---|---|---|
+| Mutating a real capture | amp at 0.1, bright and strange at 0.3, further at 0.6 | built: MUTATE |
+| Morphing between captures, and past them | halfway sounds like *an* amp; past one exaggerates it | built: PAST ×3 (past, not between) |
+| Activation slope (LeakyReLU, 0.01 in the code) | at −1 a bright, fuzzy, full-wave sound; changeable live, even at audio rate | **not built** |
+| Bias size | the "gain feel" — whether it cleans up when played softly | not built |
+| Crossbreeding layers between captures | a lottery, some very different results | not built |
+
+**Step 2 — the wider menu**, offered 2026-09-29. David chose network bending; the rest
+was never rejected, only not taken up:
+
+- *Setting the weights:* evolutionary search (MAP-Elites) over the listening map; training
+  toward a property rather than a recording; training one sound into another; principal
+  components of many TONE3000 captures as knobs (needs the lanes aligned first).
+- *Changing it while it plays:* FiLM (scale and shift every layer from a knob);
+  **network bending — chosen**; weights drifting under an LFO.
+- *Changing the machine:* other activation functions (sine as a wavefolder stack, tanh,
+  one per lane); a **second-input sidechain** from IN_R into the network, the cheap route to
+  the brief's two-input target; **feedback** with a delay, a neural Karplus-Strong that
+  makes the effect an instrument; a **rate knob** that stretches the gaps; destruction edges
+  below 7-bit weights.
+
+**Step 3 — ten bending candidates, scored** for range, smoothness, level safety and
+whether they move live: freeze middle and early layers, four morphs past an amp (one
+JCM800/Ampeg direction did not ship), early lane offset, fold, fading the gap-239 layers,
+mutation. David took the proposed five plus four reserves: the nine above. He also
+decided real amps stay exactly as captured, so steer acts only in NOT-AMPS.
+
+**Measured 2026-10-01**, on the twelve: captures do not share an inner layout — the same
+parameter in two captures correlates at 0.01, no better than shuffled (step 2's
+lane-alignment caveat, confirmed) — and a 50/50 blend drops 7–32 dB in level and sits
+spectrally away from *both* ends (Klon→Orange: 10 and 13 dB from them, which are 3.8 dB
+apart). Consistent with "sounds like an amp": an amp, but not one between the two. So
+blends and crossbreeds make third sounds, not intermediate ones.
+
 ## Getting more captures
 
 [TONE3000](https://www.tone3000.com/) carries **700,000+ tones**, and the library more
