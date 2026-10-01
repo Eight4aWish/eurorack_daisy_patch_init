@@ -405,28 +405,87 @@ B1 + a ring picks the family and the TAME behaviour is predictable within a bank
 | **C: Scroll** (sync-tamed) | Lorenz, Chua, Lü, Thomas |
 | **D: Locked** (exact) | Mackey–Glass, Chaotic Karplus–Strong, Circle map, Hindmarsh–Rose |
 
-### A novelty-first next bank (proposal, 2026-10-01)
+### Banks of six; bank 2 chosen by ear (2026-10-01)
 
-Four systems with no musical instance as a pitched hardware voice. All are ODEs,
-so they fit the existing RK4 engine, TAME, the envelope and the panel with no
-new infrastructure:
+**Banks of six**, heading for six banks (36 models). Six rings make six slots: in
+bank-select mode each ring can show one model of the bank in its colour, and B1's
+colour coding carries straight over. Each bank is balanced between FORCE and SYNC
+models, so TAME stays predictable within a bank. Bank 1 is the shipping six.
 
-| Model | Why it's new | TAME class | Cost |
-| --- | --- | --- | --- |
-| **Driven damped pendulum** | No forced-pendulum voice in any format; only unforced pendulums exist, as CV. Rotation versus libration is a hard timbral switch | forced → FORCE | T (`sin θ`) |
-| **Lorenz–Lü–Chen unified system** | One parameter morphs through three famous attractors. Lü and the morph have no hardware instance | incoherent → SYNC | P |
-| **Hyperchaotic Rössler** (4-D) | Software only (chaosrack). Two positive exponents: denser than Rössler | measure | P |
-| **Moore–Spiegel** or **Genesio–Tesi** | No instance at all | coherent, probably → FORCE (measure) | P |
+**Bank 2** was picked by ear from nine measured candidates. All nine were written
+into `chaos_core` (`Candidates.h`, host tools only, so the firmware is untouched
+until a model is promoted), characterised, given pitch tables, passed `tametest`,
+and rendered by `tools/audition.cpp`:
 
-The structurally newest ideas need engine work first, so they'd make a later
-bank: a **circle map** run at n·f (published by Essl in 2006, no product),
-**discrete maps re-seeded every period** (none found), and **Mackey–Glass** with
-engineered pitch. The **forced Brusselator** and **chaotic Colpitts** are
-unclaimed too, but that may only mean nobody has bothered. Hear them through
-`tamerender` before giving them a slot.
+| Model | Equations, CHAOS / CHAR | TAME | Cost | Notes |
+| --- | --- | --- | --- | --- |
+| **Driven pendulum** | θ″ + 0.5θ′ + sin θ = g cos φ, φ′ = ω; g 0.9–1.55 / ω 0.4–0.8 | FORCED | T (`sin`, `cos`) | Chaos at ω 0.44–0.72, laced with period 3/5/7 windows; period-1 above ~0.76 |
+| **Lorenz–Lü–Chen** | Lü, Chen et al. 2002 unified system; α 0–1 / r 24–130 | SYNC | P | α morphs Lorenz → Lü (0.8) → Chen (1). CHAR crosses from chaos into a period-doubling cascade at every α |
+| **Moore–Spiegel** | x‴ = −x″ − (T − R + Rx²)x′ − Tx; R 10–40 / T 4–9 | FORCE | P | The richest map: a period-3 plateau, then bands of period 5–8 marching into chaos. Its Y (x′) is bright |
+| **Forced Brusselator** | Tomita & Kai's set, A 0.4, B 1.2; F 0.02–0.2 / ω 0.6–1.0 | FORCED | T (`cos`) | Mostly period 1–2, chaos only near resonance: the gentle one |
+| **Chaotic Colpitts** | Maggio, De Feo & Kennedy 1999, k 0.5; g 2–6 / Q 1–3 | FORCE | T (`exp`) | A period-doubling cascade into chaos as the loop gain rises; one stutter corner at g 6 |
+| **Hindmarsh–Rose** | the neuron model; I 1.35–4 / r 0.001–0.02 | SYNC | P | Spikes in bursts: rhythm under the pitch. Silent below I ~1.3, so the range starts above it |
 
-Each needs a measured step cap on this board: the Chua episode on the bench
-showed that Teensy-era figures don't carry over to 400 MHz.
+**In reserve, measured and ready for a later bank:** Rikitake dynamo (chaos below
+μ ~2.2, a period-3 band above 2.6; its CHAOS runs downwards so turning it up is
+more chaotic), Shimizu–Morioka (period 1-2-4 cascade into chaos as λ rises),
+Genesio–Tesi (a small escape corner kept as a stutter edge, as Chua's is).
+
+**Measured unplayable:** the **hyperchaotic Rössler** in Rössler's 1979 form stays
+bounded at only 3 of 117 points on a fine grid near a = 0.25, d = 0.05, swinging
+to ~170 even there, and escapes to infinity everywhere else.
+
+Two fixes came out of the auditions: `Voice`'s SYNC never engaged on a model
+whose range runs downwards (the snapshot tolerance went negative; now `fabsf`),
+and Hindmarsh–Rose's outputs are centred on their measured means, because its
+membrane rests near −0.93 and the output DC blocker pushed its spikes past full
+scale.
+
+**On the module, 2026-10-01: one list of twelve.** Bank 2 follows bank 1 on B1,
+twelve colours on both of its LEDs; a bank selector waits for a third bank. The
+six moved from `Candidates.h` into the registry (`Bank2.h`, sharing `OdeModel.h`'s
+stepper, tables in `PitchTablesBank2.h`), and the reserve three stayed behind.
+
+### Step caps, measured on the board (2026-10-01)
+
+`make BENCH=1` times every model at its step cap at power-on, before audio
+starts, at TAME 0 and TAME 1. The first run showed the Teensy-era caps don't carry
+over at all. This chip needs 2–3× the Teensy's cycles per step (Rössler 249 against
+an estimated ~88), and TAME adds up to half again, because FORCE's drive and the pull
+run every step. At the old caps ten of the twelve needed more than a whole
+audio block, from Lorenz at 209% to Moore–Spiegel at 400%. That is what froze Chua
+in the first build, before the governor moved into the audio callback.
+
+Every cap is now set so the worst block, at the cap with TAME 1, takes about 65%
+of its time. Measured after setting them: 64–71% for all twelve.
+
+| Model | Cycles per step, TAME 1 | Cap (steps/s) | Top pitch, mid settings |
+| --- | ---: | ---: | ---: |
+| Rössler | ~466 | 550,000 | ~9.9 kHz |
+| Van der Pol | ~392 | 650,000 | ~9.5 kHz |
+| Lorenz | ~298 | 860,000 | ~2.5 kHz |
+| Chua | ~335 | 770,000 | **~410 Hz** |
+| Duffing | ~844 | 300,000 | ~5.3 kHz |
+| Coupled Rössler | ~631 | 410,000 | ~7.0 kHz |
+| Driven pendulum | ~1675 | 150,000 | ~1.4 kHz |
+| Lorenz–Lü–Chen | ~432 | 600,000 | ~5.0 kHz |
+| Moore–Spiegel | ~567 | 450,000 | **~730 Hz** |
+| Forced Brusselator | ~1136 | 225,000 | ~2.9 kHz |
+| Chaotic Colpitts | ~1130 | 225,000 | **~570 Hz** |
+| Hindmarsh–Rose | ~472 | 550,000 | **~200 Hz** (44 Hz at worst) |
+
+Above its top a note plateaus. The four in bold top out inside the playing range
+because they take many small steps per cycle. Probed on the host, all four stay
+bounded at 3–4× their step, and pitch holds on average: median shift 0 cents for
+Colpitts, 9–30 for the others. A few settings on the edge of a periodic window
+tip into the neighbouring pattern, though, so a bigger step changes the sound in
+places. That is a call for the ear: A/B renders exist (`step_ab`). Undecided.
+
+The bench also found a fault in `Voice`. SYNC's reference runs in real time at
+the requested note, so above the cap, where the attractor can't follow, it pulled
+on every step instead of once a cycle, taking Lorenz to 107% of a block. The
+clock is now held to the pitch the attractor actually reaches, and only when the
+cap is what limits it, so every note below the cap is computed exactly as before.
 
 ## Visualising on Tiliqua
 
@@ -464,12 +523,35 @@ the Teensy's OLED phase plot, and at a much larger size.
    six pots, V/Oct on J3, gate on J4, CHAOS and TAME CV on J5/J6, X/Y CV out on J7/J8,
    model / envelope / TAME-mode on B1–B3, and a load governor. Next is the bench
    checklist in its README, which includes the TAME listening tests.
-4. **The next bank.** Formerly Banks B and D. The 2026-10-01 prior-art search
-   showed most of them already exist, so the next bank is now the
-   novelty-first proposal in section 3, pending a choice. Either way it needs
-   B1 to become the bank selector first.
-5. Constant-rate oversampling and decimation (V2 doc), then FREEZE, EXT DRIVE and
+4. **Bank 2. On the module 2026-10-01** (section 3): driven pendulum,
+   Lorenz–Lü–Chen, Moore–Spiegel, forced Brusselator, chaotic Colpitts,
+   Hindmarsh–Rose, after bank 1 as one list of twelve. Step caps measured on the
+   board for all twelve. Open: a bigger step for the four that top out low.
+5. **A series of firmwares, not one.** See below. The next banks need engine
+   code the ODE flows don't (delay lines, discrete maps, audio-in forcing), so
+   each family can be its own firmware on the shared platform layer.
+6. Constant-rate oversampling and decimation (V2 doc), then FREEZE, EXT DRIVE and
    the LED state display.
+
+### A series of firmwares (direction, 2026-10-01)
+
+David's direction, after bank 2: rather than one firmware that grows to 36
+models, a series. The catalogue's next families need different engine code:
+
+- the **pitch-exact** ones (circle map run at n·f, maps re-seeded every period,
+  Mackey–Glass) iterate maps or run delay lines in SDRAM, not RK4 flows;
+- **EXT DRIVE** turns the module into a processor: audio in J1/J2 becomes the
+  forcing term.
+
+Each family is a firmware of its own, the way Hermetic ships Echoa, Spagyros and
+Capicola on the same hardware. The ODE flows (banks 1 and 2, and the reserve) stay
+**Secret**. What they would share is the platform layer that exists now in
+`secret.cpp`: the panel, TAME's UI, the envelope, HostLink, the governor, the click
+log and the bench. That could become a common library when the second firmware
+starts. Not before, while there is only one to shape it from. Switching between
+them is a reflash today (`make program-live`, no buttons). The SDK's README
+suggests, as a possible future feature, using `System::ResetToBootloader` to keep
+several firmwares in flash and switch without reflashing.
 
 ## Open questions
 

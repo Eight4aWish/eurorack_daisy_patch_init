@@ -194,6 +194,15 @@ namespace chaos_core {
             drive_ = drive;
             refIncStep_   = fNat * sch.stepDt;         // FORCE: cycles per step
             refIncSample_ = hz / sampleRate_;          // SYNC: cycles per sample
+            // Above the step cap the attractor can't reach the note, but SYNC's
+            // clock runs in real time and would: the pull then fires every step
+            // instead of once a cycle, and each one is a full state save and
+            // blend. Measured on the Alchemy Lab, that took Lorenz from 61% of a
+            // block to 107%. Hold the clock to the pitch the attractor actually
+            // reaches. Only when the cap is what limits it, so every note below
+            // the cap is computed exactly as before.
+            const float hzReach = effectiveDt_ * sampleRate_ * fNat;
+            if (hzReach < hz * 0.999f) refIncSample_ = hzReach / sampleRate_;
             syncW_     = pull;
             float tau  = kDeclickMs * 0.001f;
             if (tau > 0.1f / hz) tau = 0.1f / hz;
@@ -204,8 +213,11 @@ namespace chaos_core {
             // keep it, and
             // the loop simply integrates under the new settings from the old
             // start -- still periodic, with the timbre following the knobs.
-            const float cTol = kSnapTolerance * (a->chaosMax - a->chaosMin);
-            const float hTol = kSnapTolerance * (a->charMax - a->charMin);
+            // fabsf: a range may run downwards (Rikitake's CHAOS does, so that
+            // turning it up is more chaotic). A negative tolerance marked every
+            // block as a move, and SYNC never got to take its snapshot.
+            const float cTol = kSnapTolerance * fabsf(a->chaosMax - a->chaosMin);
+            const float hTol = kSnapTolerance * fabsf(a->charMax - a->charMin);
             if (fabsf(chaos - snapChaos_) > cTol || fabsf(charV - snapChar_) > hTol) {
                 snapStale_ = true;
                 captureWait_ = 0;

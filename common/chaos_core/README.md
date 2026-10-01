@@ -19,9 +19,16 @@ for the reference consumer.
   envelope, DC blocking, limiter
 - `include/chaos_core/PitchTables.h`: **generated** by `tools/pitchmap.cpp
   --emit`; the natural-frequency grids `Voice::setPitch()` tunes with
-- `include/chaos_core/Attractors.h` — the six attractors, RK4 per `stepSample()`
-- `include/chaos_core/Registry.h` / `src/Registry.cpp` — `algos[]` and `N_ALGOS`,
-  the shipping set in panel order
+- `include/chaos_core/Attractors.h` — bank 1, the six original attractors, RK4
+  written out per `stepSample()`
+- `include/chaos_core/Bank2.h` — bank 2, six more (2026-10-01); tables in
+  `PitchTablesBank2.h`, **generated** by `pitchmap --emit-bank2`
+- `include/chaos_core/OdeModel.h` — the RK4 stepper bank 2 and the candidates
+  share: a model supplies its derivative, outputs and escape test
+- `include/chaos_core/Registry.h` / `src/Registry.cpp` — `algos[]` and `N_ALGOS`
+  (twelve), the shipping set in panel order, in banks of `kBankSize` (six)
+- `include/chaos_core/Candidates.h` / `src/Candidates.cpp` — measured models in
+  reserve for a later bank; host tools only (below)
 - `tools/characterise.cpp`: bounds, cost and level gains (below)
 - `tools/periodmap.cpp`: where on the CHAOS × CHAR plane the attractor is periodic
 - `tools/pitchmap.cpp`: natural frequency and jitter per point; `--emit` writes
@@ -65,18 +72,22 @@ what `dtBase` reaches is produced by running **more integration steps per audio
 sample**, not by enlarging `dt`. That buys pitch with CPU, and a step is not the
 same price in every system, so the ceiling is per-algorithm:
 
-| Algorithm | X / Y outputs | cyc/step (M7) | steps/sample at 44.1 kHz |
-| --- | --- | ---: | ---: |
-| Rössler | x, y | ~88 | 64 |
-| Van der Pol | x, y | ~83 | 64 |
-| Lorenz | x, z−ρ (centred) | ~89 | 64 |
-| Chua | x, z | ~178 | 32 |
-| Duffing | x, y | ~543 | 8 |
-| Coupled Rössler | x₁, x₂ (the other oscillator) | ~178 | 32 |
+| Algorithm | X / Y outputs | cyc/step, Teensy estimate | cyc/step, Alchemy Lab, TAME 1 | cap (steps/s) |
+| --- | --- | ---: | ---: | ---: |
+| Rössler | x, y | ~88 | ~466 | 550,000 |
+| Van der Pol | x, y | ~83 | ~392 | 650,000 |
+| Lorenz | x, z−ρ (centred) | ~89 | ~298 | 860,000 |
+| Chua | x, z | ~178 | ~335 | 770,000 |
+| Duffing | x, y | ~543 | ~844 | 300,000 |
+| Coupled Rössler | x₁, x₂ (the other oscillator) | ~178 | ~631 | 410,000 |
 
-Costs are static counts from emitted Cortex-M7 code. See
-[`TEENSY_CHAOS.md`](https://github.com/Eight4aWish/eurorack_modules/blob/main/docs/TEENSY_CHAOS.md) for the budget arithmetic
-and for the on-screen CPU figure to raise a cap against.
+The Teensy column was static counts from emitted Cortex-M7 code. The Alchemy Lab
+column is measured on the board (400 MHz, 2026-10-01) by Secret's `make BENCH=1`,
+which runs each model at its cap before audio starts. It is 2–3× higher, and TAME
+adds up to half again. The caps are now set from it, so the worst block takes about
+65% of its time; bank 2's are in `Bank2.h`, and the table with top pitches is in
+`docs/SECRET.md`. A cap is per chip: re-measure on new hardware rather than
+carrying one over. `tametest` lifts the caps, because it tests TAME, not the chip.
 
 ## Usage
 
@@ -260,6 +271,38 @@ path both, checked against the frozen copy in `eurorack_modules`.
 Cost, host x86: FORCE adds ~60% per sample on Rössler (three reference cosines
 per step, against ~90 cycles of RK4). SYNC adds almost nothing. Reusing each
 step's end value as the next one's start would cut FORCE to two cosines.
+
+## Candidates (host tools only)
+
+`include/chaos_core/Candidates.h` and `src/Candidates.cpp` hold models being
+auditioned for future banks, with their own measured pitch tables in
+`PitchTablesCandidates.h`. The firmware builds `src/Registry.cpp` and nothing
+here, so a candidate never changes what Secret plays until it is promoted.
+They share one RK4 stepper (`OdeModel`): a model supplies only its derivative,
+outputs and escape test.
+
+Every tool takes them when built with `-DCHAOS_CANDIDATES` and
+`src/Candidates.cpp`; indices 0–5 are still the shipping six, and candidates follow
+(`tools/models.h`):
+
+```
+g++ -O2 -std=c++17 -DCHAOS_CANDIDATES -I common/chaos_core/include -I common/chaos_core/tools \
+    common/chaos_core/tools/<tool>.cpp common/chaos_core/src/Registry.cpp \
+    common/chaos_core/src/Candidates.cpp -o /tmp/<tool>
+```
+
+- `periodmap <index>`: where the candidate is pitched, chaotic, silent.
+- `characterise`: levels, guard trips, plot windows, cost.
+- `pitchmap --emit-candidates > include/chaos_core/PitchTablesCandidates.h`:
+  their tables, written separately so the firmware's `PitchTables.h` is never
+  touched.
+- `tametest <index>`: TAME 1 must be periodic and in tune.
+- `audition <dir>`: one WAV per candidate: CHAOS, CHAR and TAME sweeps and an
+  arpeggio, free and tamed.
+
+Bank 2 was chosen from nine candidates on 2026-10-01 and promoted into the
+registry (`Bank2.h`, models 6–11). The three in reserve are models 12–14 in the
+tools: Rikitake, Shimizu–Morioka and Genesio–Tesi.
 
 ## Adding an algorithm
 

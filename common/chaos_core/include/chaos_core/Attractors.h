@@ -20,7 +20,7 @@ namespace chaos_core {
             chaosMin   = 2.0f;   chaosMax = 8.0f;
             simRateMin = 88.2f;  simRateMax = 4410.0f;   // was dt 0.002-0.1 per sample at 44.1k
             dtBase     = 0.1f;
-            maxStepsPerSecond = 64.0f * kRefSampleRate;   // ~85 cyc/step, 64 steps/sample at 44.1k
+            maxStepsPerSecond = 550000.0f;   // measured on the Alchemy Lab (400 MHz, 2026-10-01): TAME 1 at the cap <= 65% of a block; ~466 cyc/step. Teensy era: 64 x 44.1k
             divergeBound  = 200.0f;   // outputs reach ~13 where stable
             // charMax was 0.4, where Rossler has no bounded attractor for c >= 3:
             // it escapes to infinity. Not a step-size problem — it escapes at dt
@@ -78,7 +78,7 @@ namespace chaos_core {
             chaosMin   = 0.1f;   chaosMax = 8.0f;
             simRateMin = 88.2f;  simRateMax = 6615.0f;   // was dt 0.002-0.15 per sample at 44.1k
             dtBase     = 0.15f;
-            maxStepsPerSecond = 64.0f * kRefSampleRate;   // ~83 cyc/step, 64 steps/sample at 44.1k
+            maxStepsPerSecond = 650000.0f;   // measured on the Alchemy Lab (400 MHz, 2026-10-01): TAME 1 at the cap <= 65% of a block; ~392 cyc/step. Teensy era: 64 x 44.1k
             divergeBound  = 20.0f;    // unchanged; |x| peaks ~2.0
             charMin    = 0.0f;   charMax  = 1.0f;  // reserved
             modScale   = 1.0f;
@@ -166,7 +166,7 @@ namespace chaos_core {
             chaosMin   = 24.0f;  chaosMax = 180.0f;
             simRateMin = 44.1f;  simRateMax = 132.3f;   // was dt 0.001-0.003 per sample at 44.1k
             dtBase     = 0.003f;
-            maxStepsPerSecond = 64.0f * kRefSampleRate;   // ~89 cyc/step, 64 steps/sample at 44.1k
+            maxStepsPerSecond = 860000.0f;   // measured on the Alchemy Lab (400 MHz, 2026-10-01): TAME 1 at the cap <= 65% of a block; ~298 cyc/step. Teensy era: 64 x 44.1k
             // The guard tests raw z, which sits near rho -- not z-rho. At rho=180
             // |z| reaches ~230 and at the MOD ceiling ~290, so the old 200 would
             // have put the whole top of the range into permanent re-seeding.
@@ -234,7 +234,7 @@ namespace chaos_core {
             chaosMin   = 8.0f;   chaosMax = 11.0f;   // double-scroll bounded ~8.5–10.5
             simRateMin = 44.1f;  simRateMax = 352.8f;   // was dt 0.001-0.008 per sample at 44.1k
             dtBase     = 0.008f;
-            maxStepsPerSecond = 32.0f * kRefSampleRate;   // ~178 cyc/step - 2x a Rossler step, 32 steps/sample at 44.1k
+            maxStepsPerSecond = 770000.0f;   // measured on the Alchemy Lab (400 MHz, 2026-10-01): TAME 1 at the cap <= 65% of a block; ~335 cyc/step. Teensy era: 32 x 44.1k
             divergeBound  = 8.0f;     // backstop behind the b clamp in setParams
             charMin    = 12.0f;  charMax  = 16.0f;   // canonical 14.286 near centre
             modScale   = 1.0f;
@@ -312,7 +312,7 @@ namespace chaos_core {
             chaosMin   = 0.1f;   chaosMax = 0.8f;
             simRateMin = 220.5f;  simRateMax = 4410.0f;   // was dt 0.005-0.1 per sample at 44.1k
             dtBase     = 0.1f;
-            maxStepsPerSecond = 8.0f * kRefSampleRate;   // ~543 cyc/step - 3x cosf, 6x a Rossler step, 8 steps/sample at 44.1k
+            maxStepsPerSecond = 300000.0f;   // measured on the Alchemy Lab (400 MHz, 2026-10-01): TAME 1 at the cap <= 65% of a block; ~844 cyc/step (3x cosf). Teensy era: 8 x 44.1k
             divergeBound  = 50.0f;    // outputs peak ~2.2
             charMin    = 0.8f;   charMax  = 1.4f;
             modScale   = 0.35f;
@@ -401,7 +401,7 @@ namespace chaos_core {
             chaosMin   = 2.0f;   chaosMax = 8.0f;
             simRateMin = 88.2f;  simRateMax = 4410.0f;   // was dt 0.002-0.1 per sample at 44.1k
             dtBase     = 0.1f;
-            maxStepsPerSecond = 32.0f * kRefSampleRate;   // ~178 cyc/step - two coupled systems, 32 steps/sample at 44.1k
+            maxStepsPerSecond = 410000.0f;   // measured on the Alchemy Lab (400 MHz, 2026-10-01): TAME 1 at the cap <= 65% of a block; ~631 cyc/step (two systems). Teensy era: 32 x 44.1k
             divergeBound  = 200.0f;   // outputs reach ~16
             charMin    = 0.0f;   charMax  = 0.5f;
             modScale   = 1.0f;

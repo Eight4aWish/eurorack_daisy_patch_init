@@ -36,7 +36,7 @@
 //
 // Args: [algo index] [auto|force|sync]   (default: every algorithm, auto)
 
-#include "chaos_core/Registry.h"
+#include "models.h"   // the shipping six, plus candidates with -DCHAOS_CANDIDATES
 #include "chaos_core/Voice.h"
 
 #include <algorithm>
@@ -147,9 +147,17 @@ int main(int argc, char** argv) {
     std::printf("cos2pi max error %.2e\n", cosErr);
     int fails = (cosErr > 1e-4f) ? 1 : 0;
 
-    for (int ai = 0; ai < N_ALGOS; ai++) {
+    for (int ai = 0; ai < nModels(); ai++) {
         if (only >= 0 && ai != only) continue;
-        ChaosBase* a = algos[ai];
+        ChaosBase* a = model(ai);
+        // This tests TAME, not the chip. maxStepsPerSecond is a per-board CPU
+        // limit, measured by Secret's `make BENCH=1`. On the Alchemy Lab it puts
+        // the top of some models below this test's 880 Hz (Hindmarsh-Rose ~200 Hz
+        // at mid settings), where the note plateaus by design. Lifted here so a
+        // failure means TAME, not the cap. Host only; restored after.
+        const float cap = a->maxStepsPerSecond;
+        a->maxStepsPerSecond = 1.0e9f;
+        struct Restore { ChaosBase* a; float cap; ~Restore() { a->maxStepsPerSecond = cap; } } restore{a, cap};
         Voice::TameMode m = mode;
         if (m == Voice::TAME_AUTO)
             m = (a->pitchClass == PITCH_INCOHERENT) ? Voice::TAME_SYNC : Voice::TAME_FORCE;

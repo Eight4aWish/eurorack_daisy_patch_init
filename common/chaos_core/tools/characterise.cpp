@@ -37,7 +37,7 @@
 //   --verbose   per-combination divergence map for each algorithm
 //   --samples N samples measured per combination (default 200000)
 
-#include "chaos_core/Registry.h"
+#include "models.h"   // the shipping six, plus candidates with -DCHAOS_CANDIDATES
 
 #include <algorithm>
 #include <chrono>
@@ -232,7 +232,7 @@ int main(int argc, char** argv) {
     }
 
     std::printf("chaos_core characterisation — %d algorithms, %dx%dx%d sweep, "
-                "%ld samples per point\n\n", N_ALGOS, kChaosSteps, kCharSteps,
+                "%ld samples per point\n\n", nModels(), kChaosSteps, kCharSteps,
                 kRateSteps, samples);
 
     std::printf("%-16s %9s %6s %7s %12s %12s\n",
@@ -241,8 +241,8 @@ int main(int argc, char** argv) {
 
     std::vector<Result> results;
     double base = 0.0;
-    for (int i = 0; i < N_ALGOS; i++) {
-        Result r = characterise(algos[i], samples);
+    for (int i = 0; i < nModels(); i++) {
+        Result r = characterise(model(i), samples);
         if (i == 0) base = r.nsPerStep;
         std::printf("%-16s %9.2f %6.2f %4d/%-3zu %12.4f %12.4f\n",
                     r.name, r.nsPerStep, r.nsPerStep / base,
@@ -251,8 +251,8 @@ int main(int argc, char** argv) {
     }
 
     std::printf("\nConstructor values — measured against what Attractors.h currently declares\n");
-    for (int i = 0; i < N_ALGOS; i++) {
-        ChaosBase*    a = algos[i];
+    for (int i = 0; i < nModels(); i++) {
+        ChaosBase*    a = model(i);
         const Result& r = results[i];
         std::printf("\n  %s\n", r.name);
         printGain("gainL", a->gainL, gainFor(r.medianPeakX));
@@ -277,8 +277,8 @@ int main(int argc, char** argv) {
     // hardware has to still mean the same pitch at 96 kHz.
     {
         int identityFails = 0, invarianceFails = 0;
-        for (int i = 0; i < N_ALGOS; i++) {
-            ChaosBase* a = algos[i];
+        for (int i = 0; i < nModels(); i++) {
+            ChaosBase* a = model(i);
             // The pre-refactor per-sample equivalents, reconstructed.
             const float legacyRateMin = a->simRateMin / kRefSampleRate;
             const float legacyRateMax = a->simRateMax / kRefSampleRate;

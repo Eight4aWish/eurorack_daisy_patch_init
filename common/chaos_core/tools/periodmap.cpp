@@ -33,7 +33,7 @@
 //   With no range given it maps the algorithm's own declared range -- so it shows
 //   what the panel can actually reach. Pass a range to explore beyond it.
 
-#include "chaos_core/Registry.h"
+#include "models.h"   // the shipping six, plus candidates with -DCHAOS_CANDIDATES
 
 #include <algorithm>
 #include <cmath>
@@ -92,12 +92,12 @@ float lerp(float a, float b, int i, int n) {
 
 int main(int argc, char** argv) {
     const int idx = (argc > 1) ? std::atoi(argv[1]) : 0;
-    if (idx < 0 || idx >= N_ALGOS) {
-        std::printf("usage: periodmap <0..%d> [chaosMin chaosMax charMin charMax]\n", N_ALGOS - 1);
-        for (int i = 0; i < N_ALGOS; i++) std::printf("  %d  %s\n", i, algos[i]->name);
+    if (idx < 0 || idx >= nModels()) {
+        std::printf("usage: periodmap <0..%d> [chaosMin chaosMax charMin charMax]\n", nModels() - 1);
+        for (int i = 0; i < nModels(); i++) std::printf("  %d  %s\n", i, model(i)->name);
         return 1;
     }
-    ChaosBase* a = algos[idx];
+    ChaosBase* a = model(idx);
     const float cLo = (argc > 2) ? (float)std::atof(argv[2]) : a->chaosMin;
     const float cHi = (argc > 3) ? (float)std::atof(argv[3]) : a->chaosMax;
     const float hLo = (argc > 4) ? (float)std::atof(argv[4]) : a->charMin;
