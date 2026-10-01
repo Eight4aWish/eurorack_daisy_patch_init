@@ -508,6 +508,24 @@ from four creators (TONE3000 itself is one), CC0/CC-BY A2 captures instead, capt
 your own gear, or no captures at all and the converter. Only the first keeps NOT-AMPS as
 it is; the others need it to stop depending on these five by name.
 
+**CC0 captures, found 2026-10-01.** CC0 can be redistributed, so these could ship with
+Mirth rather than only be linked. Each page states CC0 and offers A2-Full and A2-Lite —
+from the page, not yet confirmed by downloading and running `match_captures.py` /
+`nam_to_a2nb.py` on the files. TONE3000 has no licence filter; these came from a web search.
+
+| Tone | Gear | Models | Creator |
+|---|---|---|---|
+| [Bugera G5 Infinium Pack](https://www.tone3000.com/tones/bugera-g5-infinium-pack-6151) | amp head, clean to distorted, DI | 8 | durchschnittsmusiker |
+| [Traynor TS 120 B](https://www.tone3000.com/tones/traynor-ts-120-b-6333) | bass amp head, Mesa 2×15 IR baked in | 5 | @rbrt |
+| [Kay 703](https://www.tone3000.com/tones/kay-703-6302) | vintage amp + cab, SM57, lo-fi | 4 | @aazuspan |
+| [DIY drive pedal (BJT silicon)](https://www.tone3000.com/tones/diy-drive-pedal-bjt-silicon-celestion-eight-15-ir-5700) | home-built pedal + cab IR | 1 | test98425988 |
+| [Dead Robot Guitar Profiles v2](https://www.tone3000.com/tones/dead-robot-nam-guitar-profiles-v2-6745) | free plugins (BLOCKFISH, EpiCentre, Distroyr) | 9 | chrisdeadrobot |
+| [Dead Robot Vocal Profiles v1](https://www.tone3000.com/tones/dead-robot-nam-vocal-profiles-v1-6726) | free-plugin vocal chains | 4 | chrisdeadrobot |
+
+The two Dead Robot packs are captures of software. CC0 covers the creator's capture; the
+plugins are free, and TONE3000's policy only bars captures of *commercial* software made
+without permission. The hardware captures carry no such question.
+
 **Not in this repo.** `nam/model_data_nam_a2.h` and `captures/*.a2nb` were committed
 here until 2026-10-01, when they were removed from the whole history; `.gitignore` now
 keeps them, and any `.nam`, out. They live on the working machine only. A fresh clone
