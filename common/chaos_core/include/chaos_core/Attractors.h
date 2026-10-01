@@ -56,7 +56,7 @@ namespace chaos_core {
             x_ += dt_/6.0f*(dx1 + 2*dx2 + 2*dx3 + dx4);
             y_ += dt_/6.0f*(dy1 + 2*dy2 + 2*dy3 + dy4);
             z_ += dt_/6.0f*(dz1 + 2*dz2 + 2*dz3 + dz4);
-            if (diverged(x_) || diverged(y_) || diverged(z_)) init();
+            if (diverged(x_) || diverged(y_) || diverged(z_)) reseed();
         }
         float getX() const override { return x_; }
         float getY() const override { return y_; }
@@ -123,7 +123,7 @@ namespace chaos_core {
             float dx4 = y4 + D1, dy4 = mu_*(1.0f - x4*x4)*y4 - x4;
             x_ += dt_/6.0f*(dx1 + 2*dx2 + 2*dx3 + dx4);
             y_ += dt_/6.0f*(dy1 + 2*dy2 + 2*dy3 + dy4);
-            if (diverged(x_) || nonFinite(y_)) init();
+            if (diverged(x_) || nonFinite(y_)) reseed();
         }
         float getX() const override { return x_; }
         float getY() const override { return y_; }
@@ -210,7 +210,7 @@ namespace chaos_core {
             x_ += dt_/6.0f*(dx1 + 2*dx2 + 2*dx3 + dx4);
             y_ += dt_/6.0f*(dy1 + 2*dy2 + 2*dy3 + dy4);
             z_ += dt_/6.0f*(dz1 + 2*dz2 + 2*dz3 + dz4);
-            if (diverged(x_) || diverged(y_) || diverged(z_)) init();
+            if (diverged(x_) || diverged(y_) || diverged(z_)) reseed();
         }
         float getX() const override { return x_; }
         float getY() const override { return z_ - rho_; }  // centred: audio + plot
@@ -277,7 +277,7 @@ namespace chaos_core {
             x_ += dt_/6.0f*(dx1 + 2*dx2 + 2*dx3 + dx4);
             y_ += dt_/6.0f*(dy1 + 2*dy2 + 2*dy3 + dy4);
             z_ += dt_/6.0f*(dz1 + 2*dz2 + 2*dz3 + dz4);
-            if (diverged(x_) || nonFinite(z_)) init();
+            if (diverged(x_) || nonFinite(z_)) reseed();
         }
         float getX() const override { return x_; }
         float getY() const override { return z_; }
@@ -373,7 +373,7 @@ namespace chaos_core {
             y_   += dt_/6.0f*(dy1 + 2*dy2 + 2*dy3 + dy4);
             phi_ += dt_*omega_;
             if (phi_ > 6.28318f) phi_ -= 6.28318f;  // keep phi in [0, 2π)
-            if (diverged(x_) || diverged(y_)) init();
+            if (diverged(x_) || diverged(y_)) reseed();
         }
         float getX() const override { return x_; }
         float getY() const override { return y_; }
@@ -474,7 +474,7 @@ namespace chaos_core {
             y2_ += dt_/6.0f*(dy2a + 2*dy2b + 2*dy2c + dy2d);
             z2_ += dt_/6.0f*(dz2a + 2*dz2b + 2*dz2c + dz2d);
             if (diverged(x1_) || diverged(y1_) || diverged(z1_) ||
-                diverged(x2_) || diverged(y2_) || diverged(z2_)) init();
+                diverged(x2_) || diverged(y2_) || diverged(z2_)) reseed();
         }
         float getX() const override { return x1_; }
         float getY() const override { return x2_; }

@@ -125,7 +125,11 @@ RK4 runs away at the edges of some parameter ranges — Rössler above `a`≈0.3
 Chua at its `chaosMax`. Once the state is non-finite every later step inherits
 it, so the voice goes silent with X/Y stuck on a rail until the algorithm is
 changed. Every `stepSample()` therefore ends by testing its state and re-seeding
-via `init()` if it has escaped, which turns a dead module into a brief glitch.
+via `reseed()` (`init()`, counted in the public `guardTrips`) if it has escaped,
+which turns a dead module into a brief glitch. The count lets a host tell a guard
+re-seed from the other causes of a jump in the output. On the Alchemy Lab, Secret's
+click log showed every Chua click in its documented stutter corner (below) as a
+guard trip.
 
 Two tests are available to subclasses:
 
@@ -296,6 +300,12 @@ automatically a fault — see Chua above.
 ## Notes
 
 - Single-precision throughout; assumes a hardware FPU.
+- `Voice`'s envelope ramps the VCA over `kModeRampMs` (5 ms) when it is switched
+  between drone and gated, in either direction. It used to snap open or shut in a
+  single sample, which clicked on every switch.
+- For hosts hunting clicks, `Voice` also counts SYNC pulls (`syncPulls()`) and
+  snapshot captures (`snapCaptures()`), and reports `stepsPerSample()`, the
+  figure that sets the CPU cost.
 - Not thread-safe. `stepSample()` is expected to run in one audio context while
   `setParams()` is called from a control context — the field writes are
   word-sized, and a torn parameter update is at worst one sample of a stale

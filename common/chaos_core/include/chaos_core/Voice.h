@@ -61,8 +61,12 @@ namespace chaos_core {
     class Voice {
     public:
         enum EnvStage : unsigned char {
-            ENV_OPEN, ENV_ATTACK, ENV_DECAY, ENV_SUSTAIN, ENV_RELEASE, ENV_CLOSED
+            ENV_OPEN, ENV_ATTACK, ENV_DECAY, ENV_SUSTAIN, ENV_RELEASE, ENV_CLOSED,
+            ENV_OPENING, ENV_CLOSING   // drone <-> gated switches, see render()
         };
+        // How long a drone <-> gated switch takes to open or shut the VCA. Short
+        // enough to read as immediate, long enough not to click.
+        static constexpr float kModeRampMs = 5.0f;
         // AUTO picks FORCE or SYNC from the algorithm's PitchClass.
         enum TameMode : unsigned char { TAME_AUTO, TAME_FORCE, TAME_SYNC };
 
@@ -216,6 +220,17 @@ namespace chaos_core {
         float driveAmp()    const { return drive_; }
         bool  syncHolding() const { return snapValid_; }
 
+        // Event counters, for a host hunting clicks: each SYNC pull and each
+        // snapshot capture can move the output, and a host that sees a jump can
+        // check which of these advanced in the same block. Written only by
+        // render(), one word each.
+        uint32_t syncPulls()    const { return syncPulls_; }
+        uint32_t snapCaptures() const { return snapCaptures_; }
+
+        // RK4 steps per audio sample the current pitch asks for, before the load
+        // governor's scale: the number that sets the CPU cost.
+        float stepsPerSample() const { return stepsPerSample_; }
+
         // Simulated time actually advanced per audio sample, after the schedule's
         // clamps — the number worth putting on a display.
         float effectiveDt() const { return effectiveDt_; }
@@ -250,18 +265,23 @@ namespace chaos_core {
                 return;
             }
 
+            // Switching between drone and gated ramps the VCA over kModeRampMs in
+            // either direction. It used to snap -- fully open to fully shut in one
+            // sample, and back -- and both were clicks.
             if (!envEnabled_) {
-                // Disabled: VCA fully open (drone), gate ignored. Hold the edge
+                // Disabled: VCA open (drone), gate ignored. Hold the edge
                 // detector low rather than tracking the live gate, so a gate that
                 // is already high when the envelope is switched on still reads as
                 // a rising edge and starts the note straight away, instead of
                 // leaving the voice closed until the gate next cycles.
-                envStage_ = ENV_OPEN; envLevel_ = 1.0f; envGatePrev_ = false;
+                if (envStage_ != ENV_OPEN) envStage_ = ENV_OPENING;
+                envGatePrev_ = false;
             } else {
-                if (envStage_ == ENV_OPEN) { envStage_ = ENV_CLOSED; envLevel_ = 0.0f; }
+                if (envStage_ == ENV_OPEN || envStage_ == ENV_OPENING) envStage_ = ENV_CLOSING;
                 const bool g = envGate_;
                 if (g && !envGatePrev_)      envStage_ = ENV_ATTACK;    // rising -> (re)trigger
-                else if (!g && envGatePrev_ && envStage_ != ENV_CLOSED) envStage_ = ENV_RELEASE;
+                else if (!g && envGatePrev_ && envStage_ != ENV_CLOSED && envStage_ != ENV_CLOSING)
+                    envStage_ = ENV_RELEASE;
                 envGatePrev_ = g;
             }
 
@@ -355,6 +375,7 @@ namespace chaos_core {
             x2_ = x1_; x1_ = x;
             if ((!snapValid_ || snapStale_) && captureWait_ >= kSettleCycles) {
                 if (peak) {
+                    ++snapCaptures_;
                     a->saveState(snap_);
                     snapValid_ = true; snapStale_ = false;
                     captureWait_ = 0; cycleCount_ = 0; syncAcc_ = 0.0f;
@@ -369,6 +390,7 @@ namespace chaos_core {
             if (++cycleCount_ < syncEvery_) return;
             cycleCount_ = 0;
             const float bl = a->getX() * gL + dclL_, br = a->getY() * gR + dclR_;
+            ++syncPulls_;
             a->blendState(snap_, syncW_);
             dclL_ = bl - a->getX() * gL;
             dclR_ = br - a->getY() * gR;
@@ -381,6 +403,7 @@ namespace chaos_core {
             float dec = decMs_ * perMs; if (dec < 1.0f) dec = 1.0f;
             float rel = relMs_ * perMs; if (rel < 1.0f) rel = 1.0f;
             envAtkInc_ = 1.0f / atk;
+            envRampInc_ = 1.0f / (kModeRampMs * perMs);
             envDecMul_ = expf(-6.908f / dec);      // ln(0.001) ~= -6.908
             envRelMul_ = expf(-6.908f / rel);
         }
@@ -399,6 +422,14 @@ namespace chaos_core {
                 case ENV_RELEASE:
                     envLevel_ *= envRelMul_;
                     if (envLevel_ <= 0.0008f) { envLevel_ = 0.0f; envStage_ = ENV_CLOSED; }
+                    break;
+                case ENV_OPENING:
+                    envLevel_ += envRampInc_;
+                    if (envLevel_ >= 1.0f) { envLevel_ = 1.0f; envStage_ = ENV_OPEN; }
+                    break;
+                case ENV_CLOSING:
+                    envLevel_ -= envRampInc_;
+                    if (envLevel_ <= 0.0f) { envLevel_ = 0.0f; envStage_ = ENV_CLOSED; }
                     break;
                 case ENV_OPEN:   envLevel_ = 1.0f; break;
                 case ENV_CLOSED: envLevel_ = 0.0f; break;
@@ -419,6 +450,7 @@ namespace chaos_core {
         float          envLevel_   = 1.0f;
         float          atkMs_ = 10.0f, decMs_ = 200.0f, relMs_ = 200.0f;
         float          envAtkInc_ = 0.0f, envDecMul_ = 0.0f, envRelMul_ = 0.0f, envSus_ = 0.5f;
+        float          envRampInc_ = 0.0f;
 
         // TAME
         TameState tame_ = TAME_OFF;
@@ -430,6 +462,7 @@ namespace chaos_core {
         float snapChaos_ = -1.0e30f, snapChar_ = -1.0e30f;
         int   syncEvery_ = 1, cycleCount_ = 0, captureWait_ = 0;
         float syncAcc_ = 0.0f, x1_ = 0.0f, x2_ = 0.0f;
+        uint32_t syncPulls_ = 0, snapCaptures_ = 0;
     };
 
 }  // namespace chaos_core

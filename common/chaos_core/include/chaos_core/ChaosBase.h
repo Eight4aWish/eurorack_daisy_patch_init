@@ -7,6 +7,7 @@
 // belong to the platform layer that owns these objects.
 
 #include <math.h>
+#include <stdint.h>
 
 namespace chaos_core {
 
@@ -226,7 +227,18 @@ namespace chaos_core {
         virtual float getX() const                                    = 0;
         virtual float getY() const                                    = 0;
 
+        // How many times the divergence guard has re-seeded this attractor. A
+        // re-seed is a jump in the output, so a host hunting clicks can tell a
+        // guard trip from its other causes. Written from stepSample() only, one
+        // word, so a control loop may read it while the audio runs.
+        uint32_t guardTrips = 0;
+
     protected:
+        // The divergence guard's re-seed: init(), counted. Every stepSample()
+        // guard calls this rather than init() directly; trajectories are
+        // unchanged.
+        void reseed() { ++guardTrips; init(); }
+
         // True once `v` has left the region any healthy trajectory stays in.
         // Apply to the variable `divergeBound` was chosen for.
         bool diverged(float v) const {
