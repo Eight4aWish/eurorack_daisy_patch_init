@@ -71,6 +71,13 @@ C_DEFS += -DALCHEMY_BOARD_V2
 GIT_HASH := $(shell git -C $(_P_DIR) rev-parse --short HEAD 2>/dev/null || echo unknown)
 C_DEFS += -DSECRET_GIT_HASH=\"$(GIT_HASH)\"
 
+# make clean && make BENCH=1: at power-on, before audio starts, time every model
+# at its step cap and log the load over USB (see Bench() in src/secret.cpp). For
+# setting maxStepsPerSecond from this board; not for playing.
+ifeq ($(BENCH),1)
+C_DEFS += -DSECRET_BENCH
+endif
+
 # The USB log formats numbers with %f, and newlib-nano's printf leaves floats
 # out unless asked for: without this every value in a click report is blank.
 LDFLAGS += -u _printf_float

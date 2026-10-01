@@ -19,7 +19,9 @@
 //   P5 AD     envelope attack + decay
 //   P6 SR     envelope sustain + release
 //
-//   B1        model: Rossler, Van der Pol, Lorenz, Chua, Duffing, Coupled Rossler
+//   B1        model, twelve in one list: Rossler, Van der Pol, Lorenz, Chua,
+//             Duffing, Coupled Rossler (bank 1), then Pendulum, Lorenz-Lu-Chen,
+//             Moore-Spiegel, Brusselator, Colpitts, Hindmarsh-Rose (bank 2)
 //   B2        envelope: Drone (VCA open) or Gated by J4
 //   B3        TAME mode: Auto, Force, Sync (Auto = the model's own choice)
 //
@@ -107,11 +109,27 @@ static VirtualKnob sustainRelease = VirtualKnob(kPotBottomRight, "SR")
 /* ── Buttons ────────────────────────────────────────────────────────────── */
 static uint8_t s_model = 0, s_env = 0, s_mode = 0;   // kept in sync by Bind()
 
+// One list of twelve on B1 for now: bank 1, then bank 2 (chaos_core/Registry.h).
+// A bank selector waits until there is a third bank. Twelve colours, both of
+// B1's LEDs; bank 2's six sit in the hue gaps between bank 1's.
+static_assert(N_ALGOS == 12, "one name and one colour per model");
 static const char* kModelNames[N_ALGOS] = {
-    "Rossler", "Van der Pol", "Lorenz", "Chua", "Duffing", "Coupled Rossler"};
+    "Rossler", "Van der Pol", "Lorenz", "Chua", "Duffing", "Coupled Rossler",
+    "Pendulum", "Lorenz-Lu-Chen", "Moore-Spiegel", "Brusselator", "Colpitts",
+    "Hindmarsh-Rose"};
 static constexpr LedPanel::Rgb kModelColors[N_ALGOS] = {
-    {0xFF, 0x60, 0x00}, {0xFF, 0xFF, 0x40}, {0x40, 0x80, 0xFF},
-    {0xFF, 0x00, 0xC0}, {0x00, 0xFF, 0x60}, {0xFF, 0xFF, 0xFF}};
+    {0xFF, 0x60, 0x00},   // Rossler          orange
+    {0xFF, 0xFF, 0x40},   // Van der Pol      yellow
+    {0x40, 0x80, 0xFF},   // Lorenz           blue
+    {0xFF, 0x00, 0xC0},   // Chua             magenta
+    {0x00, 0xFF, 0x60},   // Duffing          green
+    {0xFF, 0xFF, 0xFF},   // Coupled Rossler  white
+    {0xFF, 0x00, 0x00},   // Pendulum         red
+    {0x00, 0xD0, 0xFF},   // Lorenz-Lu-Chen   cyan, Lorenz's relative
+    {0x80, 0x00, 0xFF},   // Moore-Spiegel    violet
+    {0xA0, 0xFF, 0x00},   // Brusselator      lime
+    {0xFF, 0x60, 0x90},   // Colpitts         pink
+    {0x00, 0xFF, 0xC0}};  // Hindmarsh-Rose   teal
 
 static const char* kEnvNames[2] = {"Drone", "Gated"};
 static constexpr LedPanel::Rgb kEnvColors[2] = {{0x20, 0x20, 0x20}, {0xFF, 0xA0, 0x20}};
@@ -443,6 +461,59 @@ static void Frame()
     }
 }
 
+#ifdef SECRET_BENCH
+/* ── make BENCH=1: measure every model's step cap on this board ─────────── */
+// The caps in chaos_core came from the Teensy at 600 MHz without TAME, and the
+// Chua episode showed they don't carry over. Before audio starts, run each model
+// flat out and log the load, so each cap can be set from this chip.
+//
+// It runs in the control loop, not the audio callback, so nothing can be starved
+// whatever a model costs. The pitch asked for is far above anything playable, so
+// the schedule clamps at the cap: the worst block the model can produce. TAME 1
+// is the worst case per step (FORCE's drive and the pull both run every step).
+// The real callback adds a few percent on top: the click scan, CV and gauges.
+static void Bench()
+{
+    static Voice v;
+    static float l[kEngineBlockSamples], r[kEngineBlockSamples];
+    constexpr int kBlocks = 400;   // 0.2 s of audio per measurement
+    const float budget = (float)kEngineBlockSamples * s_ticksPerSample;
+    const float cyclesPerTick =
+        (float)daisy::System::GetSysClkFreq() / (float)daisy::System::GetTickFreq();
+    debug.Info("bench: %lu MHz, %.0f timer ticks per %u-sample block",
+               (unsigned long)(daisy::System::GetSysClkFreq() / 1000000u), (double)budget,
+               (unsigned)kEngineBlockSamples);
+    v.setSampleRate(hw.SampleRate());
+    for (int m = 0; m < N_ALGOS; m++) {
+        ChaosBase* a = algos[m];
+        const float chaos = 0.5f * (a->chaosMin + a->chaosMax);
+        const float charV = 0.5f * (a->charMin + a->charMax);
+        v.setAlgo(a);
+        float avg[2], worst[2], steps = 0.0f;
+        for (int t = 0; t < 2; t++) {
+            v.setLoadScale(1.0f);
+            uint32_t sum = 0, most = 0;
+            for (int b = 0; b < kBlocks; b++) {
+                v.setPitch(chaos, charV, 1.0e6f, t ? 1.0f : 0.0f);   // far past any cap
+                const uint32_t t0 = daisy::System::GetTick();
+                v.render(l, r, kEngineBlockSamples);
+                const uint32_t dt = daisy::System::GetTick() - t0;
+                sum += dt;
+                if (dt > most) most = dt;
+            }
+            avg[t]   = (float)sum / kBlocks / budget;
+            worst[t] = (float)most / budget;
+            steps    = v.stepsPerSample();
+        }
+        const float cycPerStep = avg[0] * budget * cyclesPerTick / (steps * kEngineBlockSamples);
+        debug.Info("bench %-15s cap %4.1f st/smp, %3.0f cyc/st | TAME0 %3.0f%% (worst %3.0f%%), TAME1 %3.0f%% (%3.0f%%)",
+                   kModelNames[m], (double)steps, (double)cycPerStep,
+                   (double)(avg[0] * 100.0f), (double)(worst[0] * 100.0f),
+                   (double)(avg[1] * 100.0f), (double)(worst[1] * 100.0f));
+    }
+}
+#endif
+
 int main()
 {
     hw.Init();
@@ -464,6 +535,10 @@ int main()
     for (hostlink::GaugeBase* g : gauges) debug.Watch(*g);
     g_cal.Set(hw.IsCalibrated());
     host.Extend(debug);
+
+#ifdef SECRET_BENCH
+    Bench();   // before audio starts: see Bench()
+#endif
 
     hw.StartAudio(AudioCallback);
 

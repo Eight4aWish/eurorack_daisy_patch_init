@@ -17,6 +17,16 @@
 > re-seeds at CHAOS a 9.25–10.9, CHAR b 12–13.7), a model change, and Duffing's
 > near-vertical well switches above ~650 Hz, which is aliasing rather than a
 > fault. The Drone/Gated switch no longer clicks.
+>
+> **Twelve models (2026-10-01).** Bank 2 was chosen by ear from nine measured
+> candidates (`docs/SECRET.md`, section 3) and added after bank 1 as one list of
+> twelve on B1. A bank selector waits for a third bank. Every model's step cap
+> is measured on the board with `make BENCH=1`: at its cap with TAME on, a block
+> takes 64–71% of its time, so nothing can overrun. On this chip four models top out
+> inside the playing range, and a note above the top plateaus: Hindmarsh–Rose
+> ~200 Hz, Chua ~410 Hz, Colpitts ~570 Hz, Moore–Spiegel ~730 Hz, at mid settings.
+> A bigger integration step would lift them 3–4×, at some change in sound;
+> undecided (`docs/SECRET.md`).
 
 A chaotic oscillator for the **Hermetic Modular Alchemy Lab (V2)**. It runs
 continuous strange attractors as audio, with V/Oct, and a **TAME** control that
@@ -37,7 +47,7 @@ firmware is frozen and whose hardware will be repurposed.
 | P4 **TAME** | free chaos (0) to a locked note (1); plus CV on J6 |
 | P5 **AD** | envelope attack + decay |
 | P6 **SR** | envelope sustain + release |
-| B1 | model: Rössler, Van der Pol, Lorenz, Chua, Duffing, Coupled Rössler |
+| B1 | model, twelve in one list (see below) |
 | B2 | envelope: Drone (VCA open) or Gated by J4 |
 | B3 | TAME mode: Auto, Force, Sync (Auto is the model's own choice) |
 
@@ -49,6 +59,20 @@ firmware is frozen and whose hardware will be repurposed.
 | J6 | TAME CV in |
 | J7 / J8 | X / Y CV out: the raw attractor, for a scope (Tiliqua `xbeam`) |
 | J9 / J10 | audio L (X) / R (Y) |
+
+**B1's twelve models**, in order, by the colour both of its LEDs show:
+
+| | Bank 1 | | Bank 2 |
+| --- | --- | --- | --- |
+| orange | Rössler | red | Driven pendulum |
+| yellow | Van der Pol | cyan | Lorenz–Lü–Chen |
+| blue | Lorenz | violet | Moore–Spiegel |
+| magenta | Chua | lime | Forced Brusselator |
+| green | Duffing | pink | Chaotic Colpitts |
+| white | Coupled Rössler | teal | Hindmarsh–Rose |
+
+Bank 2's colours sit in the hue gaps between bank 1's. What each one is, and why
+it was chosen, is in `docs/SECRET.md`, section 3.
 
 CV into CHAOS and TAME: ±5 V sweeps the knob from its centre to either end. The
 rings show knob plus CV. Each button's LED shows its current choice by colour.
@@ -76,6 +100,13 @@ make               # build/secret.bin
 
 Needs `arm-none-eabi-gcc` 12 or later. The newlib "`_close` is not implemented"
 link warnings are normal: the SDK's own template gives the same eight.
+
+**Measuring step caps:** `make clean && make BENCH=1`, then flash. At power-on,
+before audio starts, it runs every model flat out at its step cap, at TAME 0 and
+TAME 1, and logs the block load and cycles per step over USB (`logs`, below). It
+runs in the control loop, so a model that costs too much can't freeze anything.
+It is for setting `maxStepsPerSecond` from this chip, not for playing:
+`make clean && make` again afterwards.
 
 ## Flash
 
