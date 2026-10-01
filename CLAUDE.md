@@ -26,5 +26,7 @@ that had been committed under `daisy_neural/`.
 
 - **A checkout from before that date must be re-cloned, never merged.** Pulling the new
   `main` into old history and pushing would put the captures back on GitHub.
-- **Never commit `.nam`, `.a2nb` or `daisy_neural/nam/model_data_nam_a2.h`.**
+- **Never commit a capture in any form**: `.nam`, `.a2nb`, `daisy_neural/nam/model_data_nam_a2.h`,
+  or a raw parameter dump such as `amp_compare/w_*.f32` — those slipped through the first
+  purge and needed a second.
   `.gitignore` covers them; do not force-add them. The firmware builds without them.

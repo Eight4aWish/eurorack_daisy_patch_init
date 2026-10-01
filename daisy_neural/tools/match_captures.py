@@ -7,7 +7,8 @@ nam/model_data_nam_a2.h (via bkshepherd), never as .nam files. TONE3000 hands
 out packs as zips holding many .nam files each. This finds, for each of the
 five, the downloaded file whose A2-Lite parameters are the same numbers — so a
 match is proved by the network itself, not guessed from a file name, and a
-capture its creator has since retrained shows up as a near miss, not a match.
+capture its creator has since fine-tuned shows up as a near miss, not a match.
+One retrained from scratch shares none of its numbers and shows as not found.
 
 Point it at the zips as downloaded, at folders, or at loose .nam files:
 
@@ -106,10 +107,13 @@ def main():
             if d < SAME:
                 print(f"  {name:8}  MATCH\n            {label}")
             elif d < NEAR:
-                print(f"  {name:8}  NEAR MISS, max difference {d:.3g} — the same capture, retrained or "
+                print(f"  {name:8}  NEAR MISS, max difference {d:.3g} — the same network, fine-tuned or "
                       f"re-exported since?\n            {label}")
             else:
-                print(f"  {name:8}  not in these downloads")
+                # A capture retrained from scratch lands on entirely different numbers,
+                # however alike it sounds, so this cannot rule one out. Compare by ear,
+                # or by rendering both through tools/a2_host.
+                print(f"  {name:8}  not in these downloads (a version retrained from scratch would also show here)")
             if keep and d < SAME:
                 dest = pathlib.Path(args.keep)
                 dest.mkdir(parents=True, exist_ok=True)
