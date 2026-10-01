@@ -1,7 +1,8 @@
 # chaos_core
 
-Platform-independent chaotic-attractor DSP: the `ChaosBase` interface, six
-continuous-ODE attractors integrated with RK4, and the panel-order registry.
+Platform-independent chaotic-attractor DSP: the `ChaosBase` interface, twelve
+continuous-ODE attractors integrated with RK4 (two banks of six), and the panel-order
+registry.
 
 The only dependency is `<math.h>`. Nothing here includes Arduino, a vendor HAL,
 or an audio library, so the same sources build for Teensy 4.1 (Cortex-M7), Daisy

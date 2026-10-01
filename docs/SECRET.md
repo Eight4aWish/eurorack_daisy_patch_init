@@ -10,7 +10,9 @@ is frozen there and whose hardware will be repurposed. `chaos_core` moved here
 from `eurorack_modules/libs/chaos_core` on 2026-09-30, so this copy is the
 live one.
 
-> **Status: plan, nothing implemented.** Follows on from
+> **Status: on the bench.** Running on the Alchemy Lab since 2026-09-30, twelve models
+> since 2026-10-01; bench state is kept in [`daisy_chaos/README.md`](../daisy_chaos/README.md).
+> This document began as the plan, written before any of it ran. Follows on from
 > [TEENSY_CHAOS_V2.md](https://github.com/Eight4aWish/eurorack_modules/blob/main/docs/TEENSY_CHAOS_V2.md) (in `eurorack_modules`), which left the platform undecided. This
 > takes the Alchemy Lab (Hermetic Modular, in the rack; see `MODULES.md`) as the
 > target, adds a pitch-tracking strategy borrowed from Ogham, and replaces the
@@ -20,8 +22,8 @@ live one.
 
 | | Homebrew Teensy (`teensy_chaos`) | Alchemy Lab |
 | --- | --- | --- |
-| MCU | i.MXRT1062, M7 @ 600 MHz | STM32H750 (Daisy Seed 2 DFM), M7 @ 480 MHz |
-| Budget @ 1 voice | ~13,600 cyc/sample @ 44.1k | ~10,000 cyc/sample @ 48k (~5,000 @ 96k) |
+| MCU | i.MXRT1062, M7 @ 600 MHz | STM32H750 (Daisy Seed 2 DFM), M7 @ 400 MHz as measured on the board (480 MHz is the part's ceiling) |
+| Budget @ 1 voice | ~13,600 cyc/sample @ 44.1k | ~8,300 cyc/sample @ 48k (~4,200 @ 96k) |
 | RAM | 1 MB on-chip | 1 MB on-chip + **64 MB SDRAM** (enough for long delay lines) |
 | Audio out | SGTL5000, 16-bit / 44.1k, AC-coupled | Codec, 24-bit, **DC-coupled** J9/J10 (audio *or* CV) |
 | Audio in | SGTL5000 line in (unused) | J1/J2, AC-coupled |
