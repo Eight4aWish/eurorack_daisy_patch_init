@@ -4,7 +4,7 @@ Neural audio networks on the Daisy Patch.Init — the firmware side of the proje
 briefed in [CLAUDE.md](CLAUDE.md).
 
 **Status: engine in, all five captures loadable from the card.** The NAM A2 engine runs
-captures read off the microSD card, selected live with CV_3. A JCM800 stays compiled in
+captures read off the microSD card, selected live with CV_3. A JCM800 is compiled in, when its header is on disk,
 as a fallback, so a missing or unreadable card gives a working module rather than
 silence.
 
@@ -185,6 +185,7 @@ all the same kind: the BE-100 and JCM800 are DI amp captures, the Mesa is a prea
 capture, and the Ampeg (MD 421) and 1959BJA were recorded through a cabinet and mic, so
 those two have a cab baked in. Sources and licences are under "Note on the captures".
 
+When its header is on disk (it is no longer in git; see "Note on the captures"), the
 JCM800 also stays compiled in as a fallback and shows as `JCM800*`, the trailing asterisk
 marking it as the built-in rather than one off the card. The other four stay unreferenced
 in `nam/model_data_nam_a2.h`, so `--gc-sections` drops them from the binary.
@@ -506,3 +507,12 @@ So: fine on your own card, not in a download. The options for a release are perm
 from four creators (TONE3000 itself is one), CC0/CC-BY A2 captures instead, captures of
 your own gear, or no captures at all and the converter. Only the first keeps NOT-AMPS as
 it is; the others need it to stop depending on these five by name.
+
+**Not in this repo.** `nam/model_data_nam_a2.h` and `captures/*.a2nb` were committed
+here until 2026-10-01, when they were removed from the whole history; `.gitignore` now
+keeps them, and any `.nam`, out. They live on the working machine only. A fresh clone
+builds without them — no compiled-in fallback, so no card means pass-through and
+`NO CAP` — and gets captures by downloading the `.nam` files from the pages above with a
+TONE3000 account and running `tools/nam_to_a2nb.py`. With the header on disk the build
+compiles the JCM800 fallback back in, and `export_captures.py` and the host tools that
+read it work as before.

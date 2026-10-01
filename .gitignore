@@ -30,3 +30,13 @@ daisy_neural/amp_compare/
 __pycache__/
 *.pyc
 daisy_neural/random_weights/
+
+# Third-party NAM captures. TONE3000's T3K licence forbids uploading or
+# redistributing them without each author's permission, so they live on the
+# working machine only — never in this public repo, and not in a private one
+# either. daisy_neural builds without them. See daisy_neural/README.md,
+# "Note on the captures".
+daisy_neural/nam/model_data_nam_a2.h
+daisy_neural/captures/
+*.nam
+*.a2nb

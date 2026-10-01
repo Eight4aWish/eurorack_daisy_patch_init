@@ -80,16 +80,22 @@ using namespace patch_sm;
 #define NAM_A2_HOT_STATE_DATA
 #endif
 #include "nam/nam_a2_runtime.h"
+// The development captures are other people's work under TONE3000's T3K licence,
+// which forbids redistributing them, so their header is kept out of git (see
+// README, "Note on the captures"). With it on disk, one capture is compiled in as
+// a fallback, so a missing or unreadable card still gives a working module. The
+// other four are unreferenced, so -fdata-sections and --gc-sections drop them.
+// Without it, there is no fallback: no card means pass-through and "NO CAP".
+#if __has_include("nam/model_data_nam_a2.h")
 #include "nam/model_data_nam_a2.h"
-
-// One capture stays compiled in as a fallback, so a missing or unreadable card
-// still gives you a working module rather than silence. The other four are
-// unreferenced, so -fdata-sections and --gc-sections drop them; all five live
-// on the card instead (tools/export_captures.py).
+#define NEURAL_HAS_FALLBACK 1
 // outputGain is bkshepherd's hand-tuned loudness match, carried over as-is.
 static constexpr const char* kFallbackName    = "JCM800*";
 static const float* const    kFallbackWeights = nam_a2_models::kWeightsJcm800;
 static constexpr float       kFallbackGain    = 1.1f;
+#else
+#define NEURAL_HAS_FALLBACK 0
+#endif
 
 // The engine's fixed block size. Anything else and we pass through rather than
 // feed it a block it cannot handle.
@@ -98,11 +104,13 @@ static constexpr size_t kA2BlockSize = 48;
 class EngineSlot
 {
   public:
-    /** Load the compiled-in fallback. */
+    /** Load the compiled-in fallback, if this build has one. */
     void InitFallback(float sample_rate)
     {
         sample_rate_ = sample_rate;
+#if NEURAL_HAS_FALLBACK
         Load(kFallbackWeights, nam_a2_daisy::kA2WeightCount, kFallbackGain, kFallbackName);
+#endif
     }
 
     /** Not real-time safe: load_weights() runs prewarm(), which walks the whole
