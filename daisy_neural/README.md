@@ -542,6 +542,35 @@ The full list of 86 is `amp_compare/cc0_tones.csv` after a scan (gitignored; re-
 script to regenerate). The earlier CC0 finds — Bugera G5, Traynor TS 120 B, Kay 703, a DIY
 BJT drive — are in it too; auditioned 2026-10-01, they all sounded much alike.
 
+**Auditioned on the module, 2026-10-01**, by guitar (through the Befaco I4) and by synth,
+one capture per pack from the shortlist plus the first CC0 batch, on a 27-slot card
+built from the downloads (`captures/card1/`, gitignored, with a `CARD.txt` of slots).
+Kept — the starter set and the sources for retargeting the not-amps:
+
+| Capture | Guitar | Synth | Licence |
+|---|---|---|---|
+| pLEXI-LORE | ✓ | | CC-BY |
+| Two Rock Studio Signature + 2x12 | | ✓ | CC-BY |
+| Ampeg SVT-2 Pro | | ✓ | CC-BY |
+| Orange TH100 | ✓ | ✓ | CC-BY |
+| Fender '57 Custom Deluxe | ✓ | ✓ | CC-BY |
+| Klon Centaur | | ✓ | CC-BY |
+| ProCo RAT | | ✓ | CC0 |
+| Marshall Bluesbreaker | ✓ | ✓ | CC-BY |
+| Boss CE-1 preamp | | ✓ | CC-BY |
+| Analogman Sunface | ✓ | ✓ | CC-BY |
+| Analogman Sun Bender | ✓ | | CC-BY |
+| Studer A807 | | ✓ | CC-BY |
+| UREI 1176 | ✓ | ✓ | CC-BY |
+| Bugera G5 | ✓ | | CC0 |
+| Traynor TS 120 B | | ✓ | CC0 |
+| Kay 703 | | ✓ | CC0 |
+| DIY BJT drive | | ✓ | CC0 |
+
+Dropped: every high-gain amp (Jubilee, KT66 Plexi, Mark IIC+, 5150 III) and the Tandberg.
+For multi-capture packs this was one capture, the middle one by measured drive; the
+others in those packs are unheard on the module.
+
 **Not in this repo.** `nam/model_data_nam_a2.h` and `captures/*.a2nb` were committed
 here until 2026-10-01, when they were removed from the whole history; `.gitignore` now
 keeps them, and any `.nam`, out. They live on the working machine only. A fresh clone
