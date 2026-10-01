@@ -508,23 +508,39 @@ from four creators (TONE3000 itself is one), CC0/CC-BY A2 captures instead, capt
 your own gear, or no captures at all and the converter. Only the first keeps NOT-AMPS as
 it is; the others need it to stop depending on these five by name.
 
-**CC0 captures, found 2026-10-01.** CC0 can be redistributed, so these could ship with
-Mirth rather than only be linked. Each page states CC0 and offers A2-Full and A2-Lite —
-from the page, not yet confirmed by downloading and running `match_captures.py` /
-`nam_to_a2nb.py` on the files. TONE3000 has no licence filter; these came from a web search.
+**What can ship: the whole catalogue, scanned 2026-10-01** with `tools/find_cc0.py`. Of
+11,438 A2 tones on TONE3000, 11,329 are T3K. Only **86 are redistributable: 15 CC0 and
+71 CC-BY** (CC-BY needs the creator credited and changes noted, which the not-amps are).
+The rest are share-alike or non-commercial. A tone is a pack: one holds 1 to 54 captures.
 
-| Tone | Gear | Models | Creator |
+A shortlist from those 86, classic gear first. All A2 on the page; `amp` means head only,
+which sounds harsher with no cab after it, and Mirth has none — worth hearing before
+choosing. "A1 Conversion" packs were converted from the older architecture, not retrained.
+
+| Tone | Licence | Kind | Captures |
 |---|---|---|---|
-| [Bugera G5 Infinium Pack](https://www.tone3000.com/tones/bugera-g5-infinium-pack-6151) | amp head, clean to distorted, DI | 8 | durchschnittsmusiker |
-| [Traynor TS 120 B](https://www.tone3000.com/tones/traynor-ts-120-b-6333) | bass amp head, Mesa 2×15 IR baked in | 5 | @rbrt |
-| [Kay 703](https://www.tone3000.com/tones/kay-703-6302) | vintage amp + cab, SM57, lo-fi | 4 | @aazuspan |
-| [DIY drive pedal (BJT silicon)](https://www.tone3000.com/tones/diy-drive-pedal-bjt-silicon-celestion-eight-15-ir-5700) | home-built pedal + cab IR | 1 | test98425988 |
-| [Dead Robot Guitar Profiles v2](https://www.tone3000.com/tones/dead-robot-nam-guitar-profiles-v2-6745) | free plugins (BLOCKFISH, EpiCentre, Distroyr) | 9 | chrisdeadrobot |
-| [Dead Robot Vocal Profiles v1](https://www.tone3000.com/tones/dead-robot-nam-vocal-profiles-v1-6726) | free-plugin vocal chains | 4 | chrisdeadrobot |
+| [Marshall Jubilee 2555x](https://www.tone3000.com/tones/marshall-jubilee-2555x-5730) | CC-BY | amp + cab | 1 |
+| [pLEXI-LORE](https://www.tone3000.com/tones/plexi-lore-1863) | CC-BY | amp + cab | 1 |
+| [1968 KT66 Marshall Plexi style amp](https://www.tone3000.com/tones/1968-kt66-marshall-plexi-style-amp-v20-6806) | CC-BY | amp | 1 |
+| [Mesa Mark IIC+](https://www.tone3000.com/tones/mark-iic-simulclassgeq-2598) | CC-BY | amp | 1 |
+| [Orange TH100](https://www.tone3000.com/tones/orange-th100-6554) | CC-BY | amp | 6 |
+| [Fender '57 Custom Deluxe](https://www.tone3000.com/tones/fender-57-custom-deluxe-a1-conversion-5590) | CC-BY | amp (A1 conversion) | 26 |
+| [EVH 5150 III](https://www.tone3000.com/tones/evh-5150-iii-6l6-amp-only-moderate-boost-205) | CC-BY | amp | 1 |
+| [Two Rock Studio Signature + 2x12](https://www.tone3000.com/tones/two-rock-studio-signature-ox-box-2x12-two-rock-cab-v2-5367) | CC-BY | amp + cab | 22 |
+| [Ampeg SVT-2 Pro](https://www.tone3000.com/tones/ampeg-svt-2-pro-5728) | CC-BY | bass amp + cab | 1 |
+| [Klon Centaur (Silver)](https://www.tone3000.com/tones/klon-centaur-silver-2599) | CC-BY | pedal | 1 |
+| [ProCo RAT, 1990s](https://www.tone3000.com/tones/proco-rat-1990s-6335) | CC0 | pedal | 2 |
+| [Marshall Bluesbreaker pedal](https://www.tone3000.com/tones/marshall-bluesbreaker-pedal-original-1778) | CC-BY | pedal | 1 |
+| [Analogman Sunface fuzz](https://www.tone3000.com/tones/analogman-sunface-fuzz-rca-bart-nkt-red-dot-bc109-a1-conversion-5494) | CC-BY | germanium fuzz (A1 conversion) | 16 |
+| [Analogman Sun Bender MKIV](https://www.tone3000.com/tones/analogman-sun-bender-mkiv-3-nos-mullard-5609) | CC-BY | Tone Bender fuzz | 32 |
+| [Boss CE-1 preamp](https://www.tone3000.com/tones/boss-ce-1-pre-amp-1789) | CC-BY | pedal preamp | 1 |
+| [Studer A807, pushed](https://www.tone3000.com/tones/studer-a807-pushed-1101) | CC-BY | tape machine | 2 |
+| [1950s Tandberg tape recorder](https://www.tone3000.com/tones/1950s-tandberg-tape-recorder-6025) | CC-BY | tape machine | 6 |
+| [UREI 1176](https://www.tone3000.com/tones/ureiuniversal-audio-1176-1148) | CC-BY | compressor | 2 |
 
-The two Dead Robot packs are captures of software. CC0 covers the creator's capture; the
-plugins are free, and TONE3000's policy only bars captures of *commercial* software made
-without permission. The hardware captures carry no such question.
+The full list of 86 is `amp_compare/cc0_tones.csv` after a scan (gitignored; re-run the
+script to regenerate). The earlier CC0 finds — Bugera G5, Traynor TS 120 B, Kay 703, a DIY
+BJT drive — are in it too; auditioned 2026-10-01, they all sounded much alike.
 
 **Not in this repo.** `nam/model_data_nam_a2.h` and `captures/*.a2nb` were committed
 here until 2026-10-01, when they were removed from the whole history; `.gitignore` now
