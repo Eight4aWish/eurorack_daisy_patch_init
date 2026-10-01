@@ -153,7 +153,7 @@ cannot write QSPI, so BOOT+RESET is the wrong mode for `make flash`.
 
 **Or skip USB: update from the card.** The bootloader checks the card root for a `.bin` at
 every boot and flashes it when it differs from what is installed. Copy
-`build/daisy_neural.bin` to the card (`cp -X`), put it in, power-cycle. Keep exactly one
+`build/daisy_neural.bin` to the card (then `rm /Volumes/DAISY/._*`), put it in, power-cycle. Keep exactly one
 `.bin` in the root — the bootloader takes the first it finds — and leave it there; it is
 not re-flashed while unchanged. This is the easier route for iterating.
 
@@ -332,11 +332,15 @@ fine — the partition size is what matters. Why is not known. On a Mac, with th
 
 ```sh
 diskutil partitionDisk /dev/diskN MBR "MS-DOS FAT32" DAISY 2G "Free Space" REST R
-cp -X captures/*.a2nb /Volumes/DAISY/
+cp captures/*.a2nb /Volumes/DAISY/
+rm -f /Volumes/DAISY/._*
 ```
 
-`cp -X` leaves out macOS's `._` metadata files, which end in `.a2nb` and would otherwise
-be offered as captures and fail their CRC.
+Copying to a FAT32 card makes macOS write a `._` metadata twin of each file. Those end
+in `.a2nb`, so they would be offered as captures and fail their CRC. **`cp -X` does not
+prevent this on current macOS** — every file carries `com.apple.provenance`, which it
+cannot strip (found 2026-10-01: twelve twins after a `cp -X`). `dot_clean` can stop
+early on the card's protected `.Spotlight-V100` folder, so delete them directly.
 
 The container is deliberately minimal: 32-byte header (magic, version, weight count,
 output gain, name, CRC32) followed by 1,871 float32 in exactly the order the engine's
