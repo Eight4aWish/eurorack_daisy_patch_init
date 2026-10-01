@@ -38,6 +38,8 @@
 #include "util/scopedirqblocker.h"
 
 #include "alchemy/hw/alchemy_lab.h"
+#include "alchemy/host_link/diagnostics.h"
+#include "alchemy/host_link/host.h"
 #include "alchemy/surface/button_bank.h"
 #include "alchemy/surface/control_loop.h"
 #include "alchemy/surface/page.h"
@@ -48,6 +50,7 @@
 #include "chaos_core/Voice.h"
 
 #include <math.h>
+#include <string.h>
 #include <type_traits>
 
 using namespace alchemy;
@@ -136,6 +139,55 @@ static ButtonBank         buttons;
 static Voice              voice;
 static daisy::CpuLoadMeter cpu;
 
+/* ── HostLink: reflashing and diagnostics over the front USB-C ──────────── */
+// Identity only, no presets yet. It is what lets `make program-live` reboot the
+// module into its bootloader with no buttons, and it carries the gauges and the
+// click log below to hostlink-cli and the web programmer's Device console:
+//   node deps/alchemy-sdk/tools/hostlink-cli/hostlink.mjs -p /dev/cu.usbmodem<serial> watch
+// On macOS use the cu.* node; the CLI's tty.* default blocks on open.
+static hostlink::Host        host("secret", "Secret", "0.1.0", SECRET_GIT_HASH);
+static hostlink::Diagnostics debug;
+
+static hostlink::Gauge<float>    g_cpuAvg ("cpu.avg",   "CPU average");
+static hostlink::Gauge<float>    g_cpuMax ("cpu.max",   "CPU peak since model change");
+static hostlink::Gauge<float>    g_gov    ("gov.scale", "Load governor (1 = not throttling)");
+static hostlink::Gauge<float>    g_steps  ("steps",     "RK4 steps per sample");
+static hostlink::Gauge<uint32_t> g_model  ("model",     "Model (B1)");
+static hostlink::Gauge<float>    g_hz     ("hz",        "Pitch");
+static hostlink::Gauge<float>    g_chaos  ("chaos",     "CHAOS value");
+static hostlink::Gauge<float>    g_char   ("char",      "CHAR value");
+static hostlink::Gauge<float>    g_tame   ("tame",      "TAME");
+static hostlink::Gauge<bool>     g_gate   ("gate",      "Gate (J4)");
+static hostlink::Gauge<bool>     g_env    ("env",       "Envelope gated (B2)");
+static hostlink::Gauge<uint32_t> g_guard  ("guard",     "Guard re-seeds");
+static hostlink::Gauge<uint32_t> g_jumps  ("jumps",     "Output jumps (clicks)");
+static hostlink::Gauge<bool>     g_cal    ("cal",       "Board CV calibration loaded");
+
+/* ── Click hunting ──────────────────────────────────────────────────────── */
+// A sample-to-sample step in the output this big is a discontinuity, not a
+// waveform: a full-scale sine at 880 Hz moves at most 0.12 per sample. When the
+// audio callback sees one it records the panel state and what else happened in
+// the same block, and the control loop logs it. The causes are the ones the
+// engine can produce: a divergence-guard re-seed, a SYNC pull or a new SYNC
+// snapshot, a GATE re-seed, a model change, or the governor cutting the pitch.
+static constexpr float kJumpFs = 0.5f;
+
+enum : uint8_t {
+    kCauseGuard = 1, kCauseSyncPull = 2, kCauseSnapshot = 4,
+    kCauseGate  = 8, kCauseModel    = 16, kCauseGovernor = 32,
+    kCauseEnvelope = 64,   // B2 switched between Drone and Gated
+};
+
+struct Jump {
+    uint32_t seq;          // bumped on every recorded jump
+    float    size;         // largest step in the block, full scale
+    float    chaos, charV, hz, tame;
+    uint8_t  model, mode;  // mode already resolved from Auto
+    uint8_t  causes;
+    bool     env;
+};
+static Jump s_jump = {};   // written in the audio callback, copied out with IRQs held
+
 /* ── Control -> audio handoff ───────────────────────────────────────────── */
 // The control loop fills a complete set and copies it in with interrupts held
 // off; the audio callback copies it out at the start of each block. So a block
@@ -163,34 +215,126 @@ static inline float Clamp5(float v) {
     return v > 5.0f ? 5.0f : (v < -5.0f ? -5.0f : v);
 }
 
+/* ── Load governor ──────────────────────────────────────────────────────── */
+// The step caps in chaos_core were measured on the Teensy at 600 MHz without
+// TAME; this board runs at 400 MHz and TAME adds work per step. If a block runs
+// long, run fewer integration steps -- the pitch goes flat -- rather than
+// overrun.
+//
+// It has to live here, in the audio callback. The first build ran it from the
+// control loop's frame, but an overrunning callback starves the control loop,
+// so the governor that should rescue it never runs: knobs, LEDs and buttons
+// freeze until power-off. That is the failure the Teensy build's governor was
+// written for, and why it measured inside the audio interrupt too.
+static float          s_ticksPerSample = 0.0f;   // timer ticks per audio sample, set in main()
+static volatile bool  s_governed       = false;
+static volatile float s_peakLoad       = 0.0f;    // worst block since the last heartbeat
+
+static float GovernLoad(uint32_t elapsedTicks, size_t n)
+{
+    const float budget = (float)n * s_ticksPerSample;
+    const float used   = (float)elapsedTicks;
+    if (used > s_peakLoad * budget) s_peakLoad = used / budget;
+    // Read back from the voice, not mirrored: setAlgo() resets it to 1 because a
+    // throttle describes the cost of the model that earned it.
+    float sc = voice.loadScale();
+    if (used > 0.75f * budget) {                        // over 75% of the block
+        sc *= 0.85f;                                    // ~4 blocks to halve
+        if (sc < 0.02f) sc = 0.02f;
+    } else if (used < 0.5f * budget && sc < 1.0f) {     // under 50%: creep back
+        sc += 0.02f;
+        if (sc > 1.0f) sc = 1.0f;
+    }
+    voice.setLoadScale(sc);
+    s_governed = sc < 0.999f;
+    return sc;
+}
+
+static float   s_prevL = 0.0f, s_prevR = 0.0f;   // last output sample, for jumps
+static uint8_t s_modelSeen = 0xFF;
+static bool    s_envSeen   = false;
+
 static void AudioCallback(daisy::AudioHandle::InputBuffer  /*in*/,
                           daisy::AudioHandle::OutputBuffer out,
                           size_t                           n)
 {
+    const uint32_t t0 = daisy::System::GetTick();
     cpu.OnBlockStart();
 
     const Params p = s_params;
     ChaosBase* a = algos[p.model < N_ALGOS ? p.model : 0];
+    uint8_t causes = 0;
+    if (p.model != s_modelSeen) {
+        s_modelSeen = p.model;
+        causes |= kCauseModel;
+        cpu.Reset();                                 // peak CPU is per model
+    }
     voice.setAlgo(a);                                // no-op unless it changed
 
     if (p.retrig != s_retrigSeen) {                  // GATE edge: re-seed
         s_retrigSeen = p.retrig;
         a->init();
         voice.invalidateSnapshot();
+        causes |= kCauseGate;
     }
+    if (voice.loadScale() < 0.999f) causes |= kCauseGovernor;
+    if (p.env != s_envSeen) { s_envSeen = p.env; causes |= kCauseEnvelope; }
 
     voice.setEnvEnabled(p.env);
     voice.setEnvGate(p.gate);
     voice.setEnvADSR(p.atkMs, p.decMs, p.sustain, p.relMs);
     voice.setPitch(p.chaos, p.charV, p.hz, p.tame, static_cast<Voice::TameMode>(p.mode));
+
+    const uint32_t guard0 = a->guardTrips;
+    const uint32_t pulls0 = voice.syncPulls(), snaps0 = voice.snapCaptures();
     voice.render(out[0], out[1], n);
+    if (a->guardTrips      != guard0) causes |= kCauseGuard;
+    if (voice.syncPulls()    != pulls0) causes |= kCauseSyncPull;
+    if (voice.snapCaptures() != snaps0) causes |= kCauseSnapshot;
 
     // X / Y CV, the raw state rather than the limited audio: the true attractor
     // for a scope. Once per block -- 2 kHz at 48 kHz / 24.
     hw.cv_jacks[kJackX].SetVolts(Clamp5(voice.getX() * a->cvScaleX));
     hw.cv_jacks[kJackY].SetVolts(Clamp5(voice.getY() * a->cvScaleY));
 
+    // Click hunting: the largest sample-to-sample step, across the block edge too.
+    float worst = 0.0f, pl = s_prevL, pr = s_prevR;
+    for (size_t i = 0; i < n; i++) {
+        const float dl = fabsf(out[0][i] - pl), dr = fabsf(out[1][i] - pr);
+        if (dl > worst) worst = dl;
+        if (dr > worst) worst = dr;
+        pl = out[0][i]; pr = out[1][i];
+    }
+    s_prevL = pl; s_prevR = pr;
+    if (worst > kJumpFs) {
+        s_jump.seq++;
+        s_jump.size   = worst;
+        s_jump.chaos  = p.chaos;  s_jump.charV = p.charV;
+        s_jump.hz     = p.hz;     s_jump.tame  = p.tame;
+        s_jump.model  = p.model;
+        s_jump.mode   = p.mode ? p.mode
+                      : (a->pitchClass == PITCH_INCOHERENT ? Voice::TAME_SYNC : Voice::TAME_FORCE);
+        s_jump.causes = causes;
+        s_jump.env    = p.env;
+        g_jumps.Set(s_jump.seq);
+    }
+
+    const float sc = GovernLoad(daisy::System::GetTick() - t0, n);
     cpu.OnBlockEnd();
+
+    // Gauges: lock-free scalar stores, safe from here.
+    g_cpuAvg.Set(cpu.GetAvgCpuLoad() * 100.0f);
+    g_cpuMax.Set(cpu.GetMaxCpuLoad() * 100.0f);
+    g_gov.Set(sc);
+    g_steps.Set(voice.stepsPerSample());
+    g_model.Set(p.model);
+    g_hz.Set(p.hz);
+    g_chaos.Set(p.chaos);
+    g_char.Set(p.charV);
+    g_tame.Set(p.tame);
+    g_gate.Set(p.gate);
+    g_env.Set(p.env);
+    g_guard.Set(a->guardTrips);
 }
 
 /* ── 1 ms poll: gate, V/Oct, knobs + CV -> Params ───────────────────────── */
@@ -231,25 +375,72 @@ static void Poll(uint32_t /*t_ms*/)
     s_params = p;
 }
 
-/* ── Frame (16 ms): load governor ───────────────────────────────────────── */
-// The step caps in chaos_core are estimates. If a block runs long, run fewer
-// integration steps -- the pitch goes flat -- rather than overrun the audio.
-// It should never engage; if it does, that model's maxStepsPerSecond is too
-// high for this board.
-static float s_loadScale = 1.0f;
+/* ── Frame (16 ms): governor LED and the USB log ────────────────────────── */
+static void LogClick(const Jump& j, uint32_t missed)
+{
+    char why[48] = "";
+    static const struct { uint8_t bit; const char* name; } kNames[] = {
+        {kCauseGuard, "guard "}, {kCauseSyncPull, "sync-pull "}, {kCauseSnapshot, "snapshot "},
+        {kCauseGate, "gate "},   {kCauseModel, "model "},        {kCauseGovernor, "governor "},
+        {kCauseEnvelope, "envelope "}};
+    for (const auto& c : kNames)
+        if (j.causes & c.bit) strncat(why, c.name, sizeof why - strlen(why) - 1);
+    if (!why[0]) strcpy(why, "none ");
+    why[strlen(why) - 1] = '\0';
+
+    const uint8_t m = j.model < N_ALGOS ? j.model : 0;
+    debug.Warn("click %.2f FS (+%lu more): %s, CHAOS %.3f, CHAR %.3f, %.1f Hz, TAME %.2f %s, %s [%s]",
+               (double)j.size, (unsigned long)missed, kModelNames[m],
+               (double)j.chaos, (double)j.charV, (double)j.hz, (double)j.tame,
+               kModeNames[j.mode < 3 ? j.mode : 0], j.env ? "Gated" : "Drone", why);
+}
 
 static void Frame()
 {
-    const float peak = cpu.GetMaxCpuLoad();
-    cpu.Reset();
-    if (peak > 0.85f)                             s_loadScale *= 0.85f;
-    else if (peak < 0.60f && s_loadScale < 1.0f)  s_loadScale *= 1.05f;
-    if (s_loadScale > 1.0f)  s_loadScale = 1.0f;
-    if (s_loadScale < 0.05f) s_loadScale = 0.05f;
-    voice.setLoadScale(s_loadScale);
-
     // The Seed's own LED: lit while the governor holds pitch back.
-    hw.seed.SetLed(s_loadScale < 0.999f);
+    hw.seed.SetLed(s_governed);
+
+    // Panel changes, so the click log can be read against what was played.
+    static uint8_t model = 0xFF, env = 0xFF, mode = 0xFF;
+    if (s_model != model) { model = s_model; debug.Info("Model: %s", kModelNames[model < N_ALGOS ? model : 0]); }
+    if (s_env   != env)   { env   = s_env;   debug.Info("Envelope: %s", kEnvNames[env ? 1 : 0]); }
+    if (s_mode  != mode)  { mode  = s_mode;  debug.Info("TAME mode: %s", kModeNames[mode < 3 ? mode : 0]); }
+
+    const uint32_t now = daisy::System::GetNow();
+
+    // Heartbeat, every 5 s: the worst block's load since the last one, and what
+    // was playing. If the module ever freezes, the beats stop, and the last one
+    // says how loaded the audio was just before.
+    static uint32_t lastBeatMs = 0;
+    if (now - lastBeatMs >= 5000u) {
+        lastBeatMs = now;
+        float peak;
+        {
+            daisy::ScopedIrqBlocker block;
+            peak = s_peakLoad;
+            s_peakLoad = 0.0f;
+        }
+        const Params p = s_params;
+        debug.Info("load peak %.0f%% avg %.0f%%, steps %.1f, gov %.2f | %s %.1f Hz, TAME %.2f %s, guard %lu",
+                   (double)(peak * 100.0f), (double)(cpu.GetAvgCpuLoad() * 100.0f),
+                   (double)voice.stepsPerSample(), (double)voice.loadScale(),
+                   kModelNames[p.model < N_ALGOS ? p.model : 0], (double)p.hz, (double)p.tame,
+                   kModeNames[p.mode < 3 ? p.mode : 0],
+                   (unsigned long)algos[p.model < N_ALGOS ? p.model : 0]->guardTrips);
+    }
+
+    // The latest click, at most four times a second; the count says how many
+    // went by unlogged in between.
+    static uint32_t lastSeq = 0, lastLogMs = 0;
+    if (s_jump.seq != lastSeq && now - lastLogMs >= 250u) {
+        Jump j;
+        {
+            daisy::ScopedIrqBlocker block;
+            j = s_jump;
+        }
+        LogClick(j, j.seq - lastSeq - 1u);
+        lastSeq = j.seq; lastLogMs = now;
+    }
 }
 
 int main()
@@ -259,16 +450,33 @@ int main()
     voice.setSampleRate(hw.SampleRate());
     voice.setAlgo(algos[0]);
     cpu.Init(hw.SampleRate(), static_cast<int>(hw.BlockSize()));
+    s_ticksPerSample = static_cast<float>(daisy::System::GetTickFreq()) / hw.SampleRate();
 
     hw.cv_jacks[kJackX].EnableCvOutput();
     hw.cv_jacks[kJackY].EnableCvOutput();
+
+    g_cpuAvg.Unit("%");
+    g_cpuMax.Unit("%");
+    g_hz.Unit("Hz");
+    hostlink::GaugeBase* gauges[] = {&g_cpuAvg, &g_cpuMax, &g_gov,  &g_steps, &g_model,
+                                     &g_hz,     &g_chaos,  &g_char, &g_tame,  &g_gate,
+                                     &g_env,    &g_guard,  &g_jumps, &g_cal};
+    for (hostlink::GaugeBase* g : gauges) debug.Watch(*g);
+    g_cal.Set(hw.IsCalibrated());
+    host.Extend(debug);
 
     hw.StartAudio(AudioCallback);
 
     loop.Use(page)
         .Use(buttons)
+        .Use(host)
         .OnPoll(Poll)
         .OnFrame(Frame);
+
+    if (!host.ConfigurationOk() || !debug.ConfigurationOk())
+        debug.Error("HostLink setup failed");
+    debug.Info("Secret %s, CV %s", SECRET_GIT_HASH,
+               hw.IsCalibrated() ? "calibrated" : "UNCALIBRATED (hold B1+B2 at power-on)");
 
     for (;;) loop.Tick();
 }
