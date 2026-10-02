@@ -117,6 +117,46 @@ static constexpr int kNumLayers = 23;
 static constexpr int kHeadKernel = 16;
 static constexpr float kLeakySlope = 0.01f;
 
+// ---------------------------------------------------------------------------
+// Host experiments (daisy_neural addition). NAM_A2_EXPLORE is defined only by
+// tools/a2_explore.cpp; the firmware never sets it, and NAM_A2_DIL_SCALE stays 1,
+// so the firmware build is unchanged (checked byte for byte against the binary
+// built before these hooks went in).
+//   NAM_A2_DIL_SCALE  multiply every gap: the network reads its history at the
+//                     wrong spacing. Grows the history buffer by the same factor.
+//   explore::act      swap the activation: leaky ReLU with any slope, sine, tanh.
+//   explore::cond     feed every layer's raw-input path from another signal
+//                     (a sidechain) instead of the input itself.
+// ---------------------------------------------------------------------------
+#ifndef NAM_A2_DIL_SCALE
+#define NAM_A2_DIL_SCALE 1
+#endif
+#ifdef NAM_A2_EXPLORE
+} // namespace nam_a2_daisy
+#include <cmath>
+namespace nam_a2_daisy
+{
+namespace explore
+{
+enum Act : int { kLeaky = 0, kSine = 1, kTanh = 2 };
+inline int          act   = kLeaky;
+inline float        param = kLeakySlope;  // leaky: the slope; sine/tanh: the gain
+inline const float* cond  = nullptr;      // nullptr: the input itself, as normal
+inline float Activate(float x) noexcept
+{
+    switch (act)
+    {
+        case kSine: return std::sin(param * x) / param;
+        case kTanh: return std::tanh(param * x) / param;
+        default:    return x >= 0.0f ? x : x * param;
+    }
+}
+} // namespace explore
+#define NAM_A2_PRECOMBINE_OK (explore::cond == nullptr)
+#else
+#define NAM_A2_PRECOMBINE_OK true
+#endif
+
 // process_head() wraps its ring index with a bitmask, which requires kHeadKernel
 // to be a power of two.
 static_assert((kHeadKernel & (kHeadKernel - 1)) == 0,
@@ -126,9 +166,14 @@ inline constexpr int kKernelSizes[kNumLayers] = {
     6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 15, 15, 6, 6, 6, 6, 6, 6, 6
 };
 
+#define NAM_A2_D(x) ((x) * NAM_A2_DIL_SCALE)
 inline constexpr int kDilations[kNumLayers] = {
-    1, 3, 7, 17, 41, 101, 239, 1, 3, 7, 17, 41, 101, 239, 1, 13, 1, 3, 7, 17, 41, 101, 239
+    NAM_A2_D(1), NAM_A2_D(3), NAM_A2_D(7), NAM_A2_D(17), NAM_A2_D(41), NAM_A2_D(101), NAM_A2_D(239),
+    NAM_A2_D(1), NAM_A2_D(3), NAM_A2_D(7), NAM_A2_D(17), NAM_A2_D(41), NAM_A2_D(101), NAM_A2_D(239),
+    NAM_A2_D(1), NAM_A2_D(13),
+    NAM_A2_D(1), NAM_A2_D(3), NAM_A2_D(7), NAM_A2_D(17), NAM_A2_D(41), NAM_A2_D(101), NAM_A2_D(239)
 };
+#undef NAM_A2_D
 
 // ---------------------------------------------------------------------------
 // Network bending (daisy_neural addition). Operations applied to a layer's
@@ -212,6 +257,39 @@ static constexpr int kHistoryBytes   = kHistoryFloats * 4;              // 76524
 // Runtime structures
 // -----------------------------------------------------------------------------
 
+// Computed from the gaps rather than written out, so a host build with
+// NAM_A2_DIL_SCALE > 1 gets history rings of the right size. At scale 1 these are
+// the original literals: 7, 17, 37 ... and offsets 0, 21, 72 ... 15540.
+struct A2LayerTable
+{
+    int v[kNumLayers];
+    constexpr int operator[](int i) const noexcept { return v[i]; }
+};
+
+static constexpr A2LayerTable make_layer_cols() noexcept
+{
+    A2LayerTable t{};
+    for (int i = 0; i < kNumLayers; ++i)
+        t.v[i] = exact_cols_for_layer(i);
+    return t;
+}
+
+static constexpr A2LayerTable make_layer_history_offset() noexcept
+{
+    A2LayerTable t{};
+    int off = 0;
+    for (int i = 0; i < kNumLayers; ++i)
+    {
+        t.v[i] = off;
+        off += exact_cols_for_layer(i) * kChannels;
+    }
+    return t;
+}
+
+#if NAM_A2_DIL_SCALE == 1
+// The firmware build keeps the original literals, so its code is byte-identical to
+// the build before the stretch hook existed; the computed tables are checked
+// against them, entry by entry, at compile time.
 inline constexpr int kLayerCols[kNumLayers] = {
     7, 17, 37, 87, 207, 507, 1197, 7, 17, 37, 87, 207, 507, 1197,
     16, 184, 7, 17, 37, 87, 207, 507, 1197
@@ -222,6 +300,20 @@ inline constexpr int kLayerHistoryOffset[kNumLayers] = {
     6360, 6621, 7242, 8763, 12354, 12402, 12954, 12975, 13026, 13137,
     13398, 14019, 15540
 };
+
+static constexpr bool layer_tables_match() noexcept
+{
+    const A2LayerTable c = make_layer_cols(), o = make_layer_history_offset();
+    for (int i = 0; i < kNumLayers; ++i)
+        if (c.v[i] != kLayerCols[i] || o.v[i] != kLayerHistoryOffset[i])
+            return false;
+    return true;
+}
+static_assert(layer_tables_match(), "computed layer tables must equal the literals at scale 1");
+#else
+inline constexpr A2LayerTable kLayerCols          = make_layer_cols();
+inline constexpr A2LayerTable kLayerHistoryOffset = make_layer_history_offset();
+#endif
 
 inline constexpr int kLayerConvOffset[kNumLayers] = {
     0, 54, 108, 162, 216, 270, 324, 378, 432, 486, 540, 594,
@@ -285,6 +377,12 @@ struct A2HotState
 
 NAM_A2_TINY_INLINE float leaky(float x) noexcept
 {
+#ifdef NAM_A2_EXPLORE
+    // Only a changed activation leaves the original path, so the defaults stay
+    // bit-identical to the firmware's arithmetic.
+    if (explore::act != explore::kLeaky || explore::param != kLeakySlope)
+        return explore::Activate(x);
+#endif
 #if NAM_A2_BRANCHLESS_LEAKY
     constexpr float p = 0.5f * (1.0f + kLeakySlope);
     constexpr float q = 0.5f * (1.0f - kLeakySlope);
@@ -429,7 +527,7 @@ NAM_A2_NOINLINE void process_layer_kernel(A2State& st,
     const float cb1 = L.convB[1];
     const float cb2 = L.convB[2];
 
-    const bool precombineCurrent = (li == 0 && K == 6);
+    const bool precombineCurrent = (li == 0 && K == 6) && NAM_A2_PRECOMBINE_OK;
     const float mw0 = precombineCurrent ? L.preCurrent[0] : L.mixinW[0];
     const float mw1 = precombineCurrent ? L.preCurrent[1] : L.mixinW[1];
     const float mw2 = precombineCurrent ? L.preCurrent[2] : L.mixinW[2];
@@ -514,7 +612,7 @@ NAM_A2_NOINLINE void process_layer_kernel6_dual(A2State& st,
     const float cb1 = L.convB[1];
     const float cb2 = L.convB[2];
 
-    const bool precombineCurrent = (li == 0);
+    const bool precombineCurrent = (li == 0) && NAM_A2_PRECOMBINE_OK;
     const float mw0 = precombineCurrent ? L.preCurrent[0] : L.mixinW[0];
     const float mw1 = precombineCurrent ? L.preCurrent[1] : L.mixinW[1];
     const float mw2 = precombineCurrent ? L.preCurrent[2] : L.mixinW[2];
@@ -693,12 +791,18 @@ NAM_A2_NOINLINE void process_block_48(A2State& st,
         hs[2] = 0.0f;
     }
 
+    const float* cond = input;
+#ifdef NAM_A2_EXPLORE
+    if (explore::cond != nullptr)
+        cond = explore::cond;
+#endif
+
     for (int li = 0; li < kNumLayers; ++li)
     {
         if (kKernelSizes[li] == 6)
-            process_layer_kernel6_dual(st, hot, sw, li, input, in, out);
+            process_layer_kernel6_dual(st, hot, sw, li, cond, in, out);
         else
-            process_layer_kernel<15>(st, hot, sw, li, input, in, out);
+            process_layer_kernel<15>(st, hot, sw, li, cond, in, out);
 
         if (bend::active[li])
             bend::After(li, in, out);
