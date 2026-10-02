@@ -501,6 +501,7 @@ the Teensy's OLED phase plot, and at a much larger size.
   DC blocker skews the shape at slow rates, and the envelope scales it. J7/J8
   carry raw state times `cvScaleX/Y` on the fast DAC, updated once per audio
   block (2 kHz), so they show the true attractor. 12 bits is plenty for a picture.
+  On the bench (2026-10-02), both J7/J8 and the audio on J9/J10 drew on `xbeam`.
 - **What each model draws** (current `getX()`/`getY()` pairs): Rössler x–y, the
   spiral. Lorenz x vs z−ρ, the butterfly. Chua x–z, the double scroll. Van der
   Pol x–y, a limit cycle. Duffing x–ẋ. Coupled Rössler is the exception: x₁ vs x₂
@@ -524,8 +525,9 @@ the Teensy's OLED phase plot, and at a much larger size.
 3. **Alchemy platform layer. Flashed 2026-09-30**
    ([`daisy_chaos/`](../daisy_chaos/)): audio at 48 kHz / 24-sample blocks, the
    six pots, V/Oct on J3, gate on J4, CHAOS and TAME CV on J5/J6, X/Y CV out on J7/J8,
-   model / TAME mode / envelope on B1–B3 (B2 and B3 swapped 2026-10-02, so each sits by its knobs), and a load governor. Next is the bench
-   checklist in its README, which includes the TAME listening tests.
+   model / TAME mode / envelope on B1–B3 (B2 and B3 swapped 2026-10-02, so each sits by its knobs), and a load governor. Released as
+   v1.0.0 on 2026-10-02. The scope and V/Oct bench checks were done that day; the
+   TAME listening tests have not been written up.
 4. **Bank 2. On the module 2026-10-01** (section 3): driven pendulum,
    Lorenz–Lü–Chen, Moore–Spiegel, forced Brusselator, chaotic Colpitts,
    Hindmarsh–Rose, after bank 1 as one list of twelve. Step caps measured on the
@@ -561,10 +563,10 @@ several firmwares in flash and switch without reflashing.
 - **How good is V/Oct on the stock calibration?** The factory calibration
   measures each jack's zero code and the board's VDDA, but the input gain is a
   design constant (`CvInput::SetCalibration`), so octave scale is only as good as
-  the resistors. The noise at 2.7 codes per cent also needs checking. Step 4 of
-  the bench checklist in [`daisy_chaos/README.md`](../daisy_chaos/README.md)
-  answers both. If octaves stretch, add a two-point calibration like Joy's
-  `common/voct_cal.h`.
+  the resistors. *Settled for now, 2026-10-02:* pitch follows J3 on the bench.
+  The scale was not measured against a tuner, and David's view is that strict
+  1 V/oct doesn't matter for a chaotic voice. If it ever does, the fix is a
+  two-point calibration like Joy's `common/voct_cal.h`.
 
 *Resolved:* the build. The SDK repo itself builds with CMake, but its
 recommended project,

@@ -2,14 +2,20 @@
 
 > **Released: v1.0.0, 2026-10-02.** Tag `secret-v1.0.0` on `a29bb01`, asset
 > `secret-v1.0.0.bin`; the page is at <https://eight4awish.com/modules/secret/>.
-> Released with steps 3, 4 and 6 below still open. The four low-topping models ship
-> as they are, listed as a known limit.
+> The four low-topping models ship as they are, listed as a known limit.
+>
+> **Bench after release, 2026-10-02, on the 1.0.0 build.** Scope (step 6): both the
+> X/Y CV on J7/J8 and the audio on J9/J10 draw on Tiliqua's `xbeam`. V/Oct (step 4):
+> pitch follows J3. The octave scale was not measured against a tuner. David's
+> view is that strict 1 V/oct doesn't matter for this voice, so there is no
+> calibration of our own. Step 3, the TAME listening tests, has not been written up
+> separately.
 >
 > **Running on the Alchemy Lab since 2026-09-30.** First bench session:
 > sound and the gated envelope work. GATE moved from J6 to J4, and Drone now
 > ignores GATE, because its re-seed clicked on every sequenced note. The TAME
 > listening tests, V/Oct accuracy and the scope check (steps 3, 4 and 6 below)
-> are still to do. The plan and the measurements behind it are in
+> were left for later. The plan and the measurements behind it are in
 > [`docs/SECRET.md`](../docs/SECRET.md).
 >
 > **2026-10-01, second session, with the USB log.** The occasional freeze, mostly
@@ -224,8 +230,9 @@ and that model's `maxStepsPerSecond` needs retuning for this board.
 
 - **V/Oct accuracy.** The board's factory calibration measures each jack's zero
   point, but its gain is a design constant (`CvInput::SetCalibration`), so the
-  scale is only as good as the resistors. A two-point calibration of our own,
-  like Joy's `common/voct_cal.h`, comes next if step 4 shows it's needed.
+  scale is only as good as the resistors. On the bench, pitch follows J3, and
+  strict 1 V/oct was judged not to matter for this voice (2026-10-02). A two-point
+  calibration of our own, like Joy's `common/voct_cal.h`, is there if that changes.
 - **CV is read at 1 kHz** through the board's smoothed `AnalogControl`, not at
   audio rate. That's fine for notes and modulation, but not for audio-rate FM.
 - **X/Y CV updates once per audio block** (2 kHz), not per sample.
