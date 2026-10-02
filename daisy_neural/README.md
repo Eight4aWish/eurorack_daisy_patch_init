@@ -315,6 +315,45 @@ spectrally away from *both* ends (Klon→Orange: 10 and 13 dB from them, which a
 apart). Consistent with "sounds like an amp": an amp, but not one between the two. So
 blends and crossbreeds make third sounds, not intermediate ones.
 
+### The measured search, 2026-10-02
+
+Asked for not-amps that "definitely do not sound like synths through guitar amps", this
+time chosen by measurement first and ears second:
+
+- `tools/a2_explore.cpp` runs the real engine with any transform on the 29 Sep menu, its
+  knob held or swept: activation (slope, sine, tanh), biases, the raw-input mix-in
+  (scaled, rectified, delayed, or a sidechain), feedback, rate division, gap stretch
+  (host builds at ×2–×4), and the existing bends. Its hooks in `nam_a2_runtime.h` exist
+  only under `NAM_A2_EXPLORE`; the firmware builds byte-identical without them.
+- `tools/notamp_search.py` maps the **amp region** from 236 real A2 captures, renders
+  every transform on each of the twelve at five knob positions and two input levels
+  (2,968 clips), describes each with librosa (timbre; harmonic structure counted
+  against the test phrase's known notes; drive response; sustain, envelope tracking and
+  stutter), and keeps what leaves the region, steers smoothly and stays level-safe.
+- `tools/clap_judge.py` is a second, independent judge: CLAP's learned audio space.
+  Its zero-shot "guitar amp" prompts proved useless here (CLAP hears a synth through an
+  amp as a synth: amp-ness ~0.02 for real captures too), but its embedding distance
+  works. **`laion/larger_clap_music` is broken as published** — use `clap-htsat-unfused`.
+
+The two judges agree transform by transform (fraction of the knob outside the amp region):
+
+| Transform | Descriptors | CLAP | Verdict |
+|---|---|---|---|
+| sine neurons, feedback (pitch / 500 Hz / 100 Hz) | 0.8–1.0 | 0.9–1.0 | furthest from amps |
+| freeze a layer, tanh neurons, rate ÷, mutate | 0.8–1.0 | 0.8–1.0 | clearly outside |
+| fold inside, gap stretch, past a partner, slope | 0.6–1.0 | 0.5–0.9 | outside, but nearer |
+| bias, mix-in (any), lane offset, long gaps out | 0.0–0.2 | 0.0–0.25 | **still sound like amps** |
+
+So two of the nine shipped not-amps, OFFSET and NO LONG, measure as amps by both judges,
+and the mix-in path — every variant — barely changes anything.
+
+Selected, each at least 2× the amps' own spacing from the amps, at most two per approach
+and two per capture: sine neurons on pLEXI-LORE (11.7×), feedback pitch on pLEXI-LORE
+(10.4×), feedback 100 Hz on Fender 57 (6.4×), slope→linear on Two Rock (6.2×), freeze
+early on Two Rock (4.9×), rate ÷ on SVT-2 Pro (3.2×), fold inside on DIY BJT (3.2×), rate
+÷ on Sun Bender (2.3×), past a partner on Bluesbreaker (2.2×) and on SVT-2 Pro (2.1×).
+Audition: `amp_compare/notamp_search/audition.wav` (gitignored). Measured, not yet heard.
+
 ## Getting more captures
 
 [TONE3000](https://www.tone3000.com/) carries **700,000+ tones**, and the library more

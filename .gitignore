@@ -25,6 +25,7 @@ daisy_neural/amp_compare/
 # Natively-compiled host harness — machine-specific, built on demand
 **/tools/a2_host
 **/tools/a2_host_steer
+**/tools/a2_explore_s*
 
 # Python
 __pycache__/
@@ -43,3 +44,4 @@ daisy_neural/captures/
 
 # Python environment for the host analysis tools (see daisy_neural/requirements.txt)
 .venv/
+.venv-clap/

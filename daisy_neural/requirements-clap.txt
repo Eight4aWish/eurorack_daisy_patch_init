@@ -1,0 +1,12 @@
+# Optional: CLAP, a perceptual audio model, for judging "does this sound like a guitar
+# amp?" and for a similarity space learned from listening data. Kept apart from the
+# main tools because PyTorch is large and pins its own versions.
+#   /opt/homebrew/bin/python3.12 -m venv .venv-clap && .venv-clap/bin/pip install -r requirements-clap.txt
+# The model (laion/clap-htsat-unfused, ~0.6 GB) downloads to ~/.cache/huggingface on first use.
+# Not laion/larger_clap_music: as published it embeds white noise and a click train 0.998
+# alike and scores every text prompt at ~0.01 (checked 2026-10-02, transformers 4.57 and
+# 5.18 alike). clap-htsat-unfused passes the same sine / noise / clicks test.
+torch
+transformers<5    # verified working with clap-htsat-unfused at 4.57.6
+numpy
+soundfile
