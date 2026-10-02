@@ -1,196 +1,154 @@
 #!/usr/bin/env python3
 """
-notamp_design.py — the nine not-amps, and the tables the firmware needs.
+notamp_design.py — the twelve not-amps, checked, measured, and written to src/notamps.h.
 
-A not-amp is a real capture played through the same A2 engine but bent: frozen,
-folded, faded, offset, mutated, or morphed past another amp. Each has ONE
-control, the steer knob (CV_4 + CV_8), mapped onto a parameter range chosen on
-the Mac (2026-09-29) for how smoothly and how far it moves the sound.
+Chosen 2026-10-02 by tools/notamp_search.py (descriptors + CLAP, against 236 real
+captures) and approved by ear; the README's "The measured search" has the numbers.
+They replace the nine of 2026-09-29.
 
-For each not-amp this measures the output level at nine steer positions, through
-the real engine (tools/a2_host_steer), relative to the capture it is built from
-played normally. The firmware applies the inverse as a gain table, so sweeping
-the steer knob changes the sound rather than the volume. It also exports the
-fixed noise vector the mutation not-amp adds, the same one heard in the
-experiment (Python random.Random(1), per-parameter-group spreads of the JCM800).
+For each not-amp this:
+  1. renders it through the firmware's own processor (tools/a2_notamp, which runs
+     src/notamp_dsp.h) and through the search harness it was chosen with
+     (tools/a2_explore), and checks they agree — bit for bit, except RATE, which the
+     firmware streams with 48·R samples of latency, so it is compared shifted;
+  2. measures its output level at nine steer positions, relative to its source
+     capture played plainly, through the firmware processor;
+  3. writes the definitions and the inverse level tables to src/notamps.h, so the
+     steer changes the sound rather than the volume.
 
-    c++ -std=c++17 -O2 -I.. -o tools/a2_host_steer tools/a2_host_steer.cpp
-    python3 tools/notamp_design.py            # writes src/notamps.h
+Needs the starter captures in captures/starter/ (CC0 / CC-BY, shipped with Mirth).
 
-Why the morph ranges stop at 1.3x: past that the network's gain climbs about
-20 dB per eighth of a step as the extrapolated weights compound through 23
-layers. The tone changes worth having happen before that.
+    c++ -std=c++17 -O2 -I. -Isrc -o tools/a2_notamp tools/a2_notamp.cpp
+    c++ -std=c++17 -O2 -DNAM_A2_EXPLORE -I. -o tools/a2_explore_s1 tools/a2_explore.cpp
+    .venv/bin/python tools/notamp_design.py
 """
 
-import array
-import math
 import pathlib
-import random
-import statistics as st
 import subprocess
 import sys
 import tempfile
+
+import numpy as np
 
 HERE = pathlib.Path(__file__).resolve().parent
 PROJECT = HERE.parent
 sys.path.insert(0, str(HERE))
 from quantisation_study import make_synth, scale_peak  # noqa: E402
 
-K = [6] * 14 + [15, 15] + [6] * 7
-CAP_FILES = {'BE-100': 'Be100', 'JCM800': 'Jcm800', 'Ampeg': 'AmpegSvt',
-             'Mesa': 'MesaDualRec', '1959BJA': 'Marshall1959BJA'}
+STARTER = PROJECT / "captures" / "starter"
+HEADER = PROJECT / "src" / "notamps.h"
 
-# name on the OLED (<= 10 chars), kind, capture A, capture B, spec, lo, hi, log map,
-# and the capture whose normal level is the reference (what the firmware takes the
-# header gain from).
-NOTAMPS = [
-    ('FREEZE',     'freeze', 'JCM800', None,      'freeze:10:{a}:{b}',     1.0, 1024.0, True,  'JCM800'),
-    ('PAST JCM',   'morph',  'Ampeg',  'JCM800',  'morph:{a}:{b}',         1.0, 1.3,    False, 'JCM800'),
-    ('PAST BJA',   'morph',  'Ampeg',  '1959BJA', 'morph:{a}:{b}',         1.0, 1.3,    False, '1959BJA'),
-    ('NO LONG',    'blend',  'JCM800', None,      'blend:6+13+22:{a}:{b}', 1.0, 0.0,    False, 'JCM800'),
-    ('FOLDED',     'fold',   'JCM800', None,      'fold:10:{a}:{b}',       1.0, 0.3,    True,  'JCM800'),
-    ('PAST MESA',  'morph',  'BE-100', 'Mesa',    'morph:{a}:{b}',         1.0, 1.3,    False, 'Mesa'),
-    ('OFFSET',     'offset', 'JCM800', None,      'off:2:0:{a}:{b}',       -2.0, 2.0,   False, 'JCM800'),
-    ('MUTATE',     'mutate', 'JCM800', 'noise',   'mutate:{a}:{b}',        0.0, 0.4,    False, 'JCM800'),
-    ('FREEZE ERL', 'freeze', 'JCM800', None,      'freeze:2:{a}:{b}',      1.0, 1024.0, True,  'JCM800'),
+# name (≤10 chars, the OLED), kind, cap_a, cap_b, lo, hi, log, layer, fixed
+TWELVE = [
+    ("SINE PLX",   "sine",    "PLEXI LORE", None,        0.3,  8.0,  True,  0,  0.0),
+    ("SINE BUG",   "sine",    "BUGERA G5",  None,        0.3,  8.0,  True,  0,  0.0),
+    ("LINEAR TR",  "slope",   "TWO ROCK",   None,        0.01, 1.0,  False, 0,  0.0),
+    ("FB100 F57",  "fbgain",  "FENDER 57",  None,        0.0,  0.95, False, 0,  480.0),
+    ("FB PCH PLX", "fbpitch", "PLEXI LORE", None,        48.0, 1200.0, True, 0, 0.8),
+    ("FB PCH KAY", "fbpitch", "KAY 703",    None,        48.0, 1200.0, True, 0, 0.8),
+    ("FRZ E TR",   "freeze",  "TWO ROCK",   None,        1.0,  1024.0, True, 3, 0.0),
+    ("FRZ M F57",  "freeze",  "FENDER 57",  None,        1.0,  1024.0, True, 11, 0.0),
+    ("FRZ M KAY",  "freeze",  "KAY 703",    None,        1.0,  1024.0, True, 11, 0.0),
+    ("RATE SVT",   "rate",    "SVT-2 PRO",  None,        1.0,  6.0,  False, 0,  0.0),
+    ("RATE BUG",   "rate",    "BUGERA G5",  None,        1.0,  6.0,  False, 0,  0.0),
+    ("PAST BLU",   "morph",   "BUGERA G5",  "BLUESBRKR", 1.0,  1.3,  False, 0,  0.0),
 ]
+RATE_STEPS = [1, 2, 3, 4, 6]
+KIND_ENUM = {"sine": "Sine", "slope": "Slope", "freeze": "Freeze", "morph": "Morph",
+             "fbgain": "FbGain", "fbpitch": "FbPitch", "rate": "Rate"}
 
 
-def read_f32(p):
-    a = array.array('f')
-    a.frombytes(pathlib.Path(p).read_bytes())
-    return list(a)
+def param(t, u):
+    _, kind, _, _, lo, hi, log, _, _ = t
+    if kind == "rate":
+        return RATE_STEPS[int(round(u * 4))]
+    return float(np.exp(np.log(lo) + (np.log(hi) - np.log(lo)) * u)) if log else lo + (hi - lo) * u
 
 
-def groups():
-    """Parameter groups in load_weights() order: interleaved per layer."""
-    g = {k: [] for k in ('rechannel', 'conv', 'convB', 'mixin', 'l1x1', 'l1x1B',
-                         'head', 'headB', 'headScale')}
-    p = 0
-    g['rechannel'] = list(range(p, p + 3)); p += 3
-    for li in range(23):
-        g['conv'] += list(range(p, p + 9 * K[li])); p += 9 * K[li]
-        for name, n in (('convB', 3), ('mixin', 3), ('l1x1', 9), ('l1x1B', 3)):
-            g[name] += list(range(p, p + n)); p += n
-    g['head'] = list(range(p, p + 48)); p += 48
-    g['headB'] = [p]; p += 1
-    g['headScale'] = [p]; p += 1
-    assert p == 1871
-    return g
-
-
-def mutation_noise(jcm):
-    g = groups()
-    sig = {k: (st.pstdev([jcm[i] for i in v]) if len(v) > 1 else abs(jcm[v[0]])) for k, v in g.items()}
-    rng = random.Random(1)
-    noise = [0.0] * 1871
-    for name, idx in g.items():
-        if name == 'headScale':
-            continue
-        for i in idx:
-            noise[i] = rng.gauss(0, sig[name])
-    return noise
-
-
-def rms(x):
-    return math.sqrt(sum(v * v for v in x) / max(1, len(x))) or 1e-12
-
-
-def dcblock(x, fc=20.0, sr=48000):
-    r = math.exp(-2 * math.pi * fc / sr); y = []; x1 = y1 = 0.0
-    for v in x:
-        o = v - x1 + r * y1; x1, y1 = v, o; y.append(o)
-    return y
+def explore_spec(t, v):
+    _, kind, _, _, _, _, _, layer, fixed = t
+    return {"sine": f"sine:{v}:{v}", "slope": f"slope:{v}:{v}", "freeze": f"freeze:{layer}:{v}:{v}",
+            "morph": f"morph:{v}:{v}", "fbgain": f"fbgain:{int(fixed)}:{v}:{v}",
+            "fbpitch": f"fbdelay:{fixed}:{v}:{v}", "rate": f"rate:{int(v)}"}[kind]
 
 
 def main():
-    host = HERE / 'a2_host_steer'
-    if not host.exists():
-        sys.exit('build tools/a2_host_steer first (see the docstring)')
-    caps = {n: read_f32(PROJECT / f'amp_compare/w_kWeights{f}.f32') for n, f in CAP_FILES.items()}
-    noise = mutation_noise(caps['JCM800'])
-    synth = make_synth()
-    scale_peak(synth, 0.5)
-
+    caps = {}
+    for f in sorted(STARTER.glob("*.a2nb")):
+        b = f.read_bytes()
+        caps[b[16:28].split(b"\0")[0].decode()] = (b[32:], np.frombuffer(b[12:16], "<f4")[0])
     tmp = pathlib.Path(tempfile.mkdtemp())
-    def run(A, B, spec):
-        pa, pb, pi, po = (tmp / n for n in ('a.f32', 'b.f32', 'i.f32', 'o.f32'))
-        array.array('f', A).tofile(open(pa, 'wb'))
-        array.array('f', B).tofile(open(pb, 'wb'))
-        array.array('f', synth).tofile(open(pi, 'wb'))
-        subprocess.run([str(host), str(pa), str(pb), str(pi), str(po), spec], check=True)
-        return dcblock(read_f32(po)[:len(synth)])
+    a = make_synth()
+    scale_peak(a, 0.5)
+    sig = np.asarray(a, "<f4")
+    (tmp / "in.f32").write_bytes(sig.tobytes())
+    for n, (w, _) in caps.items():
+        (tmp / f"{n}.f32").write_bytes(w)
+    wpath = lambda n: str(tmp / f"{n}.f32")
 
-    rows = []
-    for name, kind, an, bn, tmpl, lo, hi, lg, ref in NOTAMPS:
-        A = caps[an]
-        B = noise if bn == 'noise' else (caps[bn] if bn else A)
-        ref_level = rms(run(caps[ref], caps[ref], 'morph:0:0'))
-        gains = []
-        for i in range(9):
-            u = i / 8
-            v = math.exp(math.log(lo) + (math.log(hi) - math.log(lo)) * u) if lg else lo + (hi - lo) * u
-            lvl = 20 * math.log10(rms(run(A, B, tmpl.format(a=v, b=v))) / ref_level)
-            gains.append(-lvl)
-        rows.append((name, kind, an, bn, tmpl, lo, hi, lg, ref, gains))
-        print(f'{name:10s} correction dB: ' + ' '.join(f'{g:+6.1f}' for g in gains))
+    def run(cmd):
+        subprocess.run(cmd, check=True, capture_output=True)
+        return np.fromfile(tmp / "out.f32", "<f4").astype(np.float64)
 
-    # ---- write src/notamps.h -------------------------------------------------
-    def layer_of(t):
-        return t.split(':')[1] if ':' in t else '0'
-    L = []
-    L.append('// GENERATED by tools/notamp_design.py — do not edit by hand; rerun it.')
-    L.append('// The nine not-amps: a real capture, bent, with one steer control.')
-    L.append('#pragma once')
-    L.append('')
-    L.append('#include <cstdint>')
-    L.append('')
-    L.append('namespace notamps')
-    L.append('{')
-    L.append('enum class Kind : uint8_t { Freeze, Morph, Blend, Fold, Offset, Mutate };')
-    L.append('')
-    L.append('struct Def')
-    L.append('{')
-    L.append('    const char* name;     // shown on the OLED')
-    L.append('    Kind        kind;')
-    L.append('    const char* cap_a;    // capture name on the card')
-    L.append('    const char* cap_b;    // second capture for Morph, else nullptr')
-    L.append('    const char* cap_ref;  // capture whose header gain sets the level')
-    L.append('    float       lo, hi;   // parameter at steer 0 and steer 1')
-    L.append('    bool        log_map;  // map the steer logarithmically')
-    L.append('    uint8_t     layer, lane;')
-    L.append('    float       gain_db[9]; // level correction at steer 0, 1/8, ... 1')
-    L.append('};')
-    L.append('')
-    L.append('// Blend acts on these layers (the three with a gap of 239).')
-    L.append('constexpr uint8_t kBlendLayers[3] = {6, 13, 22};')
-    L.append('')
-    def cf(x):
-        t = f'{x:.7g}'
-        return t + ('f' if ('.' in t or 'e' in t) else '.0f')
-    kinds = {'freeze': 'Freeze', 'morph': 'Morph', 'blend': 'Blend', 'fold': 'Fold', 'offset': 'Offset', 'mutate': 'Mutate'}
-    L.append('constexpr Def kDefs[] = {')
-    for name, kind, an, bn, tmpl, lo, hi, lg, ref, gains in rows:
-        parts = tmpl.split(':')
-        layer = int(parts[1]) if kind in ('freeze', 'fold', 'offset') else 0
-        lane = int(parts[2]) if kind == 'offset' else 0
-        cb = f'"{bn}"' if (bn and bn != 'noise') else 'nullptr'
-        g = ', '.join(cf(round(x, 2)) for x in gains)
-        L.append(f'    {{"{name}", Kind::{kinds[kind]}, "{an}", {cb}, "{ref}", {cf(lo)}, {cf(hi)}, '
-                 f'{"true" if lg else "false"}, {layer}, {lane}, {{{g}}}}},')
-    L.append('};')
-    L.append('constexpr int kCount = sizeof(kDefs) / sizeof(kDefs[0]);')
-    L.append('')
-    L.append('// Added to the JCM800 by MUTATE, scaled by the steer. Random.Random(1) draws')
-    L.append('// with each parameter group\'s JCM800 spread, in load_weights() order.')
-    L.append('constexpr float kMutateNoise[1871] = {')
-    for i in range(0, 1871, 8):
-        L.append('    ' + ', '.join(cf(v) for v in noise[i:i + 8]) + ',')
-    L.append('};')
-    L.append('} // namespace notamps')
-    (PROJECT / 'src/notamps.h').write_text('\n'.join(L) + '\n')
-    print('wrote src/notamps.h')
+    def notamp(t, u):
+        name, kind, ca, cb, lo, hi, log, layer, fixed = t
+        return run([str(HERE / "a2_notamp"), wpath(ca), wpath(cb) if cb else "-", str(tmp / "in.f32"),
+                    str(tmp / "out.f32"), kind, str(lo), str(hi), "1" if log else "0", str(layer),
+                    str(fixed), str(u), str(u)])
+
+    def explore(t, u):
+        _, _, ca, cb, *_ = t
+        return run([str(HERE / "a2_explore_s1"), wpath(ca), wpath(cb) if cb else "-", str(tmp / "in.f32"),
+                    str(tmp / "out.f32"), explore_spec(t, param(t, u))])
+
+    def plain(n):
+        return run([str(HERE / "a2_explore_s1"), wpath(n), "-", str(tmp / "in.f32"), str(tmp / "out.f32"), "none"])
+
+    rms = lambda y: float(np.sqrt(np.mean(y[4800:] ** 2)))  # past the first 0.1 s
+    defs = []
+    print("not-amp       firmware vs harness              level at steer 0 … 1 (dB, before correction)")
+    for t in TWELVE:
+        name, kind, ca, cb, lo, hi, log, layer, fixed = t
+        # 1. the firmware processor against the harness it was chosen with
+        worst = -999.0
+        for u in (0.0, 0.5, 1.0):
+            f, e = notamp(t, u), explore(t, u)
+            if kind == "rate":
+                lag = 48 * param(t, u) if param(t, u) > 1 else 0
+                f = f[lag:]  # the firmware's output trails by 48·R samples
+            n = min(len(f), len(e))  # the harness pads its input to a multiple of 48·R
+            f, e = f[:n], e[:n]
+            if kind == "morph":  # the harness starts from A and rewrites; skip its first block's transient
+                f, e = f[4800:], e[4800:]
+            diff = np.sum((f - e) ** 2) / (np.sum(e ** 2) + 1e-30)
+            worst = max(worst, 10 * np.log10(diff + 1e-30))
+        agree = "bit-identical" if worst < -290 else f"worst {worst:6.1f} dB"
+        # 2. level against the source capture played plainly
+        ref = rms(plain(cb or ca))
+        lv = [20 * np.log10(rms(notamp(t, k / 8)) / ref) for k in range(9)]
+        print(f"  {name:10s}  {agree:22s}  " + " ".join(f"{x:+5.1f}" for x in lv))
+        if worst > -60:
+            raise SystemExit(f"{name}: the firmware processor does not match the harness ({worst:.1f} dB)")
+        defs.append((t, [-x for x in lv]))
+
+    # 3. the header
+    L = ["// GENERATED by tools/notamp_design.py — do not edit by hand; rerun it.",
+         "// The twelve not-amps (2026-10-02): a starter capture with one transform and one",
+         "// steer, each measured outside the amp region by two judges and approved by ear.",
+         "// Types and processing: notamp_dsp.h. gain_db is the inverse of the measured level,",
+         "// so the steer changes the sound rather than the volume.",
+         "#pragma once", "", '#include "notamp_dsp.h"', "", "namespace notamps", "{",
+         "constexpr Def kDefs[] = {"]
+    for (name, kind, ca, cb, lo, hi, log, layer, fixed), g in defs:
+        cap_b = f'"{cb}"' if cb else "nullptr"
+        ref = cb or ca
+        L.append(f'    {{"{name}", Kind::{KIND_ENUM[kind]}, "{ca}", {cap_b}, "{ref}", {lo}f, {hi}f, '
+                 f'{"true" if log else "false"}, {layer}, {fixed}f,')
+        L.append("     {" + ", ".join(f"{x:.2f}f" for x in g) + "}},")
+    L += ["};", "constexpr int kCount = (int)(sizeof(kDefs) / sizeof(kDefs[0]));", "} // namespace notamps", ""]
+    HEADER.write_text("\n".join(L))
+    print(f"\nwrote {HEADER.relative_to(PROJECT)}: {len(defs)} not-amps")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

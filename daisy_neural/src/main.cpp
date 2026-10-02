@@ -17,7 +17,7 @@
  *
  * Controls
  *   CV_1 (+ CV_5 jack)   input trim into the engine, -20..+20 dB, unity at noon
- *   CV_2 (+ CV_6 jack)   output level, 0..1
+ *   CV_2 (+ CV_6 jack)   MIX, dry (0) to wet (1)
  *   CV_3 (+ CV_7 jack)   slot within the current bank
  *   CV_4 (+ CV_8 jack)   STEER — the not-amp's one control (not-amps bank only)
  *   B7 short press       bypass on/off, to A/B the engine against the dry input
@@ -26,15 +26,17 @@
  *   CV_OUT_2 LED         lit when the engine is in circuit, dark when bypassed
  *
  * Two banks. AMPS: the captures on the card, played exactly as captured; the
- * steer knob does nothing there, on purpose. NOT-AMPS: nine real captures
- * bent inside the network — frozen, folded, faded, offset, mutated, or morphed
- * past another amp — each with one steer control that can move while playing.
- * Designed on the Mac with tools/notamp_design.py, which generates
- * src/notamps.h; the bends themselves live in nam/nam_a2_runtime.h.
+ * steer knob does nothing there, on purpose. NOT-AMPS: twelve starter captures,
+ * each with one transform chosen by measurement to leave the region where real
+ * amps sit — sine or linear neurons, a feedback loop, a frozen layer, the engine
+ * at a fraction of the sample rate, or a capture pushed past another — and one
+ * steer control that can move while playing. Processing in src/notamp_dsp.h
+ * (shared with the Mac harness tools/a2_notamp.cpp); definitions and level
+ * tables generated into src/notamps.h by tools/notamp_design.py.
  *
- * Audio: IN_L -> trim -> engine slot -> level -> DC block -> OUT_L and OUT_R.
- * Bypass takes the dry input to the same output level, so an A/B compares the
- * engine against the input rather than against a level change.
+ * Audio: IN_L -> trim -> engine slot -> wet; IN_L -> dry (delayed to match any
+ * not-amp latency); dry/wet mix (CV_2) -> DC block -> OUT_L and OUT_R.
+ * Bypass is the dry side alone, so an A/B compares the engine with its input.
  *
  * Vocabulary follows CLAUDE.md: "engine" is the inference code, "capture" is one
  * trained weights file, and "patch" is never used for either.
@@ -101,6 +103,10 @@ static constexpr float       kFallbackGain    = 1.1f;
 // feed it a block it cannot handle.
 static constexpr size_t kA2BlockSize = 48;
 
+// The loaded not-amp's processing (feedback, rate, the bend, the level table);
+// inactive while a real amp plays. Touched by the main loop only while muted.
+static notamps::Processor g_proc;
+
 class EngineSlot
 {
   public:
@@ -139,7 +145,10 @@ class EngineSlot
                 out[i] = in[i];
             return;
         }
-        player_.process_block_48(in, out);
+        if(g_proc.Active())
+            g_proc.Process(in, out, [this](const float* x, float* y) { player_.process_block_48(x, y); });
+        else
+            player_.process_block_48(in, out);
         for(size_t i = 0; i < size; i++)
             out[i] *= gain_;
     }
@@ -217,7 +226,7 @@ static float g_dc_coeff = 0.f;
 // Raw knob reads, shown on the RUN page so unconfirmed pot scaling is visible
 // rather than mysterious. See the note in the audio callback.
 static volatile float g_trim_raw  = 0.f;
-static volatile float g_level_raw = 0.f;
+static volatile float g_mix_raw = 0.f;
 
 // ---------------------------------------------------------------------------
 // Capture switching
@@ -263,16 +272,15 @@ static int BankSize(Bank b)
 // pairs. Smoothed over ~20 ms so a knob or CV does not step audibly.
 static volatile float g_steer = 0.f;
 
-// The loaded not-amp: its source weights (A, and B for a morph or the noise for
-// a mutation), the weights being played, and the capture gain its level table
-// is relative to. Ordinary .bss, DTCMRAM under BOOT_SRAM. Touched by the main
-// loop only while muted (Swap), and by the callback otherwise.
+// The loaded not-amp: its source weights (A, and B for a morph), the weights
+// being played, and the capture gain its level table is relative to. Ordinary
+// .bss, DTCMRAM under BOOT_SRAM. Touched by the main loop only while muted
+// (Swap), and by the callback otherwise.
 static float g_na_a[nam_a2_daisy::kA2WeightCount];
 static float g_na_b[nam_a2_daisy::kA2WeightCount];
 static float g_na_w[nam_a2_daisy::kA2WeightCount];
 static int   g_na      = -1;   // which not-amp is loaded, -1 = none
 static float g_na_gain = 1.f;  // the reference capture's header gain
-static float g_na_last = -1.f; // last morph/mutation parameter written, to skip rewrites
 
 // ~5ms at 48kHz/48, which is long enough not to click and short enough not to
 // feel like a gap when auditioning captures back to back.
@@ -353,59 +361,12 @@ static void ProcessNav()
 // ================================================================
 // Not-amps
 // ================================================================
-static float SteerParam(const notamps::Def& d, float u)
-{
-    return d.log_map ? expf(logf(d.lo) + (logf(d.hi) - logf(d.lo)) * u) : d.lo + (d.hi - d.lo) * u;
-}
-
-// Set the loaded not-amp's bend (or rewrite its weights) and level for steer u.
-// Audio callback only, so it never overlaps the engine running.
+// Set the loaded not-amp's bend and level for steer u. Audio callback only, so
+// it never overlaps the engine running.
 static void ApplySteer(float u)
 {
-    using namespace nam_a2_daisy;
-    const notamps::Def& d = notamps::kDefs[g_na];
-    const float v = SteerParam(d, u);
-    switch(d.kind)
-    {
-        case notamps::Kind::Freeze:
-            bend::active[d.layer]  = true;
-            bend::freezeP[d.layer] = (int)lroundf(v);
-            break;
-        case notamps::Kind::Fold:
-            bend::active[d.layer] = true;
-            bend::fold[d.layer]   = v;
-            break;
-        case notamps::Kind::Offset:
-            bend::active[d.layer]          = true;
-            bend::offset[d.layer][d.lane]  = v;
-            break;
-        case notamps::Kind::Blend:
-            for(uint8_t l : notamps::kBlendLayers)
-            {
-                bend::active[l] = true;
-                bend::blend[l]  = v;
-            }
-            break;
-        case notamps::Kind::Morph:
-        case notamps::Kind::Mutate:
-            // Weights = A + v*(B - A) for a morph, A + v*noise for a mutation.
-            // Rewritten only when the parameter has moved, which it rarely does
-            // by more than the smoothing lets through.
-            if(fabsf(v - g_na_last) > 0.0005f)
-            {
-                const bool morph = d.kind == notamps::Kind::Morph;
-                for(int i = 0; i < kA2WeightCount; i++)
-                    g_na_w[i] = morph ? g_na_a[i] + v * (g_na_b[i] - g_na_a[i]) : g_na_a[i] + v * g_na_b[i];
-                engine.RewriteWeights(g_na_w);
-                g_na_last = v;
-            }
-            break;
-    }
-    // Level correction, interpolated from the nine-point table.
-    const float x  = u * 8.f;
-    const int   k  = x >= 8.f ? 7 : (int)x;
-    const float db = d.gain_db[k] + (d.gain_db[k + 1] - d.gain_db[k]) * (x - (float)k);
-    engine.SetGain(g_na_gain * powf(10.f, db / 20.f));
+    const float lg = g_proc.Apply(u, g_na_w, [](const float* w) { engine.RewriteWeights(w); });
+    engine.SetGain(g_na_gain * lg);
 }
 
 // ================================================================
@@ -429,17 +390,16 @@ void AudioCallback(AudioHandle::InputBuffer  in,
     // instead of guessing. If LVL reads 0 with the knob up, that is why there
     // is no sound, and the fix is here rather than in the engine.
     const float trim_raw  = patch.GetAdcValue(CV_1);
-    const float level_raw = patch.GetAdcValue(CV_2);
+    const float mix_raw   = patch.GetAdcValue(CV_2);
     g_trim_raw            = trim_raw;
-    g_level_raw           = level_raw;
+    g_mix_raw             = mix_raw;
 
     const float trim_k  = fclamp(trim_raw + patch.GetAdcValue(CV_5), 0.f, 1.f);
-    const float level_k = fclamp(level_raw + patch.GetAdcValue(CV_6), 0.f, 1.f);
+    const float mix     = g_bypass ? 0.f : fclamp(mix_raw + patch.GetAdcValue(CV_6), 0.f, 1.f);
 
     // Trim spans -20..+20 dB with unity at noon, so the signal can be set to
     // the level the capture was trained at. Computed per block, not per sample.
     const float trim  = powf(10.f, (trim_k * 2.f - 1.f));
-    const float level = level_k;
 
     // --- slot selection ---------------------------------------------------
     // CV_3 across the current bank. Hysteresis of a quarter step past the
@@ -521,7 +481,7 @@ void AudioCallback(AudioHandle::InputBuffer  in,
         // Slow one-pole, for watching a sub-1Hz LFO on the DC page.
         dc += g_dc_coeff * (x - dc);
 
-        scratch[i] = g_bypass ? x : (x * trim);
+        scratch[i] = x * trim;
     }
 
     // Not while the main loop is swapping: it is rewriting this engine's weights
@@ -531,6 +491,9 @@ void AudioCallback(AudioHandle::InputBuffer  in,
     // this way, and the DC blocker below then held the NaN forever.
     if(!g_bypass && g_xf != Xf::Swap)
         engine.ProcessBlock(scratch, scratch, n);
+    else
+        for(size_t i = 0; i < n; i++)
+            scratch[i] = 0.f;  // no wet while bypassed or swapping
 
     // DC blocker, ~20Hz one-pole. Needed for the seed slot, which is
     // asymmetric and parks on an offset nothing has trained out (measured: RMS
@@ -540,10 +503,15 @@ void AudioCallback(AudioHandle::InputBuffer  in,
     static float dcb_x1 = 0.f, dcb_y1 = 0.f;
     constexpr float kDcR = 0.99738f;  // exp(-2*pi*20/48000)
 
-    const float out_gain = level * g_xf_gain;
+    // Dry/wet. The dry side is the input before the trim, delayed to line up with
+    // a not-amp that has latency (RATE runs 48·R samples behind); the swap fade
+    // mutes the wet side only.
+    static notamps::DryDelay dry_delay;
+    const int   lat  = g_na >= 0 ? g_proc.Latency() : 0;
+    const float wetg = mix * g_xf_gain, dryg = 1.f - mix;
     for(size_t i = 0; i < n; i++)
     {
-        const float raw = scratch[i] * out_gain;
+        const float raw = scratch[i] * wetg + dry_delay.Process(in[0][i], lat) * dryg;
         float       y   = raw - dcb_x1 + kDcR * dcb_y1;
         // A recursive filter keeps a NaN or Inf forever, so one bad block from
         // an untrained network would silence the module until power-off.
@@ -565,8 +533,8 @@ void AudioCallback(AudioHandle::InputBuffer  in,
     // cannot help there, so the tail passes through dry rather than going quiet.
     for(size_t i = n; i < size; i++)
     {
-        out[0][i] = in[0][i] * out_gain;
-        out[1][i] = in[0][i] * out_gain;
+        out[0][i] = in[0][i];
+        out[1][i] = in[0][i];
     }
 
     g_in_peak = peak;
@@ -602,8 +570,8 @@ static bool SwapCapture(int index)
 
     if(!captures::Load(index, g_weight_buf, nam_a2_daisy::kA2WeightCount))
         return false;
-    nam_a2_daisy::bend::Clear();  // a real amp is played exactly as captured
     g_na = -1;
+    g_proc.End();                  // a real amp is played exactly as captured
     if(!engine.Load(g_weight_buf, (size_t)e->weight_count, e->gain, e->name))
         return false;
     return true;
@@ -621,31 +589,22 @@ static bool SwapNotAmp(int i)
         return false;
     if(!captures::Load(ia, g_na_a, kA2WeightCount))
         return false;
-    if(d.kind == notamps::Kind::Morph)
+    if(d.cap_b != nullptr)
     {
         const int ib = captures::Find(d.cap_b);
         if(ib < 0 || !captures::Load(ib, g_na_b, kA2WeightCount))
             return false;
     }
-    else if(d.kind == notamps::Kind::Mutate)
-    {
-        for(int k = 0; k < kA2WeightCount; k++)
-            g_na_b[k] = notamps::kMutateNoise[k];
-    }
 
-    bend::Clear();
     g_na = -1;  // nothing in the callback touches the engine until this is set
-    const float v = SteerParam(d, g_steer);
-    const bool  w = d.kind == notamps::Kind::Morph || d.kind == notamps::Kind::Mutate;
-    for(int k = 0; k < kA2WeightCount; k++)
-        g_na_w[k] = !w ? g_na_a[k]
-                       : (d.kind == notamps::Kind::Morph ? g_na_a[k] + v * (g_na_b[k] - g_na_a[k])
-                                                         : g_na_a[k] + v * g_na_b[k]);
+    g_proc.Begin(d, g_na_a, d.cap_b != nullptr ? g_na_b : nullptr);
     g_na_gain = captures::Get(ir)->gain;
-    if(!engine.Load(g_na_w, kA2WeightCount, g_na_gain, d.name))
+    if(!engine.Load(g_proc.InitialWeights(g_steer, g_na_w), kA2WeightCount, g_na_gain, d.name))
+    {
+        g_proc.End();
         return false;
-    g_na_last = w ? v : -1.f;
-    g_na      = i;
+    }
+    g_na = i;
     return true;
 }
 
@@ -700,7 +659,7 @@ static void DrawRunPage()
         // A not-amp: which one of how many, and where the steer sits, since
         // the steer is the not-amp's whole character.
         const int k = SlotIndex(g_active) + 1;
-        snprintf(line, sizeof(line), "N%d/%d S%.2f", k > 9 ? 9 : k, notamps::kCount, (double)g_steer);
+        snprintf(line, sizeof(line), "N%d S%.2f", k > 99 ? 99 : k, (double)g_steer);
     }
     else if(g_bank == Bank::NotAmps && n_caps > 0)
         // Asked for the not-amps but still on an amp: a not-amp failed to load,
@@ -717,8 +676,8 @@ static void DrawRunPage()
     display.DrawString(0, 34, line, false);
 
     // Raw knob reads. Ten characters is the panel budget, so they share a line.
-    snprintf(line, sizeof(line), "T%+.1fL%+.1f",
-             (double)g_trim_raw, (double)g_level_raw);
+    snprintf(line, sizeof(line), "T%+.1fM%+.1f",
+             (double)g_trim_raw, (double)g_mix_raw);
     display.DrawString(0, 42, line, false);
 }
 

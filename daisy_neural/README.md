@@ -19,9 +19,9 @@ in (1% in bypass), against the references' 30–61% for A2 on a 480 MHz H7 — s
 number is recorded.
 
 **Two banks since 2026-09-29: AMPS and NOT-AMPS.** The random-seed slot came out: every
-seed was a variation on one "evil cello". In its place are nine *not-amps*, real captures
-bent inside the network, each with one control that CV can steer while it plays. See
-"The not-amps" below. **Not yet run on hardware.**
+seed was a variation on one "evil cello". Since 2026-10-02 NOT-AMPS holds twelve *not-amps*,
+the starter captures each with one transform measured to leave the region where real amps
+sound — see "The not-amps" below — and knob 2 is a dry/wet MIX. **Not yet run on hardware.**
 
 ## What it does today
 
@@ -38,23 +38,25 @@ Two things, and the second is the reason it exists this early:
 ## Signal path
 
 ```
-IN_L ──► trim (CV_1) ──► [ engine slot ] ──► level (CV_2) ──► OUT_L
-                                                          └─► OUT_R
+IN_L ─┬─► trim (CV_1) ──► [ engine slot ] ──► wet ─┐
+      └─► dry (delayed to match a not-amp's latency) ┴─► mix (CV_2) ──► DC block ──► OUT_L, OUT_R
 ```
 
 IN_R is normalled to IN_L on the carrier, so only IN_L is read. Patching IN_R breaks
 that normal, which is what makes it available later as the per-sample input for
 audio-rate CV — the CV jacks are only read once per block, about 1 kHz.
 
-Bypass takes the dry input to the same output level, so an A/B compares the engine
-against the input rather than against a level change.
+The dry side is the input before the trim. Bypass is the dry side alone, so an A/B
+compares the engine with its input. The engine runs within the same block as its input,
+so dry and wet line up sample for sample — except the RATE not-amps, which stream 48·R
+samples late; the dry side is delayed by the same amount while one plays.
 
 ## Controls
 
 | Control | Function |
 |---|---|
 | **CV_1** (+ CV_5 jack) | Input trim into the engine, −20…+20 dB, unity at noon |
-| **CV_2** (+ CV_6 jack) | Output level, 0…1 |
+| **CV_2** (+ CV_6 jack) | **MIX**, dry (0) to wet (1). Replaced output level, 2026-10-02 |
 | **CV_3** (+ CV_7 jack) | Slot within the current bank |
 | **CV_4** (+ CV_8 jack) | **STEER** — the not-amp's one control. Does nothing in AMPS, on purpose |
 | **B7** short press | Bypass on/off |
@@ -63,7 +65,8 @@ against the input rather than against a level change.
 | **CV_OUT_2** LED | Lit when the engine is in circuit, dark when bypassed |
 
 The trim exists so the signal can be set to the level the capture was trained at, which is
-why the peak meter reads the input *before* the trim rather than after.
+why the peak meter reads the input *before* the trim rather than after. Free for later:
+Gate In 1 and 2, Gate Out, CV_OUT_1.
 
 ## Pages
 
@@ -227,41 +230,45 @@ with integer maths is the largest single saving.
 
 ## The not-amps
 
-Nine slots in the NOT-AMPS bank, each a real capture bent inside the network, with one
-control on the steer knob (CV_4 + the CV_8 jack) that can move while it plays:
+Twelve slots in the NOT-AMPS bank since 2026-10-02, each a starter capture with one
+transform and one control on the steer knob (CV_4 + the CV_8 jack) that can move while
+it plays. Chosen by measurement to sit outside the region where real amps sound, then by
+ear — "The measured search" below has the numbers.
 
-| OLED | Built from | Steer controls |
-|---|---|---|
-| `FREEZE` | JCM800, layer 11's output held | hold length, 1 → 1,024 samples |
-| `PAST JCM` | the Ampeg's weights pushed past the JCM800 | how far past, 1.0 → 1.3× |
-| `PAST BJA` | the Ampeg's weights pushed past the 1959BJA | how far past, 1.0 → 1.3× |
-| `NO LONG` | JCM800, the three gap-239 layers faded out | fade, in → out |
-| `FOLDED` | JCM800, a wavefolder on all lanes at layer 11 | fold threshold, 1.0 → 0.3 |
-| `PAST MESA` | BE-100's weights pushed past the Mesa | how far past, 1.0 → 1.3× |
-| `OFFSET` | JCM800, an offset on one lane at layer 3 | offset −2 → +2; the plain amp at noon |
-| `MUTATE` | JCM800 plus a fixed noise vector | noise amount, 0 → 0.4 |
-| `FREEZE ERL` | JCM800, layer 3's output held | hold length, 1 → 1,024 samples |
+| OLED | Built from | Transform | Steer controls |
+|---|---|---|---|
+| `SINE PLX` | pLEXI-LORE | every neuron's activation sin(g·x)/g | g, 0.3 → 8 (log) |
+| `SINE BUG` | Bugera G5 | the same | g, 0.3 → 8 (log) |
+| `LINEAR TR` | Two Rock | every neuron's leaky-ReLU slope | slope, 0.01 (as trained) → 1 (linear) |
+| `FB100 F57` | Fender 57 | output fed back after 480 samples (100 Hz) | loop gain, 0 → 0.95 |
+| `FB PCH PLX` | pLEXI-LORE | output fed back at gain 0.8 | loop delay — the pitch — 48 → 1,200 samples (log) |
+| `FB PCH KAY` | Kay 703 | the same | the same |
+| `FRZ E TR` | Two Rock | layer 3's output held | hold, 1 → 1,024 samples (log) |
+| `FRZ M F57` | Fender 57 | layer 11's output held | the same |
+| `FRZ M KAY` | Kay 703 | the same | the same |
+| `RATE SVT` | SVT-2 Pro | the engine at 1/R of the sample rate, held back up | R = 1, 2, 3, 4, 6 (stepped) |
+| `RATE BUG` | Bugera G5 | the same | the same |
+| `PAST BLU` | Bluesbreaker | weights pushed past it, away from the Bugera G5 | how far past, 1.0 → 1.3× |
 
-They are built from the captures on the card, found by name, so those five captures must be
-there; a missing one shows `N need cap`. The RUN page shows `N3/9 S0.42`: not-amp 3 of 9,
-steer at 0.42.
+They find their captures on the card by name — the starter set, which ships with Mirth
+(CC0 / CC-BY) — so a missing one shows `N need cap`. The RUN page shows `N3 S0.42`:
+not-amp 3, steer at 0.42.
 
-**How they were chosen.** On the Mac, through the real engine: first a sweep of other ways
-to draw random weights, then network bending (operations inserted between layers while it
-plays, after Broad, Leymarie and Grierson), then a steerability test on the candidates —
-how far one control moves the sound, how smoothly, and how much the level changes. The
-morph ranges stop at 1.3× because past that the network's gain climbs about 20 dB for
-every eighth of a step. `tools/notamp_design.py` holds the nine definitions and generates
-`src/notamps.h`: the definitions, a nine-point level-correction table for each so the
-steer changes the sound rather than the volume, and MUTATE's noise vector (the exact one
-auditioned). `tools/a2_host_steer` renders any of them with the control swept, as CV would
-move it.
+**One processor, two places.** `src/notamp_dsp.h` is the whole of the not-amps'
+processing — the bend, feedback loop, rate streaming and level table — and the firmware
+and `tools/a2_notamp.cpp` both run it. `tools/notamp_design.py` renders each through it and
+through the search harness they were chosen with (`tools/a2_explore.cpp`) and refuses to
+write `src/notamps.h` unless they agree: eleven bit for bit, PAST BLU to −102 dB (the
+harness's first-block transient). It then measures a nine-point level table for each,
+against its source capture played plainly, so the steer changes the sound and not the
+volume — corrections run from −24 dB (LINEAR TR, PAST BLU at full steer) to +35 dB
+(SINE BUG).
 
-**The bends live in the engine.** `nam/nam_a2_runtime.h` carries a small `bend` addition —
-blend, offset, fold and freeze applied to a layer's output. Inactive, the output is
-bit-identical to the unmodified runtime, and a real amp always plays with every bend
-cleared. MORPH and MUTATE move by rewriting the weights with no prewarm, in the audio
-callback so it never overlaps the engine; on the Mac that matches the real engine exactly.
+**The activation is a firmware choice.** `nam/nam_a2_runtime.h` compiles each activation
+— as trained, a variable slope, a sine — as its own copy of the layer kernels, chosen once
+per block, so a real amp pays nothing. The sine is `bend::FastSin`, 11th-order, within
+−57 to −104 dB of `sinf` through whole networks. Freeze and the morph use the `bend`
+operations and live weight rewrites the nine introduced.
 
 **The seed slot, retired.** Random weights drawn with one amp's statistics all came out as
 variations on one resonant, octave-flavoured sound — deep networks with random weights go
@@ -305,7 +312,7 @@ was never rejected, only not taken up:
 **Step 3 — ten bending candidates, scored** for range, smoothness, level safety and
 whether they move live: freeze middle and early layers, four morphs past an amp (one
 JCM800/Ampeg direction did not ship), early lane offset, fold, fading the gap-239 layers,
-mutation. David took the proposed five plus four reserves: the nine above. He also
+mutation. David took the proposed five plus four reserves: the nine that shipped first. He also
 decided real amps stay exactly as captured, so steer acts only in NOT-AMPS.
 
 **Measured 2026-10-01**, on the twelve: captures do not share an inner layout — the same
@@ -368,7 +375,8 @@ per capture (`--combine --family-cap 3`; a cap of two stopped at ten):
 
 Audition: `amp_compare/notamp_search/audition.wav` (gitignored). **Heard and approved by David,
 2026-10-02:** every one has zones where it does not sound like a guitar amp. These replace the
-nine; next is firmware, with level tables measured per not-amp as before.
+nine. Built into the firmware the same day (`src/notamp_dsp.h`, `src/notamps.h`); not yet
+on the module.
 
 ## Getting more captures
 
@@ -577,8 +585,17 @@ In rough order, because each answers something the next depends on:
    like their amps.
 2. ~~Read the CPU load.~~ **64%** average and peak, `BOOT_SRAM` with the history in D2 —
    phase 1 closed.
-3. ~~Design the seed landscape.~~ Replaced by the nine not-amps (2026-09-29). **Next: hear
-   them on the module** — each across its steer range, then with a CV on CV_8.
+3. ~~Design the seed landscape.~~ Replaced by the nine not-amps (2026-09-29), then by the
+   twelve (2026-10-02). **Next: the twelve on the module.**
+   - **CPU on `SINE PLX` and `SINE BUG` first** — the max on the RUN page. The Mac puts the
+     sine at 1.5× the engine (~96% if that held); counting cycles says nearer 80%. Over
+     ~90% and it needs a cheaper sine before anything else.
+   - The five amps' worth of captures still play as before (the trained path is
+     bit-identical on the Mac, but the kernels are now templates).
+   - MIX: dry at 0, wet at 1, and on `RATE SVT` at 50% no comb-filter hollowness — that
+     would mean the dry delay is not lining up.
+   - Each not-amp across its steer, then with CV on CV_8; the feedback ones at full steer
+     for runaway.
 4. **Bench check 2**, while the unit is out: bypass on, one LFO to both IN_L and CV_5, long-press
    to the HPF page, sweep the LFO and find where RAT hits 0.71. Record the corner in
    [CLAUDE.md](CLAUDE.md) under Hardware.
