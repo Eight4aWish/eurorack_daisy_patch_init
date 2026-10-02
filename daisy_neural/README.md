@@ -18,6 +18,12 @@ card and sound like the amps they are. **CPU load: 64%** average and peak with t
 in (1% in bypass), against the references' 30–61% for A2 on a 480 MHz H7 — so phase 1's
 number is recorded.
 
+**Sets final, 2026-10-02.** After four bench sessions David called the twelve amps and the
+twelve not-amps settled and the firmware good enough for the video and for sharing.
+Release still needs: a build without the capture header (no T3K fallback in the `.bin`),
+the rename to Mirth, the HPF bench page removed, and the starter captures packaged with
+credits for the eight CC-BY ones.
+
 **Two banks since 2026-09-29: AMPS and NOT-AMPS.** The random-seed slot came out: every
 seed was a variation on one "evil cello". Since 2026-10-02 NOT-AMPS holds twelve *not-amps*,
 the starter captures each with one transform measured to leave the region where real amps
