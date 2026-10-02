@@ -237,9 +237,9 @@ ear — "The measured search" below has the numbers.
 
 | OLED | Built from | Transform | Steer controls |
 |---|---|---|---|
-| `SINE PLX` | pLEXI-LORE | every neuron's activation sin(g·x)/g | g, 0.3 → 8 (log) |
-| `SINE BUG` | Bugera G5 | the same | g, 0.3 → 8 (log) |
+| `SINE BUG` | Bugera G5 | every neuron's activation sin(g·x)/g | g, 0.3 → 8 (log) |
 | `LINEAR TR` | Two Rock | every neuron's leaky-ReLU slope | slope, 0.01 (as trained) → 1 (linear) |
+| `LINEAR TRY` | Traynor TS 120 B | the same | the same |
 | `RECT ORG` | Orange TH100 | the same, the other way | slope, 0.01 → −1 (full-wave rectifying) |
 | `FB100 F57` | Fender 57 | output fed back after 480 samples (100 Hz) | loop gain, 0 → 0.95 |
 | `FB PCH PLX` | pLEXI-LORE | output fed back at gain 0.8 | loop delay — the pitch — 48 → 1,200 samples (log) |
@@ -272,6 +272,17 @@ audition); not yet re-measured on the module. FB PCH KAY was too much grating fe
 RATE BUG imposed a tone at every reduced rate (steer past 0.12); both were replaced by
 the search's next picks around the other ten (`notamp_search.py --keep … --allow …`):
 RECT ORG and FOLD ORG, both cheap. The other eight were fine.
+
+**Second bench session, 2026-10-02.** SINE BUG 75% CPU and fine — the table sine works.
+SINE PLX was only noise at every setting: on the Mac, faint input noise (−70 dBFS) comes
+out of it as loud as playing — a noise amplifier, which the clean test signal never
+showed. Replaced by LINEAR TRY, the next pick that passes a new **noise screen** in
+`notamp_design.py` (idle output within 10 dB of playing *and* spectrally flat fails; the
+feedback pair's idle output is a tone, and passes). The same investigation found the
+**level tables had been measuring DC**: LINEAR TR's "level" was 22 dB of an offset the
+output blocker removes, so its knob got ~38 dB quieter toward the top, PAST BLU ~20 dB.
+The tables are now measured after a replica of the firmware's DC blocker. FB PCH PLX
+"has some feedback" — by design; it self-oscillates with no input.
 
 **The activation is a firmware choice.** `nam/nam_a2_runtime.h` compiles each activation
 — as trained, a variable slope, a sine — as its own copy of the layer kernels, chosen once
@@ -598,7 +609,7 @@ In rough order, because each answers something the next depends on:
 3. ~~Design the seed landscape.~~ Replaced by the nine not-amps (2026-09-29), then by the
    twelve (2026-10-02). **Next: the twelve on the module.**
    - **CPU on `SINE PLX` and `SINE BUG` first** — the max on the RUN page. Read 99% with the
-     polynomial sine on 2026-10-02; the table sine should bring it near the low 70s.
+     polynomial sine on 2026-10-02; SINE BUG 75% with the table sine, the same day.
    - The five amps' worth of captures still play as before (the trained path is
      bit-identical on the Mac, but the kernels are now templates).
    - MIX: dry at 0, wet at 1, and on `RATE SVT` at 50% no comb-filter hollowness — that

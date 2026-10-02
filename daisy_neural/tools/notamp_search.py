@@ -289,6 +289,8 @@ def main():
                     help="already chosen: start from these and fill the rest")
     ap.add_argument("--allow", action="append", default=[], metavar="TRANSFORM",
                     help="fill only from these transforms")
+    ap.add_argument("--exclude", action="append", default=[], metavar="TRANSFORM|CAPTURE",
+                    help="never pick these (e.g. failed on the bench)")
     ap.add_argument("--dump", action="store_true", help="write every clip as a WAV, for clap_judge.py")
     ap.add_argument("--combine", action="store_true", help="select with CLAP's verdict too (after clap_judge.py)")
     ap.add_argument("--audition", action="store_true", help="render the selection, swept, to audition.wav")
@@ -310,7 +312,8 @@ def main():
 
     if args.combine:
         return score(json.loads(cache.read_text()), names, args.pick, clap=load_clap(), min_nov=args.min_novelty,
-                     family_cap=args.family_cap, keep=args.keep, allow=args.allow)
+                     family_cap=args.family_cap, keep=args.keep, allow=args.allow,
+                     exclude=args.exclude)
     if args.reuse and cache.exists():
         C = json.loads(cache.read_text())
     else:
@@ -396,7 +399,7 @@ AMP_TAGS = ("a synthesizer played through a guitar amplifier", "an overdriven el
             "a clean electric guitar amplifier tone", "a fuzz guitar pedal")
 
 
-def score(C, names, pick, clap=None, min_nov=0.0, family_cap=2, keep=(), allow=()):
+def score(C, names, pick, clap=None, min_nov=0.0, family_cap=2, keep=(), allow=(), exclude=()):
     amp_names = list(C["amps"])
     A = matrix([C["amps"][a] for a in amp_names])
     keys = [k for k, d in C["cands"].items() if d]
@@ -498,6 +501,8 @@ def score(C, names, pick, clap=None, min_nov=0.0, family_cap=2, keep=(), allow=(
                 if nov[j] < min_nov:
                     continue
                 if allow and r["transform"] not in allow:
+                    continue
+                if f"{r['transform']}|{r['capture']}" in exclude:
                     continue
                 d = min(D[j, c] for c in chosen)
                 if d > bestd:

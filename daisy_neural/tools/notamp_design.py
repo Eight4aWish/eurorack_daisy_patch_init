@@ -6,7 +6,9 @@ Chosen 2026-10-02 by tools/notamp_search.py (descriptors + CLAP, against 236 rea
 captures) and approved by ear; the README's "The measured search" has the numbers.
 They replace the nine of 2026-09-29. After the first bench session the same day, FB PCH
 KAY (feedback that grated) and RATE BUG (a tone imposed at every reduced rate) were
-replaced by the search's next picks around the other ten: RECT ORG and FOLD ORG.
+replaced by the search's next picks around the other ten: RECT ORG and FOLD ORG. After
+the second, SINE PLX (a noise amplifier: faint input noise came out as loud as playing)
+gave way to LINEAR TRY, the next pick that passes the noise screen.
 
 For each not-amp this:
   1. renders it through the firmware's own processor (tools/a2_notamp, which runs
@@ -14,8 +16,13 @@ For each not-amp this:
      (tools/a2_explore), and checks they agree — bit for bit, except RATE, which the
      firmware streams with 48·R samples of latency, so it is compared shifted;
   2. measures its output level at nine steer positions, relative to its source
-     capture played plainly, through the firmware processor;
-  3. writes the definitions and the inverse level tables to src/notamps.h, so the
+     capture played plainly, through the firmware processor — after the firmware's
+     own 20 Hz DC blocker, so the table corrects what is heard, not an offset the
+     module removes (until 2026-10-02 it did not: LINEAR TR's "level" was 22 dB DC);
+  3. screens it for amplifying noise: faint noise in (-70 dBFS) must not come out
+     within 10 dB of the playing level *as noise* (spectrally flat). A feedback loop
+     that sustains a tone with no input passes; SINE PLX, a noise amplifier, did not;
+  4. writes the definitions and the inverse level tables to src/notamps.h, so the
      steer changes the sound rather than the volume.
 
 Needs the starter captures in captures/starter/ (CC0 / CC-BY, shipped with Mirth).
@@ -31,6 +38,7 @@ import sys
 import tempfile
 
 import numpy as np
+from scipy.signal import lfilter
 
 HERE = pathlib.Path(__file__).resolve().parent
 PROJECT = HERE.parent
@@ -42,9 +50,9 @@ HEADER = PROJECT / "src" / "notamps.h"
 
 # name (≤10 chars, the OLED), kind, cap_a, cap_b, lo, hi, log, layer, fixed
 TWELVE = [
-    ("SINE PLX",   "sine",    "PLEXI LORE", None,        0.3,  8.0,  True,  0,  0.0),
     ("SINE BUG",   "sine",    "BUGERA G5",  None,        0.3,  8.0,  True,  0,  0.0),
     ("LINEAR TR",  "slope",   "TWO ROCK",   None,        0.01, 1.0,  False, 0,  0.0),
+    ("LINEAR TRY", "slope",   "TRAYNOR",    None,        0.01, 1.0,  False, 0,  0.0),
     ("RECT ORG",   "slope",   "ORANGE TH",  None,        0.01, -1.0, False, 0,  0.0),
     ("FB100 F57",  "fbgain",  "FENDER 57",  None,        0.0,  0.95, False, 0,  480.0),
     ("FB PCH PLX", "fbpitch", "PLEXI LORE", None,        48.0, 1200.0, True, 0, 0.8),
@@ -93,9 +101,9 @@ def main():
         subprocess.run(cmd, check=True, capture_output=True)
         return np.fromfile(tmp / "out.f32", "<f4").astype(np.float64)
 
-    def notamp(t, u):
+    def notamp(t, u, sig="in.f32"):
         name, kind, ca, cb, lo, hi, log, layer, fixed = t
-        return run([str(HERE / "a2_notamp"), wpath(ca), wpath(cb) if cb else "-", str(tmp / "in.f32"),
+        return run([str(HERE / "a2_notamp"), wpath(ca), wpath(cb) if cb else "-", str(tmp / sig),
                     str(tmp / "out.f32"), kind, str(lo), str(hi), "1" if log else "0", str(layer),
                     str(fixed), str(u), str(u)])
 
@@ -107,7 +115,12 @@ def main():
     def plain(n):
         return run([str(HERE / "a2_explore_s1"), wpath(n), "-", str(tmp / "in.f32"), str(tmp / "out.f32"), "none"])
 
-    rms = lambda y: float(np.sqrt(np.mean(y[4800:] ** 2)))  # past the first 0.1 s
+    # The firmware's output DC blocker (main.cpp: y = x - x1 + R*y1, ~20 Hz), so a level
+    # is what reaches the jack. Past the first 0.2 s, while it settles.
+    R = 0.99738
+    rms = lambda y: float(np.sqrt(np.mean(lfilter([1, -1], [1, -R], y)[9600:] ** 2)))
+    rng = np.random.default_rng(3)
+    (tmp / "idle.f32").write_bytes((rng.standard_normal(48000 * 4) * 10 ** (-70 / 20)).astype("<f4").tobytes())
     defs = []
     print("not-amp       firmware vs harness              level at steer 0 … 1 (dB, before correction)")
     for t in TWELVE:
@@ -129,9 +142,21 @@ def main():
         # 2. level against the source capture played plainly
         ref = rms(plain(cb or ca))
         lv = [20 * np.log10(rms(notamp(t, k / 8)) / ref) for k in range(9)]
-        print(f"  {name:10s}  {agree:22s}  " + " ".join(f"{x:+5.1f}" for x in lv))
+        # 3. the noise screen
+        noisy = []
+        for u in (0.0, 0.25, 0.5, 0.75, 1.0):
+            idle = lfilter([1, -1], [1, -R], notamp(t, u, "idle.f32"))[9600:]
+            gap = 20 * np.log10(np.sqrt(np.mean(idle ** 2)) / rms(notamp(t, u)))
+            spec = np.abs(np.fft.rfft(idle * np.hanning(len(idle)))) ** 2 + 1e-30
+            flat = float(np.exp(np.mean(np.log(spec))) / np.mean(spec))  # 1 = white noise, ~0 = a tone
+            if gap > -10 and flat > 0.1:
+                noisy.append(f"u={u}: {gap:+.1f} dB, flatness {flat:.2f}")
+        print(f"  {name:10s}  {agree:22s}  " + " ".join(f"{x:+5.1f}" for x in lv)
+              + ("" if not noisy else "   NOISE: " + "; ".join(noisy)))
         if worst > -60:
             raise SystemExit(f"{name}: the firmware processor does not match the harness ({worst:.1f} dB)")
+        if noisy:
+            raise SystemExit(f"{name}: amplifies input noise into noise ({noisy[0]})")
         defs.append((t, [-x for x in lv]))
 
     # 3. the header
