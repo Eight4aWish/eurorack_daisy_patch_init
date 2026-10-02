@@ -1,6 +1,11 @@
 # daisy_chaos: Secret
 
-> **Status: running on the Alchemy Lab since 2026-09-30.** First bench session:
+> **Released: v1.0.0, 2026-10-02.** Tag `secret-v1.0.0` on `a29bb01`, asset
+> `secret-v1.0.0.bin`; the page is at <https://eight4awish.com/modules/secret/>.
+> Released with steps 3, 4 and 6 below still open. The four low-topping models ship
+> as they are, listed as a known limit.
+>
+> **Running on the Alchemy Lab since 2026-09-30.** First bench session:
 > sound and the gated envelope work. GATE moved from J6 to J4, and Drone now
 > ignores GATE, because its re-seed clicked on every sequenced note. The TAME
 > listening tests, V/Oct accuracy and the scope check (steps 3, 4 and 6 below)

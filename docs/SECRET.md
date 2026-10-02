@@ -10,8 +10,9 @@ is frozen there and whose hardware will be repurposed. `chaos_core` moved here
 from `eurorack_modules/libs/chaos_core` on 2026-09-30, so this copy is the
 live one.
 
-> **Status: on the bench.** Running on the Alchemy Lab since 2026-09-30, twelve models
-> since 2026-10-01; bench state is kept in [`daisy_chaos/README.md`](../daisy_chaos/README.md).
+> **Status: released, v1.0.0 (2026-10-02, tag `secret-v1.0.0`).** It has run on the
+> Alchemy Lab since 2026-09-30, with twelve models since 2026-10-01. Bench state is
+> kept in [`daisy_chaos/README.md`](../daisy_chaos/README.md).
 > This document began as the plan, written before any of it ran. Follows on from
 > [TEENSY_CHAOS_V2.md](https://github.com/Eight4aWish/eurorack_modules/blob/main/docs/TEENSY_CHAOS_V2.md) (in `eurorack_modules`), which left the platform undecided. This
 > takes the Alchemy Lab (Hermetic Modular, in the rack; see `MODULES.md`) as the

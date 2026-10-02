@@ -29,7 +29,8 @@ the starter captures packaged with credits for the eight CC-BY ones.
 **Two banks since 2026-09-29: AMPS and NOT-AMPS.** The random-seed slot came out: every
 seed was a variation on one "evil cello". Since 2026-10-02 NOT-AMPS holds twelve *not-amps*,
 the starter captures each with one transform measured to leave the region where real amps
-sound — see "The not-amps" below — and knob 2 is a dry/wet MIX. **Not yet run on hardware.**
+sound — see "The not-amps" below — and knob 2 is a dry/wet MIX. Run on hardware through the
+bench sessions that settled the set; Mirth Lite has not been run on hardware.
 
 ## What it does today
 
