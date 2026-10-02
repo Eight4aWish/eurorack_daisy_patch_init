@@ -48,8 +48,11 @@ firmware is frozen and whose hardware will be repurposed.
 | P5 **AD** | envelope attack + decay |
 | P6 **SR** | envelope sustain + release |
 | B1 | model, twelve in one list (see below) |
-| B2 | envelope: Drone (VCA open) or Gated by J4 |
-| B3 | TAME mode: Auto, Force, Sync (Auto is the model's own choice) |
+| B2 | TAME mode: Auto, Force, Sync (Auto is the model's own choice) |
+| B3 | envelope: Drone (VCA open) or Gated by J4 |
+
+Each button sits between the knobs it belongs with: B2 beside TAME, B3 between AD and SR
+(swapped 2026-10-02; until then B2 was the envelope and B3 the TAME mode).
 
 | Jack | Job |
 | --- | --- |
@@ -176,13 +179,13 @@ In order, so a failure points at one thing:
 2. **Sound.** J9/J10 into the mixer, TUNE at noon (~155 Hz), TAME at 0: Rössler's
    rough, pitched drone.
 3. **TAME.** Turn it up: free, then locked but still gritty, then a clean
-   periodic tone at the top. Try each model on B1, and B3 to compare Force and
+   periodic tone at the top. Try each model on B1, and B2 to compare Force and
    Sync. These are the listening tests from `SECRET.md` section 2.
 4. **V/Oct.** With TAME at 1 (strictly periodic, so a tuner can read it), feed J3
    from a quantiser (Scales) and check octaves. TUNE trims the offset. If
    octaves come out consistently stretched or squeezed, that's the input gain,
    and the reason for the calibration below.
-5. **Gate.** B2 to Gated, a clock or gate into J4, AD and SR to taste.
+5. **Gate.** B3 to Gated, a clock or gate into J4, AD and SR to taste.
 6. **Scope.** J7/J8 into Tiliqua's `xbeam` as X/Y.
 
 The load governor runs inside the audio callback: if a block takes more than 75%

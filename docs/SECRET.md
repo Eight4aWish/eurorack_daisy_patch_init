@@ -523,7 +523,7 @@ the Teensy's OLED phase plot, and at a much larger size.
 3. **Alchemy platform layer. Flashed 2026-09-30**
    ([`daisy_chaos/`](../daisy_chaos/)): audio at 48 kHz / 24-sample blocks, the
    six pots, V/Oct on J3, gate on J4, CHAOS and TAME CV on J5/J6, X/Y CV out on J7/J8,
-   model / envelope / TAME-mode on B1–B3, and a load governor. Next is the bench
+   model / TAME mode / envelope on B1–B3 (B2 and B3 swapped 2026-10-02, so each sits by its knobs), and a load governor. Next is the bench
    checklist in its README, which includes the TAME listening tests.
 4. **Bank 2. On the module 2026-10-01** (section 3): driven pendulum,
    Lorenz–Lü–Chen, Moore–Spiegel, forced Brusselator, chaotic Colpitts,

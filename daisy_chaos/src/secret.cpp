@@ -22,8 +22,10 @@
 //   B1        model, twelve in one list: Rossler, Van der Pol, Lorenz, Chua,
 //             Duffing, Coupled Rossler (bank 1), then Pendulum, Lorenz-Lu-Chen,
 //             Moore-Spiegel, Brusselator, Colpitts, Hindmarsh-Rose (bank 2)
-//   B2        envelope: Drone (VCA open) or Gated by J4
-//   B3        TAME mode: Auto, Force, Sync (Auto = the model's own choice)
+//   B2        TAME mode: Auto, Force, Sync (Auto = the model's own choice)
+//   B3        envelope: Drone (VCA open) or Gated by J4
+// Each button sits between the knobs it belongs with: B2 beside TAME, B3 between
+// AD and SR. Swapped 2026-10-02, when the panel layout made the old order look wrong.
 //
 //   J3 V/OCT in   J4 GATE in       J5 CHAOS CV in  J6 TAME CV in
 //   J7 X CV out   J8 Y CV out      J9 L (X) audio  J10 R (Y) audio
@@ -141,14 +143,14 @@ static constexpr LedPanel::Rgb kModeColors[3] = {
 
 static VirtualButton modelButton = VirtualButton(kButtonB1, "Model")
     .Ident("model").Selector(kModelNames).Colors(kModelColors).Bind(&s_model);
-static VirtualButton envButton = VirtualButton(kButtonB2, "Envelope")
+static VirtualButton envButton = VirtualButton(kButtonB3, "Envelope")
     .Ident("env").Selector(kEnvNames).Colors(kEnvColors).Bind(&s_env);
-static VirtualButton modeButton = VirtualButton(kButtonB3, "Tame mode")
+static VirtualButton modeButton = VirtualButton(kButtonB2, "Tame mode")
     .Ident("tame.mode").Selector(kModeNames).Colors(kModeColors).Bind(&s_mode);
 
 static Page page = Page(0)
     .Knobs(tune, chaos, character, tame, attackDecay, sustainRelease)
-    .Buttons(modelButton, envButton, modeButton);
+    .Buttons(modelButton, modeButton, envButton);  // B1, B2, B3
 
 /* ── Hardware and engine ────────────────────────────────────────────────── */
 static AlchemyLab         hw;
@@ -176,7 +178,7 @@ static hostlink::Gauge<float>    g_chaos  ("chaos",     "CHAOS value");
 static hostlink::Gauge<float>    g_char   ("char",      "CHAR value");
 static hostlink::Gauge<float>    g_tame   ("tame",      "TAME");
 static hostlink::Gauge<bool>     g_gate   ("gate",      "Gate (J4)");
-static hostlink::Gauge<bool>     g_env    ("env",       "Envelope gated (B2)");
+static hostlink::Gauge<bool>     g_env    ("env",       "Envelope gated (B3)");
 static hostlink::Gauge<uint32_t> g_guard  ("guard",     "Guard re-seeds");
 static hostlink::Gauge<uint32_t> g_jumps  ("jumps",     "Output jumps (clicks)");
 static hostlink::Gauge<bool>     g_cal    ("cal",       "Board CV calibration loaded");
@@ -193,7 +195,7 @@ static constexpr float kJumpFs = 0.5f;
 enum : uint8_t {
     kCauseGuard = 1, kCauseSyncPull = 2, kCauseSnapshot = 4,
     kCauseGate  = 8, kCauseModel    = 16, kCauseGovernor = 32,
-    kCauseEnvelope = 64,   // B2 switched between Drone and Gated
+    kCauseEnvelope = 64,   // B3 switched between Drone and Gated
 };
 
 struct Jump {
