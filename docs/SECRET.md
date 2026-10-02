@@ -526,8 +526,8 @@ the Teensy's OLED phase plot, and at a much larger size.
    ([`daisy_chaos/`](../daisy_chaos/)): audio at 48 kHz / 24-sample blocks, the
    six pots, V/Oct on J3, gate on J4, CHAOS and TAME CV on J5/J6, X/Y CV out on J7/J8,
    model / TAME mode / envelope on B1–B3 (B2 and B3 swapped 2026-10-02, so each sits by its knobs), and a load governor. Released as
-   v1.0.0 on 2026-10-02. The scope and V/Oct bench checks were done that day; the
-   TAME listening tests have not been written up.
+   v1.0.0 on 2026-10-02. The scope, V/Oct and TAME bench checks were done that day.
+   TAME brings every model under some form of control.
 4. **Bank 2. On the module 2026-10-01** (section 3): driven pendulum,
    Lorenz–Lü–Chen, Moore–Spiegel, forced Brusselator, chaotic Colpitts,
    Hindmarsh–Rose, after bank 1 as one list of twelve. Step caps measured on the

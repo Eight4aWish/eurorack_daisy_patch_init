@@ -14,15 +14,17 @@ Firmwares offered as finished modules are named after the nursery rhyme
 | **Sorrow** | [`daisy_grids/`](daisy_grids/) | v2.4.1 | Mutable Instruments Grids | **GPL-3.0-or-later** |
 | **Joy** | [`daisy_braids_oled/`](daisy_braids_oled/) | v1.4.0 | Mutable Instruments Braids | MIT |
 | **Joy Lite** | [`daisy_joy_lite/`](daisy_joy_lite/) | v1.4.0 | Mutable Instruments Braids | MIT |
+| **Secret** | [`daisy_chaos/`](daisy_chaos/) | v1.0.0 | original (the Teensy Chaos), on the Hermetic Modular Alchemy SDK | MIT |
 
 **Joy** and **Joy Lite** are the same macro-oscillator generation (shared calibration
 and DSP, so they carry the same version): Joy is the full 48-model version with an
 OLED navigator; Joy Lite is screenless — a curated 16 models (the ones Plaits
 doesn't cover) navigated by LED + button + toggle.
 
-These are independent community works for the Electrosmith Daisy Patch Init. Product
-names of other makers are used only to describe each firmware's origin — **not
-affiliated with, or endorsed by, Mutable Instruments or Electrosmith.**
+These are independent community works for the Electrosmith Daisy Patch Init, and Secret
+for the Hermetic Modular Alchemy Lab. Product names of other makers are used only to
+describe each firmware's origin — **not affiliated with, or endorsed by, Mutable
+Instruments, Electrosmith or Hermetic Modular.**
 
 ## Build guides and downloads
 
@@ -92,9 +94,9 @@ make DAISY_ROOT=/path/to/daisy
 - `daisy_fm4op/` – 4-op FM synth (standalone build, and the FM4OP engine for `daisy_multiosc`)
 - `daisy_interval_osc/` – **INTVL** — Nick Donaldson's IntervalOsc: dual oscillator with quantized interval offset ([ndonald2/DaisyPatches](https://github.com/ndonald2/DaisyPatches), MIT — see [`daisy_interval_osc/LICENSE-daisypatches.txt`](daisy_interval_osc/LICENSE-daisypatches.txt)). His patch and README are kept as written; the multiosc engine is a port of that DSP onto the universal panel
 - `daisy_scanned/` – scanned-synthesis engine source for `daisy_multiosc` (no standalone build)
-- `daisy_neural/` – **in progress**: neural audio networks on the patch.init, all aimed at one module — the Dual Pingable LPG from [eurorack_electronics](https://github.com/Eight4aWish/eurorack_electronics), whose vactrol has the slow memory a static curve cannot reproduce. A NAM A2 capture first, then a CV-conditioned GRU so the gate gets a real knob. Release name **Mirth**. The NAM A2 engine runs captures off the microSD card (AMPS) — run on hardware 2026-09-28, 64% CPU, built `BOOT_SRAM` with the Daisy bootloader — plus nine captures bent inside the network with one steer control each (NOT-AMPS, not yet run on hardware). Bypass doubles as the pass-through firmware the AC/DC coupling bench check needs. The A2 engine and the shipped captures are from [bkshepherd/DaisySeedProjects](https://github.com/bkshepherd/DaisySeedProjects) (MIT — see [`daisy_neural/LICENSE-daisyseedprojects.txt`](daisy_neural/LICENSE-daisyseedprojects.txt)) — see its [README](daisy_neural/README.md) and [CLAUDE.md](daisy_neural/CLAUDE.md)
+- `daisy_neural/` – **in progress**: neural audio networks on the patch.init, all aimed at one module — the Dual Pingable LPG from [eurorack_electronics](https://github.com/Eight4aWish/eurorack_electronics), whose vactrol has the slow memory a static curve cannot reproduce. A NAM A2 capture first, then a CV-conditioned GRU so the gate gets a real knob. Release name **Mirth**. The NAM A2 engine runs captures off the microSD card (AMPS) — run on hardware 2026-09-28, 64% CPU, built `BOOT_SRAM` with the Daisy bootloader — plus twelve not-amps, captures bent inside the network with one steer control each and a dry/wet mix (NOT-AMPS). The sets were declared final on 2026-10-02. Bypass doubles as the pass-through firmware the AC/DC coupling bench check needs. The A2 engine is from [bkshepherd/DaisySeedProjects](https://github.com/bkshepherd/DaisySeedProjects) (MIT — see [`daisy_neural/LICENSE-daisyseedprojects.txt`](daisy_neural/LICENSE-daisyseedprojects.txt)). The captures it ships are a CC0/CC BY starter set, credited in [`STARTER_CAPTURES.md`](daisy_neural/STARTER_CAPTURES.md). See its [README](daisy_neural/README.md) and [CLAUDE.md](daisy_neural/CLAUDE.md)
 - `daisy_bytebeat/` – **BYTEBEAT** engine source for `daisy_multiosc` (no standalone build): dual-voice bytebeat with a 100-formula bank in five families and a lo-fi Tone macro, ported from [Ogham](https://github.com/keeos-io/ogham) by Steven Collins (Keeos.io, MIT — see [`daisy_bytebeat/LICENSE-ogham.txt`](daisy_bytebeat/LICENSE-ogham.txt))
-- `daisy_chaos/` – **Secret** — **on the bench, running on the Alchemy Lab since 2026-09-30**, twelve models: chaotic-attractor oscillator for the Hermetic Modular **Alchemy Lab** (V2), with V/Oct and a TAME control from free chaos to locked pitch. Successor to the Teensy **Chaos** module in `eurorack_modules`. Unlike the other apps it builds against the Alchemy SDK's own pinned libDaisy (`deps/alchemy-sdk`, MIT). See its [README](daisy_chaos/README.md) and [docs/SECRET.md](docs/SECRET.md)
+- `daisy_chaos/` – **Secret** — **released v1.0.0, 2026-10-02**, twelve models: chaotic-attractor oscillator for the Hermetic Modular **Alchemy Lab** (V2), with V/Oct and a TAME control from free chaos to locked pitch. Successor to the Teensy **Chaos** module in `eurorack_modules`. Unlike the other apps it builds against the Alchemy SDK's own pinned libDaisy (`deps/alchemy-sdk`, MIT). See its [README](daisy_chaos/README.md) and [docs/SECRET.md](docs/SECRET.md)
 
 ## Shared code
 
@@ -117,10 +119,12 @@ the ports here are community works and are not official or endorsed.
 | --- | --- | --- |
 | libDaisy, DaisySP | Electrosmith | MIT |
 | DaisySP-LGPL (linked by `daisy_interval_osc`, `daisy_multiosc`) | Electrosmith + upstreams | LGPL-2.1 |
-| Alchemy SDK (`deps/alchemy-sdk`, linked by `daisy_chaos` / **Secret**) – Alchemy Lab board support and framework | Hermetic Modular ([`alchemy-sdk`](https://github.com/hermetic-modular/alchemy-sdk)) | MIT |
+| Alchemy SDK (`deps/alchemy-sdk`, linked by `daisy_chaos` / **Secret**) – Alchemy Lab board support and framework | Hermetic Modular ([`alchemy-sdk`](https://github.com/hermetic-modular/alchemy-sdk)) | MIT. Everything compiled into `secret.bin`, with the notices a binary must carry: [`daisy_chaos/NOTICES.txt`](daisy_chaos/NOTICES.txt) |
+| `daisy_chaos/panel/` (**Secret** faceplate) – the KiCad front-panel template it is made from | Hermetic Modular ([`alchemy-sdk/panel`](https://github.com/hermetic-modular/alchemy-sdk)) | MIT ([notice](daisy_chaos/panel/LICENSE-hermetic.txt)) |
 | `daisy_braids_oled` (**Joy**) – Braids DSP | Émilie Gillet (Mutable Instruments, [`eurorack`](https://github.com/pichenettes/eurorack)) | MIT |
 | `daisy_interval_osc` (**INTVL**) – IntervalOsc patch + the DSP behind the multiosc engine | Nick Donaldson ([ndonald2/DaisyPatches](https://github.com/ndonald2/DaisyPatches)), after Electrosmith DaisyExamples | MIT ([notice](daisy_interval_osc/LICENSE-daisypatches.txt)) |
-| `daisy_neural` (**Mirth**) – NAM A2 runtime, `.nam` → C-array converter, the five development captures' weights | Keith Shepherd ([bkshepherd/DaisySeedProjects](https://github.com/bkshepherd/DaisySeedProjects)), after forum code by nadavb; captures by their individual authors | MIT ([notice](daisy_neural/LICENSE-daisyseedprojects.txt)); **captures: TONE3000's T3K licence** — use freely, no redistribution without each author's permission ([sources](daisy_neural/README.md#note-on-the-captures)) |
+| `daisy_neural` (**Mirth**) – NAM A2 runtime, `.nam` → C-array converter | Keith Shepherd ([bkshepherd/DaisySeedProjects](https://github.com/bkshepherd/DaisySeedProjects)), after forum code by nadavb | MIT ([notice](daisy_neural/LICENSE-daisyseedprojects.txt)) |
+| `daisy_neural` (**Mirth**) – the twelve starter captures, and the compiled-in fallback (Orange TH100) | their authors on TONE3000, each credited in [`STARTER_CAPTURES.md`](daisy_neural/STARTER_CAPTURES.md) | CC0 or CC BY, per capture. No T3K-licensed capture is committed or shipped ([why](daisy_neural/README.md#note-on-the-captures)) |
 | `daisy_bytebeat` (**BYTEBEAT**) – bytebeat engine, formula bank, Tone macro | Steven Collins (Keeos.io, [`ogham`](https://github.com/keeos-io/ogham)) | MIT ([notice](daisy_bytebeat/LICENSE-ogham.txt)) |
 | `daisy_grids` (**Sorrow**) – Grids pattern generator | Émilie Gillet (Mutable Instruments) | **GPL-3.0-or-later** |
 | `daisy_multiosc` (host + SCAN engine), `daisy_scanned`, `daisy_fm4op`, `daisy_multifx_*`, `daisy_chaos`, `common/`, integration and the ports of the above | David Baghurst | MIT |

@@ -8,8 +8,9 @@
 > X/Y CV on J7/J8 and the audio on J9/J10 draw on Tiliqua's `xbeam`. V/Oct (step 4):
 > pitch follows J3. The octave scale was not measured against a tuner. David's
 > view is that strict 1 V/oct doesn't matter for this voice, so there is no
-> calibration of our own. Step 3, the TAME listening tests, has not been written up
-> separately.
+> calibration of our own. TAME (step 3): it works when it's needed, and every model
+> can be brought under some form of control. That's David's verdict; the modes
+> weren't compared one by one.
 >
 > **Running on the Alchemy Lab since 2026-09-30.** First bench session:
 > sound and the gated envelope work. GATE moved from J6 to J4, and Drone now
@@ -100,8 +101,9 @@ V/Oct calibration of its own (see below).
 ### Faceplate
 
 `panel/` holds a Secret faceplate to have made. It is Hermetic's own front-panel template
-from the Alchemy SDK (`deps/alchemy-sdk/panel/`, MIT), with the placeholder text replaced
-by Secret's labels. Every hole, LED window and plating note is still Hermetic's. Lettering
+from the Alchemy SDK (`deps/alchemy-sdk/panel/`), with the placeholder text replaced by
+Secret's labels. The template is MIT, © Hermetic Modular LLC, so its notice travels with
+it: `panel/LICENSE-hermetic.txt`. Every hole, LED window and plating note is still Hermetic's. Lettering
 is bare ENIG copper through a solder-mask opening, the same way Hermetic makes the stock
 panel. J1/J2 are left unlabelled because Secret does not use them.
 

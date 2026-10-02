@@ -8,7 +8,8 @@ author's own faceplate, made as a PCB — copper text and a solder-mask opening 
 the lettering comes out as bare ENIG metal on black. This copies the template unchanged
 except for its placeholder text, which it fills with Secret's labels by position, then adds
 the module name and the maker. Every hole, ring window, plating note and tooling tab is
-Hermetic's.
+Hermetic's, so the template's MIT notice (© Hermetic Modular LLC) is kept beside the
+outputs, in LICENSE-hermetic.txt.
 
 Labels (daisy_chaos/src/secret.cpp): knobs TUNE CHAOS / CHAR TAME / AD SR; buttons MODEL,
 TAME MODE, ENV (B2 and B3 swapped 2026-10-02 so each sits by its knobs); jacks V/OCT CHAOS X
