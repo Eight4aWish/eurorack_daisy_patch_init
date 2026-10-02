@@ -30,7 +30,8 @@ that had been committed under `daisy_neural/`.
   or a raw parameter dump such as `amp_compare/w_*.f32` — those slipped through the first
   purge and needed a second.
   `.gitignore` covers them; do not force-add them. The firmware builds without them.
-- **Never publish a `daisy_neural` binary built with `nam/model_data_nam_a2.h` on disk.** With
-  the header present the build compiles in the JCM800 fallback — a T3K capture — so the
-  `.bin` itself redistributes it. Release builds: move the header aside, `make clean`, build,
-  and check `strings build/daisy_neural.bin | grep -c 'JCM800\*'` is 0.
+- **The firmware's built-in fallback must stay CC-licensed.** Since 2026-10-02 it is the
+  Orange TH100 starter capture (CC BY, credit in `daisy_neural/nam/fallback_capture.h`,
+  from `tools/export_fallback.py`); `src/main.cpp` no longer reads `nam/model_data_nam_a2.h`,
+  which until then compiled the T3K JCM800 into every `.bin` built with it on disk. Never
+  point the fallback back at a T3K capture.

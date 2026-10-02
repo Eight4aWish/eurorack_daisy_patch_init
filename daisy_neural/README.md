@@ -4,9 +4,9 @@ Neural audio networks on the Daisy Patch.Init — the firmware side of the proje
 briefed in [CLAUDE.md](CLAUDE.md).
 
 **Status: engine in, all five captures loadable from the card.** The NAM A2 engine runs
-captures read off the microSD card, selected live with CV_3. A JCM800 is compiled in, when its header is on disk,
-as a fallback, so a missing or unreadable card gives a working module rather than
-silence.
+captures read off the microSD card, selected live with CV_3. The Orange TH100 is compiled in
+as a fallback (`ORANGE*`), so a missing or unreadable card gives a working module rather
+than silence.
 
 Built `BOOT_SRAM`, which needs the Daisy bootloader installed once on the unit. This is
 going on a **fresh patch.init()** rather than repurposing the MultiFX one, so there is no
@@ -21,9 +21,10 @@ number is recorded.
 **Sets final, 2026-10-02.** After four bench sessions David called the twelve amps and the
 twelve not-amps settled and the firmware good enough for the video and for sharing.
 Done the same day: the rename (`mirth.bin`, MIRTH on the splash), the HPF bench page
-removed, and **Mirth Lite** (`make LITE=1`). Release still needs builds without the capture
-header (no T3K fallback in either `.bin`), and the starter captures packaged with credits
-for the eight CC-BY ones.
+removed, and **Mirth Lite** (`make LITE=1`). The fallback became the Orange TH100 (CC BY,
+committed in `nam/fallback_capture.h`) at David's suggestion, so no build carries a T3K
+capture any more — checked by byte-scanning both binaries for all five. Release still needs
+the starter captures packaged with credits for the eight CC-BY ones.
 
 **Two banks since 2026-09-29: AMPS and NOT-AMPS.** The random-seed slot came out: every
 seed was a variation on one "evil cello". Since 2026-10-02 NOT-AMPS holds twelve *not-amps*,
@@ -210,10 +211,12 @@ all the same kind: the BE-100 and JCM800 are DI amp captures, the Mesa is a prea
 capture, and the Ampeg (MD 421) and 1959BJA were recorded through a cabinet and mic, so
 those two have a cab baked in. Sources and licences are under "Note on the captures".
 
-When its header is on disk (it is no longer in git; see "Note on the captures"), the
-JCM800 also stays compiled in as a fallback and shows as `JCM800*`, the trailing asterisk
-marking it as the built-in rather than one off the card. The other four stay unreferenced
-in `nam/model_data_nam_a2.h`, so `--gc-sections` drops them from the binary.
+**The built-in fallback** is the Orange TH100 from the starter set — CC BY, by tupalosa
+— generated into `nam/fallback_capture.h` by `tools/export_fallback.py` (which checks the
+CRC and that every weight round-trips bit for bit) and shown as `ORANGE*`, the asterisk
+marking the built-in rather than one off the card. Until 2026-10-02 it was the JCM800 from
+`nam/model_data_nam_a2.h`, which is T3K and so could not ship; the firmware no longer
+reads that header.
 
 **Swapping a capture is not real-time safe** — `load_weights()` runs `prewarm()` over the
 whole network. So the audio callback only fades the output to silence and raises a flag;
@@ -778,12 +781,9 @@ which does nothing in AMPS by design, is free to set it there and keep STEER in 
 **Not in this repo.** `nam/model_data_nam_a2.h` and `captures/*.a2nb` were committed
 here until 2026-10-01, when they were removed from the whole history; `.gitignore` now
 keeps them, and any `.nam`, out. They live on the working machine only. A fresh clone
-builds without them — no compiled-in fallback, so no card means pass-through and
-`NO CAP` — and gets captures by downloading the `.nam` files from the pages above with a
+builds without them — the firmware's fallback is the CC-licensed Orange, committed — and
+gets captures by downloading the `.nam` files from the pages above with a
 TONE3000 account and running `tools/nam_to_a2nb.py`. `tools/match_captures.py` takes the downloaded zips as they
 come and says which `.nam` in them is each of the five, by comparing the network's own
-parameters with the header's — so a capture retrained since shows as a near miss. After adding or removing the header, run `make clean` first: make does not see a header
-appear, because `__has_include` leaves no dependency, so a stale build silently keeps the
-previous choice. With the header on disk the build
-compiles the JCM800 fallback back in, and `export_captures.py` and the host tools that
-read it work as before.
+parameters with the header's — so a capture retrained since shows as a near miss. With the header on disk, `export_captures.py` and the host
+tools that read it work as before; the firmware ignores it.

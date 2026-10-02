@@ -92,22 +92,15 @@ using namespace patch_sm;
 #define NAM_A2_HOT_STATE_DATA
 #endif
 #include "nam/nam_a2_runtime.h"
-// The development captures are other people's work under TONE3000's T3K licence,
-// which forbids redistributing them, so their header is kept out of git (see
-// README, "Note on the captures"). With it on disk, one capture is compiled in as
-// a fallback, so a missing or unreadable card still gives a working module. The
-// other four are unreferenced, so -fdata-sections and --gc-sections drop them.
-// Without it, there is no fallback: no card means pass-through and "NO CAP".
-#if __has_include("nam/model_data_nam_a2.h")
-#include "nam/model_data_nam_a2.h"
-#define NEURAL_HAS_FALLBACK 1
-// outputGain is bkshepherd's hand-tuned loudness match, carried over as-is.
-static constexpr const char* kFallbackName    = "JCM800*";
-static const float* const    kFallbackWeights = nam_a2_models::kWeightsJcm800;
-static constexpr float       kFallbackGain    = 1.1f;
-#else
-#define NEURAL_HAS_FALLBACK 0
-#endif
+// One capture is compiled in as a fallback, so a missing or unreadable card still
+// gives a working module: the Orange TH100 from the starter set, CC BY, generated into
+// nam/fallback_capture.h by tools/export_fallback.py, which carries the credit. Until
+// 2026-10-02 this was the JCM800 from nam/model_data_nam_a2.h, which is T3K-licensed;
+// the firmware no longer reads that header at all, so no build can ship it.
+#include "nam/fallback_capture.h"
+static constexpr const char* kFallbackName    = fallback::kName;
+static const float* const    kFallbackWeights = fallback::kWeights;
+static constexpr float       kFallbackGain    = fallback::kGain;
 
 // The engine's fixed block size. Anything else and we pass through rather than
 // feed it a block it cannot handle.
@@ -120,13 +113,11 @@ static notamps::Processor g_proc;
 class EngineSlot
 {
   public:
-    /** Load the compiled-in fallback, if this build has one. */
+    /** Load the compiled-in fallback. */
     void InitFallback(float sample_rate)
     {
         sample_rate_ = sample_rate;
-#if NEURAL_HAS_FALLBACK
         Load(kFallbackWeights, nam_a2_daisy::kA2WeightCount, kFallbackGain, kFallbackName);
-#endif
     }
 
     /** Not real-time safe: load_weights() runs prewarm(), which walks the whole
