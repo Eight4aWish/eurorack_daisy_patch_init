@@ -347,11 +347,25 @@ The two judges agree transform by transform (fraction of the knob outside the am
 So two of the nine shipped not-amps, OFFSET and NO LONG, measure as amps by both judges,
 and the mix-in path — every variant — barely changes anything.
 
-Selected, each at least 2× the amps' own spacing from the amps, at most two per approach
-and two per capture: sine neurons on pLEXI-LORE (11.7×), feedback pitch on pLEXI-LORE
-(10.4×), feedback 100 Hz on Fender 57 (6.4×), slope→linear on Two Rock (6.2×), freeze
-early on Two Rock (4.9×), rate ÷ on SVT-2 Pro (3.2×), fold inside on DIY BJT (3.2×), rate
-÷ on Sun Bender (2.3×), past a partner on Bluesbreaker (2.2×) and on SVT-2 Pro (2.1×).
+Selected — twelve, to match the twelve amps. Each at least 2× the amps' own spacing from
+the amps, none described by CLAP as an amp or pedal, at most three per approach and two
+per capture (`--combine --family-cap 3`; a cap of two stopped at ten):
+
+| Not-amp | Distance from amps | CLAP hears |
+|---|---|---|
+| sine neurons on pLEXI-LORE | 11.7× | wavefolder synthesizer |
+| feedback pitch on pLEXI-LORE | 10.4× | screaming audio feedback |
+| feedback 100 Hz on Fender 57 | 6.4× | bitcrushed lo-fi synth |
+| slope→linear on Two Rock | 6.2× | sub-octave bass synth |
+| feedback pitch on Kay 703 | 6.1× | wavefolder synthesizer |
+| freeze early on Two Rock | 4.9× | bitcrushed lo-fi synth |
+| sine neurons on Bugera G5 | 3.8× | comb filter or flanger |
+| freeze mid on Kay 703 | 3.5× | sub-octave bass synth |
+| freeze mid on Fender 57 | 3.3× | bitcrushed lo-fi synth |
+| rate ÷ on SVT-2 Pro | 3.2× | sub-octave bass synth |
+| rate ÷ on Bugera G5 | 2.6× | sub-octave bass synth |
+| past a partner on Bluesbreaker | 2.2× | sub-octave bass synth |
+
 Audition: `amp_compare/notamp_search/audition.wav` (gitignored). Measured, not yet heard.
 
 ## Getting more captures

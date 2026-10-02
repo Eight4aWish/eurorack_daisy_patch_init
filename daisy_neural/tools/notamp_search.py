@@ -284,6 +284,7 @@ def main():
     ap.add_argument("--pick", type=int, default=12, help="at most this many")
     ap.add_argument("--min-novelty", type=float, default=2.0,
                     help="each pick at least this many times the amps' own spacing from the amps")
+    ap.add_argument("--family-cap", type=int, default=2, help="at most this many picks per approach")
     ap.add_argument("--dump", action="store_true", help="write every clip as a WAV, for clap_judge.py")
     ap.add_argument("--combine", action="store_true", help="select with CLAP's verdict too (after clap_judge.py)")
     ap.add_argument("--audition", action="store_true", help="render the selection, swept, to audition.wav")
@@ -304,7 +305,8 @@ def main():
         return audition(starter)
 
     if args.combine:
-        return score(json.loads(cache.read_text()), names, args.pick, clap=load_clap(), min_nov=args.min_novelty)
+        return score(json.loads(cache.read_text()), names, args.pick, clap=load_clap(), min_nov=args.min_novelty,
+                     family_cap=args.family_cap)
     if args.reuse and cache.exists():
         C = json.loads(cache.read_text())
     else:
@@ -386,7 +388,11 @@ def load_clap():
     return dict(tau=j["tau"], clips=j["clips"], emb=emb)
 
 
-def score(C, names, pick, clap=None, min_nov=0.0):
+AMP_TAGS = ("a synthesizer played through a guitar amplifier", "an overdriven electric guitar amp",
+            "a clean electric guitar amplifier tone", "a fuzz guitar pedal")
+
+
+def score(C, names, pick, clap=None, min_nov=0.0, family_cap=2):
     amp_names = list(C["amps"])
     A = matrix([C["amps"][a] for a in amp_names])
     keys = [k for k, d in C["cands"].items() if d]
@@ -442,6 +448,8 @@ def score(C, names, pick, clap=None, min_nov=0.0):
                     row["clap_tag"] = max(set(tags), key=tags.count)
                     if row["clap_outside"] < 0.6:
                         why.append("CLAP hears it as amp-like")
+                    if row["clap_tag"] in AMP_TAGS:
+                        why.append("CLAP describes it as a guitar amp or pedal")
                     e = np.array([clap["emb"][p] for p, v in zip(pts[1:], moved) if v["outside"]]
                                  or [clap["emb"][p] for p in pts[1:]])
                     m = e.mean(0)
@@ -475,7 +483,7 @@ def score(C, names, pick, clap=None, min_nov=0.0):
                 cap[good[c]["capture"]] = cap.get(good[c]["capture"], 0) + 1
             best, bestd = None, -1
             for j, r in enumerate(good):
-                if j in chosen or fam.get(r["family"], 0) >= 2 or cap.get(r["capture"], 0) >= 2:
+                if j in chosen or fam.get(r["family"], 0) >= family_cap or cap.get(r["capture"], 0) >= 2:
                     continue
                 if nov[j] < min_nov:
                     continue
