@@ -40,3 +40,6 @@ daisy_neural/nam/model_data_nam_a2.h
 daisy_neural/captures/
 *.nam
 *.a2nb
+
+# Python environment for the host analysis tools (see daisy_neural/requirements.txt)
+.venv/
