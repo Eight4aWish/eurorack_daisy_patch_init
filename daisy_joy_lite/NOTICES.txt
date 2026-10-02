@@ -1,16 +1,16 @@
-Secret — licence notices for secret.bin
+Joy Lite — licence notices for joy_lite.bin
 
-secret.bin is Secret's own code compiled together with the libraries
+joy_lite.bin is Joy Lite's own code compiled together with the libraries
 below. Each keeps its own licence, and the notices that licence asks to go with a
 binary are reproduced here in full.
 
 Source: https://github.com/Eight4aWish/eurorack_daisy_patch_init, at the release
-tag, in daisy_chaos/, common/chaos_core/ and deps/.
+tag, in daisy_joy_lite/, common/ and deps/.
 
-  - Secret and chaos_core
+  - Joy Lite
       David Baghurst · MIT
-  - Alchemy SDK
-      Hermetic Modular LLC · MIT
+  - Mutable Instruments Braids and stmlib
+      Emilie Gillet · MIT
   - libDaisy
       Electrosmith · MIT
   - STM32H7xx HAL driver (in libDaisy)
@@ -21,11 +21,11 @@ tag, in daisy_chaos/, common/chaos_core/ and deps/.
     Liberty). Its clause 2 asks for no notices with a binary that is a software
     update for an STMicroelectronics device, which this is. Listed for completeness.
 
-Not affiliated with, or endorsed by, Hermetic Modular, Electrosmith, STMicroelectronics or Arm.
+Not affiliated with, or endorsed by, Mutable Instruments, Electrosmith, STMicroelectronics or Arm.
 
 
 ================================================================================
-Secret and chaos_core — David Baghurst — MIT
+Joy Lite — David Baghurst — MIT
 
 MIT License
 
@@ -51,11 +51,11 @@ THE SOFTWARE.
 
 
 ================================================================================
-Alchemy SDK — Hermetic Modular LLC — MIT
+Mutable Instruments Braids and stmlib — Emilie Gillet — MIT
 
-The MIT License (MIT)
+Copyright 2012 Emilie Gillet.
 
-Copyright (c) 2026 Hermetic Modular LLC
+Author: Emilie Gillet (emilie.o.gillet@gmail.com)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

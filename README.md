@@ -139,7 +139,14 @@ Notes:
 - **GPL (Sorrow).** Mutable's **Grids is GPL-3.0-or-later** — unlike most of the
   `eurorack` sources, which are MIT. So `daisy_grids` (**Sorrow**) is copyleft:
   distributing it, source or binary, obliges you to pass on the complete
-  corresponding source under the GPL. It cannot be relicensed to MIT/CC0.
+  corresponding source under the GPL. It cannot be relicensed to MIT/CC0. The full
+  GPL text is [`daisy_grids/COPYING`](daisy_grids/COPYING).
+- **Notices with every release binary.** A `.bin` is our code compiled together with
+  libDaisy, ST's HAL and CMSIS (and, by app, the Alchemy SDK, DaisySP or Braids), and
+  those licences ask for their notices to go with a binary as well as with the source.
+  [`common/tools/notices.py`](common/tools/notices.py) writes `<app>/NOTICES.txt` from the
+  licence files in the sources each build uses. Each release attaches it as
+  `<tag>-NOTICES.txt` (Secret, Joy, Joy Lite and Sorrow since 2026-10-02).
 - **LGPL.** `daisy_interval_osc` links Electrosmith's `DaisySP-LGPL`. Because
   full source is published here, LGPL relinking obligations are satisfied. If
   you distribute prebuilt binaries (e.g. attaching `.bin` files to a release),

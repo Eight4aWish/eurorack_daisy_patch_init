@@ -8,8 +8,11 @@ version 3 or (at your option) any later version (GPL-3.0-or-later).
 
 SPDX-License-Identifier: GPL-3.0-or-later
 
-A copy of the GPL v3 is available at:
-  https://www.gnu.org/licenses/gpl-3.0.html
+The full text of the GPL v3 is in COPYING, alongside this file
+(also at https://www.gnu.org/licenses/gpl-3.0.html).
+
+A release binary carries NOTICES.txt (written by common/tools/notices.py): the GPL,
+and the notices of everything else compiled into it.
 
 Notes:
 - This repository also depends on third-party components under their own licenses.

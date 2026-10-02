@@ -38,3 +38,16 @@ happily while the firmware drew something else.
 
 Both historical bugs were re-introduced deliberately to confirm this fails on
 them; it does.
+
+## Release notices
+
+```sh
+python3 common/tools/notices.py          # every released app
+python3 common/tools/notices.py secret   # one
+```
+
+Writes `<app>/NOTICES.txt` for each released firmware: the licence notices of everything
+compiled into its `.bin`, taken from the licence files and headers in the sources the
+build uses. Attach it to the GitHub release as `<tag>-NOTICES.txt`. When an app starts
+linking a new library (check with `arm-none-eabi-nm` on its ELF), add it to the table in
+the script.
