@@ -10,8 +10,8 @@ each released firmware from the licence files and headers in the sources its bui
 so nothing is retyped. Each release attaches it as <tag>-NOTICES.txt.
 
 What each binary contains was read off its ELF (arm-none-eabi-nm) on 2026-10-02: every
-one links ST's HAL, CMSIS and ST's USB device library; Sorrow links DaisySP; none links
-FatFs or CMSIS-DSP. Re-check when a build adds a library.
+one links ST's HAL, CMSIS and ST's USB device library; Sorrow links DaisySP; Mirth links
+FatFs (for its captures); none links CMSIS-DSP. Re-check when a build adds a library.
 
     python3 common/tools/notices.py             # every released app
     python3 common/tools/notices.py secret      # one
@@ -60,6 +60,49 @@ def libdaisy(base):
          "Apache-2.0", file(base / "Drivers" / "CMSIS_5" / "LICENSE.txt")),
     ]
 
+
+
+def fatfs():
+    """ChaN's FatFs notice, from the header of ff.c (a '/ '-prefixed comment block)."""
+    lines = (DAISY / "libDaisy" / "Middlewares" / "Third_Party" / "FatFs" / "src" / "ff.c").read_text().splitlines()
+    start = next(i for i, l in enumerate(lines) if "Copyright (C)" in l and "ChaN" in l)
+    out = []
+    for l in lines[start:]:
+        if l.startswith("/---"):
+            break
+        out.append(l[2:] if l.startswith("/ ") else l.lstrip("/"))
+    return "\n".join(out).rstrip() + "\n"
+
+
+NADAVB = "https://forum.electro-smith.com/t/nam-a2-on-daisy-seed/9186"
+
+
+def nam_runtime():
+    return ("Based on code nadavb shared on the Daisy forum, " + NADAVB + ", offered there\n"
+            "as: \"Free to use. You can just point this forum thread as reference in the\n"
+            "header.\" The runtime's header does so.\n\n"
+            + (ROOT / "daisy_neural" / "LICENSE-daisyseedprojects.txt").read_text())
+
+
+def fallback_capture():
+    """The credit block generate into daisy_neural/nam/fallback_capture.h, with the licence link."""
+    lines = (ROOT / "daisy_neural" / "nam" / "fallback_capture.h").read_text().splitlines()
+    credit = [l[2:].strip() for l in lines if l.startswith("//   ")]
+    return ("One capture is compiled into the firmware as its fallback:\n\n  "
+            + "\n  ".join(credit)
+            + "\n\nCC BY 4.0: https://creativecommons.org/licenses/by/4.0/\n"
+            "The twelve starter captures are a separate download; each is credited in the\n"
+            "STARTER_CAPTURES.md that comes with them.\n")
+
+
+def mirth_components(title):
+    return [
+        (title, "David Baghurst", "MIT", own_mit),
+        ("NAM A2 runtime", "Keith Shepherd (bkshepherd/DaisySeedProjects), after nadavb", "MIT", nam_runtime),
+        ("Built-in capture: Orange TH100", "tupalosa", "CC BY", fallback_capture),
+        ("FatFs (in libDaisy)", "ChaN", "FatFs licence (BSD-style)", fatfs),
+        *libdaisy(DAISY / "libDaisy"),
+    ]
 
 USB_NOTE = ("STM32 USB Device Library (in libDaisy), STMicroelectronics, SLA0044 (Ultimate\n"
             "Liberty). Its clause 2 asks for no notices with a binary that is a software\n"
@@ -121,6 +164,22 @@ APPS = {
         ],
         "not_affiliated": "Mutable Instruments, Electrosmith, STMicroelectronics or Arm",
     },
+    "mirth": {
+        "dir": "daisy_neural", "title": "Mirth", "bin": "mirth-vX.Y.Z.bin",
+        "src": "daisy_neural/, common/ and deps/",
+        "components": mirth_components("Mirth"),
+        "out": "NOTICES-mirth.txt",
+        "not_affiliated": ("Neural Amp Modeler, TONE3000, the makers of the amplifiers and pedals\n"
+                           "captured, Electrosmith, STMicroelectronics or Arm"),
+    },
+    "mirth_lite": {
+        "dir": "daisy_neural", "title": "Mirth Lite", "bin": "mirth_lite-vX.Y.Z.bin",
+        "src": "daisy_neural/ and deps/",
+        "components": mirth_components("Mirth Lite"),
+        "out": "NOTICES-mirth_lite.txt",
+        "not_affiliated": ("Neural Amp Modeler, TONE3000, the makers of the amplifiers and pedals\n"
+                           "captured, Electrosmith, STMicroelectronics or Arm"),
+    },
 }
 
 RULE = "=" * 80
@@ -156,7 +215,7 @@ def notices(key):
     if app.get("gpl"):
         out += ["", RULE, "GNU General Public License, version 3", "",
                 (ROOT / app["dir"] / "COPYING").read_text().rstrip(), ""]
-    path = ROOT / app["dir"] / "NOTICES.txt"
+    path = ROOT / app["dir"] / app.get("out", "NOTICES.txt")
     path.write_text("\n".join(out))
     print(f"wrote {path.relative_to(ROOT)} ({len(app['components'])} components)")
 
