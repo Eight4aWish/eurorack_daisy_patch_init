@@ -240,14 +240,14 @@ ear — "The measured search" below has the numbers.
 | `SINE PLX` | pLEXI-LORE | every neuron's activation sin(g·x)/g | g, 0.3 → 8 (log) |
 | `SINE BUG` | Bugera G5 | the same | g, 0.3 → 8 (log) |
 | `LINEAR TR` | Two Rock | every neuron's leaky-ReLU slope | slope, 0.01 (as trained) → 1 (linear) |
+| `RECT ORG` | Orange TH100 | the same, the other way | slope, 0.01 → −1 (full-wave rectifying) |
 | `FB100 F57` | Fender 57 | output fed back after 480 samples (100 Hz) | loop gain, 0 → 0.95 |
 | `FB PCH PLX` | pLEXI-LORE | output fed back at gain 0.8 | loop delay — the pitch — 48 → 1,200 samples (log) |
-| `FB PCH KAY` | Kay 703 | the same | the same |
 | `FRZ E TR` | Two Rock | layer 3's output held | hold, 1 → 1,024 samples (log) |
 | `FRZ M F57` | Fender 57 | layer 11's output held | the same |
 | `FRZ M KAY` | Kay 703 | the same | the same |
+| `FOLD ORG` | Orange TH100 | a triangle fold inside layer 11 | threshold, 1 → 0.05 (log); a flat +24 dB level correction |
 | `RATE SVT` | SVT-2 Pro | the engine at 1/R of the sample rate, held back up | R = 1, 2, 3, 4, 6 (stepped) |
-| `RATE BUG` | Bugera G5 | the same | the same |
 | `PAST BLU` | Bluesbreaker | weights pushed past it, away from the Bugera G5 | how far past, 1.0 → 1.3× |
 
 They find their captures on the card by name — the starter set, which ships with Mirth
@@ -264,10 +264,20 @@ against its source capture played plainly, so the steer changes the sound and no
 volume — corrections run from −24 dB (LINEAR TR, PAST BLU at full steer) to +35 dB
 (SINE BUG).
 
+**First bench session, 2026-10-02.** SINE PLX and SINE BUG peaked at 99% CPU: the
+11th-order polynomial sine was a chain of six dependent multiply-adds and an FPU-stalling
+compare, ~45 cycles, 69 times a sample. Replaced by a 2,048-entry table with linear
+interpolation (`bend::FastSin`: about 14 instructions a sine, same accuracy against the
+audition); not yet re-measured on the module. FB PCH KAY was too much grating feedback, and
+RATE BUG imposed a tone at every reduced rate (steer past 0.12); both were replaced by
+the search's next picks around the other ten (`notamp_search.py --keep … --allow …`):
+RECT ORG and FOLD ORG, both cheap. The other eight were fine.
+
 **The activation is a firmware choice.** `nam/nam_a2_runtime.h` compiles each activation
 — as trained, a variable slope, a sine — as its own copy of the layer kernels, chosen once
-per block, so a real amp pays nothing. The sine is `bend::FastSin`, 11th-order, within
-−57 to −104 dB of `sinf` through whole networks. Freeze and the morph use the `bend`
+per block, so a real amp pays nothing. The sine is `bend::FastSin`, a 2,048-entry table, within
+−53 to −106 dB of `sinf` through whole networks (pLEXI-LORE's network amplifies single
+rounding steps; the Bugera's does not). Freeze and the morph use the `bend`
 operations and live weight rewrites the nine introduced.
 
 **The seed slot, retired.** Random weights drawn with one amp's statistics all came out as
@@ -587,9 +597,8 @@ In rough order, because each answers something the next depends on:
    phase 1 closed.
 3. ~~Design the seed landscape.~~ Replaced by the nine not-amps (2026-09-29), then by the
    twelve (2026-10-02). **Next: the twelve on the module.**
-   - **CPU on `SINE PLX` and `SINE BUG` first** — the max on the RUN page. The Mac puts the
-     sine at 1.5× the engine (~96% if that held); counting cycles says nearer 80%. Over
-     ~90% and it needs a cheaper sine before anything else.
+   - **CPU on `SINE PLX` and `SINE BUG` first** — the max on the RUN page. Read 99% with the
+     polynomial sine on 2026-10-02; the table sine should bring it near the low 70s.
    - The five amps' worth of captures still play as before (the trained path is
      bit-identical on the Mac, but the kernels are now templates).
    - MIX: dry at 0, wet at 1, and on `RATE SVT` at 50% no comb-filter hollowness — that

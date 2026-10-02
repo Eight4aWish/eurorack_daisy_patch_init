@@ -190,21 +190,27 @@ inline void SetActivation(int a, float p) noexcept
     actInv   = (a == kActSine || a == kActTanh) ? 1.0f / p : 1.0f;
 }
 
-// sin(a) for any a a float can range-reduce, |error| < 1e-6: wrap to [-pi, pi],
-// fold to [-pi/2, pi/2], then an 11th-order odd polynomial. ~20 cycles on the M7
-// (VRINTR does the rounding) against ~100 for newlib's sinf.
+// sin(a) from a 2,048-entry table with linear interpolation, |error| < 1.2e-6.
+// Replaced an 11th-order polynomial on 2026-10-02: that was a chain of six dependent
+// multiply-adds plus a compare that stalls the FPU, ~45 cycles a sine, and with 69
+// neurons a sample the sine not-amps measured 99% CPU on the module. This is one
+// multiply, one round-down (VRINTM), two loads and one multiply-add, with little
+// waiting on anything else. The table (8 KB) is filled once, before main().
+inline constexpr int kSinN = 2048;
+inline float sinTab[kSinN + 1];  // one guard entry, so j + 1 never wraps
+inline const bool sinTabReady = [] {
+    for (int i = 0; i <= kSinN; ++i)
+        sinTab[i] = std::sin(6.283185307179586 * i / kSinN);
+    return true;
+}();
+
 inline float FastSin(float a) noexcept
 {
-    constexpr float kInv2Pi = 0.159154943f, k2Pi = 6.283185307f;
-    constexpr float kPi = 3.141592654f, kHalfPi = 1.570796327f;
-    float r = a - k2Pi * rintf(a * kInv2Pi);
-    if (r > kHalfPi)
-        r = kPi - r;
-    else if (r < -kHalfPi)
-        r = -kPi - r;
-    const float r2 = r * r;
-    return r * (1.0f + r2 * (-1.6666667e-1f + r2 * (8.3333333e-3f
-                + r2 * (-1.9841270e-4f + r2 * (2.7557319e-6f + r2 * -2.5052108e-8f)))));
+    constexpr float kScale = kSinN / 6.283185307f;
+    const float p  = a * kScale;
+    const float fl = floorf(p);
+    const int   j  = (int)fl & (kSinN - 1);
+    return sinTab[j] + (p - fl) * (sinTab[j + 1] - sinTab[j]);
 }
 
 inline void Clear()

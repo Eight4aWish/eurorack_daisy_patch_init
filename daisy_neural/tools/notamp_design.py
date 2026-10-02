@@ -4,7 +4,9 @@ notamp_design.py — the twelve not-amps, checked, measured, and written to src/
 
 Chosen 2026-10-02 by tools/notamp_search.py (descriptors + CLAP, against 236 real
 captures) and approved by ear; the README's "The measured search" has the numbers.
-They replace the nine of 2026-09-29.
+They replace the nine of 2026-09-29. After the first bench session the same day, FB PCH
+KAY (feedback that grated) and RATE BUG (a tone imposed at every reduced rate) were
+replaced by the search's next picks around the other ten: RECT ORG and FOLD ORG.
 
 For each not-amp this:
   1. renders it through the firmware's own processor (tools/a2_notamp, which runs
@@ -43,18 +45,18 @@ TWELVE = [
     ("SINE PLX",   "sine",    "PLEXI LORE", None,        0.3,  8.0,  True,  0,  0.0),
     ("SINE BUG",   "sine",    "BUGERA G5",  None,        0.3,  8.0,  True,  0,  0.0),
     ("LINEAR TR",  "slope",   "TWO ROCK",   None,        0.01, 1.0,  False, 0,  0.0),
+    ("RECT ORG",   "slope",   "ORANGE TH",  None,        0.01, -1.0, False, 0,  0.0),
     ("FB100 F57",  "fbgain",  "FENDER 57",  None,        0.0,  0.95, False, 0,  480.0),
     ("FB PCH PLX", "fbpitch", "PLEXI LORE", None,        48.0, 1200.0, True, 0, 0.8),
-    ("FB PCH KAY", "fbpitch", "KAY 703",    None,        48.0, 1200.0, True, 0, 0.8),
     ("FRZ E TR",   "freeze",  "TWO ROCK",   None,        1.0,  1024.0, True, 3, 0.0),
     ("FRZ M F57",  "freeze",  "FENDER 57",  None,        1.0,  1024.0, True, 11, 0.0),
     ("FRZ M KAY",  "freeze",  "KAY 703",    None,        1.0,  1024.0, True, 11, 0.0),
+    ("FOLD ORG",   "fold",    "ORANGE TH",  None,        1.0,  0.05, True,  11, 0.0),
     ("RATE SVT",   "rate",    "SVT-2 PRO",  None,        1.0,  6.0,  False, 0,  0.0),
-    ("RATE BUG",   "rate",    "BUGERA G5",  None,        1.0,  6.0,  False, 0,  0.0),
     ("PAST BLU",   "morph",   "BUGERA G5",  "BLUESBRKR", 1.0,  1.3,  False, 0,  0.0),
 ]
 RATE_STEPS = [1, 2, 3, 4, 6]
-KIND_ENUM = {"sine": "Sine", "slope": "Slope", "freeze": "Freeze", "morph": "Morph",
+KIND_ENUM = {"sine": "Sine", "slope": "Slope", "freeze": "Freeze", "fold": "Fold", "morph": "Morph",
              "fbgain": "FbGain", "fbpitch": "FbPitch", "rate": "Rate"}
 
 
@@ -68,6 +70,7 @@ def param(t, u):
 def explore_spec(t, v):
     _, kind, _, _, _, _, _, layer, fixed = t
     return {"sine": f"sine:{v}:{v}", "slope": f"slope:{v}:{v}", "freeze": f"freeze:{layer}:{v}:{v}",
+            "fold": f"fold:{layer}:{v}:{v}",
             "morph": f"morph:{v}:{v}", "fbgain": f"fbgain:{int(fixed)}:{v}:{v}",
             "fbpitch": f"fbdelay:{fixed}:{v}:{v}", "rate": f"rate:{int(v)}"}[kind]
 

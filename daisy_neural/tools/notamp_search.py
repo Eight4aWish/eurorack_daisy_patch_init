@@ -285,6 +285,10 @@ def main():
     ap.add_argument("--min-novelty", type=float, default=2.0,
                     help="each pick at least this many times the amps' own spacing from the amps")
     ap.add_argument("--family-cap", type=int, default=2, help="at most this many picks per approach")
+    ap.add_argument("--keep", action="append", default=[], metavar="TRANSFORM|CAPTURE",
+                    help="already chosen: start from these and fill the rest")
+    ap.add_argument("--allow", action="append", default=[], metavar="TRANSFORM",
+                    help="fill only from these transforms")
     ap.add_argument("--dump", action="store_true", help="write every clip as a WAV, for clap_judge.py")
     ap.add_argument("--combine", action="store_true", help="select with CLAP's verdict too (after clap_judge.py)")
     ap.add_argument("--audition", action="store_true", help="render the selection, swept, to audition.wav")
@@ -306,7 +310,7 @@ def main():
 
     if args.combine:
         return score(json.loads(cache.read_text()), names, args.pick, clap=load_clap(), min_nov=args.min_novelty,
-                     family_cap=args.family_cap)
+                     family_cap=args.family_cap, keep=args.keep, allow=args.allow)
     if args.reuse and cache.exists():
         C = json.loads(cache.read_text())
     else:
@@ -392,7 +396,7 @@ AMP_TAGS = ("a synthesizer played through a guitar amplifier", "an overdriven el
             "a clean electric guitar amplifier tone", "a fuzz guitar pedal")
 
 
-def score(C, names, pick, clap=None, min_nov=0.0, family_cap=2):
+def score(C, names, pick, clap=None, min_nov=0.0, family_cap=2, keep=(), allow=()):
     amp_names = list(C["amps"])
     A = matrix([C["amps"][a] for a in amp_names])
     keys = [k for k, d in C["cands"].items() if d]
@@ -473,8 +477,14 @@ def score(C, names, pick, clap=None, min_nov=0.0, family_cap=2):
             nov = (nov + np.array([r["clap_novelty"] for r in good])) / 2
         for r, n_ in zip(good, nov):
             r["combined_novelty"] = float(n_)
-        first = int(np.argmax(nov))
-        chosen = [first]
+        if keep:
+            where = {f"{r['transform']}|{r['capture']}": j for j, r in enumerate(good)}
+            missing = [k for k in keep if k not in where]
+            if missing:
+                raise SystemExit(f"--keep not among the passing candidates: {missing}")
+            chosen = [where[k] for k in keep]
+        else:
+            chosen = [int(np.argmax(nov))]
         while len(chosen) < pick:
             fam = {}
             cap = {}
@@ -486,6 +496,8 @@ def score(C, names, pick, clap=None, min_nov=0.0, family_cap=2):
                 if j in chosen or fam.get(r["family"], 0) >= family_cap or cap.get(r["capture"], 0) >= 2:
                     continue
                 if nov[j] < min_nov:
+                    continue
+                if allow and r["transform"] not in allow:
                     continue
                 d = min(D[j, c] for c in chosen)
                 if d > bestd:

@@ -7,6 +7,7 @@
 //   Sine     every neuron's activation sin(g x)/g          steer: g, log
 //   Slope    every neuron's leaky-ReLU slope                steer: slope, linear
 //   Freeze   one layer's output held for p samples          steer: p, log
+//   Fold     a triangle fold inside one layer               steer: threshold, log
 //   Morph    weights A + t(B - A), t past 1: "past" B        steer: t, linear
 //   FbGain   output fed back to the input after D samples   steer: loop gain, linear
 //   FbPitch  the same at a fixed gain                       steer: D (the pitch), log
@@ -21,7 +22,7 @@
 
 namespace notamps
 {
-enum class Kind : uint8_t { Sine, Slope, Freeze, Morph, FbGain, FbPitch, Rate };
+enum class Kind : uint8_t { Sine, Slope, Freeze, Fold, Morph, FbGain, FbPitch, Rate };
 
 struct Def
 {
@@ -32,7 +33,7 @@ struct Def
     const char* cap_ref;  // the capture whose header gain sets the level
     float       lo, hi;   // the parameter at steer 0 and steer 1
     bool        log_map;  // the steer law
-    uint8_t     layer;    // Freeze: which layer
+    uint8_t     layer;    // Freeze, Fold: which layer
     float       fixed;    // FbGain: loop delay in samples; FbPitch: loop gain
     float       gain_db[9]; // level correction at steer 0, 1/8 ... 1
 };
@@ -107,6 +108,10 @@ class Processor
             case Kind::Freeze:
                 bend::active[d.layer]  = true;
                 bend::freezeP[d.layer] = (int)lroundf(v);
+                break;
+            case Kind::Fold:
+                bend::active[d.layer] = true;
+                bend::fold[d.layer]   = v;
                 break;
             case Kind::Morph:
                 if(fabsf(v - last_) > 0.0005f)
