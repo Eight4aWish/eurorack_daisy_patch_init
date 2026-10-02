@@ -86,6 +86,25 @@ flashing, and **B1 + B2** runs the factory CV calibration.
 Not in this first build: presets, EXT DRIVE (J1), SYNC in (J2), FREEZE, and a
 V/Oct calibration of its own (see below).
 
+### Faceplate
+
+`panel/` holds a Secret faceplate to have made. It is Hermetic's own front-panel template
+from the Alchemy SDK (`deps/alchemy-sdk/panel/`, MIT), with the placeholder text replaced
+by Secret's labels. Every hole, LED window and plating note is still Hermetic's. Lettering
+is bare ENIG copper through a solder-mask opening, the same way Hermetic makes the stock
+panel. J1/J2 are left unlabelled because Secret does not use them.
+
+```sh
+python3 panel/make_panel.py --gerbers   # secret_panel.kicad_pcb, the JLCPCB zip, a preview
+```
+
+The script needs KiCad 9's `kicad-cli`. To order, upload `secret_panel_gerbers.zip` to
+JLCPCB with the options from Hermetic's `panel/README.md`: ENIG, edge plating, black
+solder mask, and its order comment ("Please plate all holes and all drills. Plate all
+edges as indicated by F.cu boxes. Four areas are left for tooling handles."). The
+website's panel image is a different thing: a render in the series style, made with
+`build123d/panels/alchemy_secret.py`.
+
 ## Build
 
 Like the other apps here, a standard Daisy Makefile, laid out after Hermetic's
