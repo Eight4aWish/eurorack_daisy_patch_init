@@ -10,7 +10,8 @@
  *
  *   none                     the capture as captured (with a stretch build: stretched)
  *   slope:a0:a1              leaky-ReLU slope; 0.01 is the trained network, 1 linear
- *   sine:g0:g1               activation sin(g x)/g — a wavefolder in every neuron
+ *   sine:g0:g1               activation sin(g x)/g — a wavefolder in every neuron (the
+ *                            firmware's FastSin, so this is exactly what the module runs)
  *   tanh:g0:g1               activation tanh(g x)/g — soft clipping in every neuron
  *   bias:s0:s1               every bias scaled (conv, 1x1, head)
  *   mixin:s0:s1              the raw input each layer adds, scaled
@@ -153,15 +154,9 @@ int main(int argc, char** argv)
         }
         // ---- the network itself
         else if(!strcmp(op, "slope"))
-        {
-            explore::act = explore::kLeaky;
-            explore::param = Lerp(a, b, u);
-        }
+            bend::SetActivation(bend::kActSlope, Lerp(a, b, u));
         else if(!strcmp(op, "sine") || !strcmp(op, "tanh"))
-        {
-            explore::act = !strcmp(op, "sine") ? explore::kSine : explore::kTanh;
-            explore::param = LogLerp(a, b, u);
-        }
+            bend::SetActivation(!strcmp(op, "sine") ? bend::kActSine : bend::kActTanh, LogLerp(a, b, u));
         else if(!strcmp(op, "freeze"))
         {
             bend::active[(int)a] = true;

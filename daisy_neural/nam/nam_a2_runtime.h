@@ -32,6 +32,7 @@
 */
 
 #include <algorithm>
+#include <cmath>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -124,7 +125,6 @@ static constexpr float kLeakySlope = 0.01f;
 // built before these hooks went in).
 //   NAM_A2_DIL_SCALE  multiply every gap: the network reads its history at the
 //                     wrong spacing. Grows the history buffer by the same factor.
-//   explore::act      swap the activation: leaky ReLU with any slope, sine, tanh.
 //   explore::cond     feed every layer's raw-input path from another signal
 //                     (a sidechain) instead of the input itself.
 // ---------------------------------------------------------------------------
@@ -132,25 +132,9 @@ static constexpr float kLeakySlope = 0.01f;
 #define NAM_A2_DIL_SCALE 1
 #endif
 #ifdef NAM_A2_EXPLORE
-} // namespace nam_a2_daisy
-#include <cmath>
-namespace nam_a2_daisy
-{
 namespace explore
 {
-enum Act : int { kLeaky = 0, kSine = 1, kTanh = 2 };
-inline int          act   = kLeaky;
-inline float        param = kLeakySlope;  // leaky: the slope; sine/tanh: the gain
-inline const float* cond  = nullptr;      // nullptr: the input itself, as normal
-inline float Activate(float x) noexcept
-{
-    switch (act)
-    {
-        case kSine: return std::sin(param * x) / param;
-        case kTanh: return std::tanh(param * x) / param;
-        default:    return x >= 0.0f ? x : x * param;
-    }
-}
+inline const float* cond = nullptr;  // nullptr: the input itself, as normal
 } // namespace explore
 #define NAM_A2_PRECOMBINE_OK (explore::cond == nullptr)
 #else
@@ -190,8 +174,42 @@ inline int   freezeP[23]   = {};   // >0: hold the output for this many samples
 inline float held[23][3]   = {};
 inline int   heldCount[23] = {};
 
+// The activation every neuron uses. kActTrained is the network as trained, on its
+// original code path; the others are not-amps. Each is compiled as its own copy of
+// the layer kernels and chosen once per block (process_block_48), so a real amp
+// pays nothing for the choice existing.
+enum Act : int { kActTrained = 0, kActSlope = 1, kActSine = 2, kActTanh = 3 /* host only */ };
+inline int   act      = kActTrained;
+inline float actParam = kLeakySlope;  // kActSlope: the slope; kActSine/kActTanh: the gain
+inline float actInv   = 1.0f;         // 1 / gain, so the neuron's small-signal slope stays 1
+
+inline void SetActivation(int a, float p) noexcept
+{
+    act      = a;
+    actParam = p;
+    actInv   = (a == kActSine || a == kActTanh) ? 1.0f / p : 1.0f;
+}
+
+// sin(a) for any a a float can range-reduce, |error| < 1e-6: wrap to [-pi, pi],
+// fold to [-pi/2, pi/2], then an 11th-order odd polynomial. ~20 cycles on the M7
+// (VRINTR does the rounding) against ~100 for newlib's sinf.
+inline float FastSin(float a) noexcept
+{
+    constexpr float kInv2Pi = 0.159154943f, k2Pi = 6.283185307f;
+    constexpr float kPi = 3.141592654f, kHalfPi = 1.570796327f;
+    float r = a - k2Pi * rintf(a * kInv2Pi);
+    if (r > kHalfPi)
+        r = kPi - r;
+    else if (r < -kHalfPi)
+        r = -kPi - r;
+    const float r2 = r * r;
+    return r * (1.0f + r2 * (-1.6666667e-1f + r2 * (8.3333333e-3f
+                + r2 * (-1.9841270e-4f + r2 * (2.7557319e-6f + r2 * -2.5052108e-8f)))));
+}
+
 inline void Clear()
 {
+    SetActivation(kActTrained, kLeakySlope);
     for (int l = 0; l < 23; ++l)
     {
         active[l] = false; blend[l] = 1.f; fold[l] = 0.f; freezeP[l] = 0; heldCount[l] = 0;
@@ -377,12 +395,6 @@ struct A2HotState
 
 NAM_A2_TINY_INLINE float leaky(float x) noexcept
 {
-#ifdef NAM_A2_EXPLORE
-    // Only a changed activation leaves the original path, so the defaults stay
-    // bit-identical to the firmware's arithmetic.
-    if (explore::act != explore::kLeaky || explore::param != kLeakySlope)
-        return explore::Activate(x);
-#endif
 #if NAM_A2_BRANCHLESS_LEAKY
     constexpr float p = 0.5f * (1.0f + kLeakySlope);
     constexpr float q = 0.5f * (1.0f - kLeakySlope);
@@ -390,6 +402,20 @@ NAM_A2_TINY_INLINE float leaky(float x) noexcept
 #else
     return x >= 0.0f ? x : x * kLeakySlope;
 #endif
+}
+
+// One neuron's activation, chosen at compile time (see bend::Act).
+template<int ACT>
+NAM_A2_TINY_INLINE float act_fn(float x) noexcept
+{
+    if constexpr (ACT == bend::kActSlope)
+        return x >= 0.0f ? x : x * bend::actParam;
+    else if constexpr (ACT == bend::kActSine)
+        return bend::FastSin(bend::actParam * x) * bend::actInv;
+    else if constexpr (ACT == bend::kActTanh)
+        return std::tanh(bend::actParam * x) * bend::actInv;
+    else
+        return leaky(x);
 }
 
 NAM_A2_TINY_INLINE void acc_tap3(const float* __restrict__ w,
@@ -504,7 +530,7 @@ inline constexpr int prewarm_samples() noexcept
 // Layer kernels (NAM_A2_NOINLINE keeps code size small in BOOT_SRAM builds)
 // -----------------------------------------------------------------------------
 
-template<int K>
+template<int K, int ACT>
 NAM_A2_NOINLINE void process_layer_kernel(A2State& st,
                                           A2HotState& hot,
                                           const A2SharedWeights& sw,
@@ -568,9 +594,9 @@ NAM_A2_NOINLINE void process_layer_kernel(A2State& st,
             acc_tap3(wAll + k * 9, s, z0, z1, z2);
         }
 
-        const float a0 = leaky(z0);
-        const float a1 = leaky(z1);
-        const float a2 = leaky(z2);
+        const float a0 = act_fn<ACT>(z0);
+        const float a1 = act_fn<ACT>(z1);
+        const float a2 = act_fn<ACT>(z2);
 
         float* const hs = hot.headSum + n * 3;
         hs[0] += a0;
@@ -590,6 +616,7 @@ NAM_A2_NOINLINE void process_layer_kernel(A2State& st,
     st.layerWritePos[li] = wp;
 }
 
+template<int ACT>
 NAM_A2_NOINLINE void process_layer_kernel6_dual(A2State& st,
                                                 A2HotState& hot,
                                                 const A2SharedWeights& sw,
@@ -686,12 +713,12 @@ NAM_A2_NOINLINE void process_layer_kernel6_dual(A2State& st,
             acc_tap3(w, sB, zb0, zb1, zb2);
         }
 
-        const float aa0 = leaky(za0);
-        const float aa1 = leaky(za1);
-        const float aa2 = leaky(za2);
-        const float ab0 = leaky(zb0);
-        const float ab1 = leaky(zb1);
-        const float ab2 = leaky(zb2);
+        const float aa0 = act_fn<ACT>(za0);
+        const float aa1 = act_fn<ACT>(za1);
+        const float aa2 = act_fn<ACT>(za2);
+        const float ab0 = act_fn<ACT>(zb0);
+        const float ab1 = act_fn<ACT>(zb1);
+        const float ab2 = act_fn<ACT>(zb2);
 
         float* __restrict__ const hsA = hot.headSum + n * 3;
         float* __restrict__ const hsB = hsA + 3;
@@ -757,6 +784,26 @@ NAM_A2_NOINLINE void process_head(A2HotState& hot,
     hot.headWritePos = wp;
 }
 
+template<int ACT>
+NAM_A2_NOINLINE void process_layers(A2State& st, A2HotState& hot, const A2SharedWeights& sw,
+                                    const float* cond, float* in, float* out) noexcept
+{
+    for (int li = 0; li < kNumLayers; ++li)
+    {
+        if (kKernelSizes[li] == 6)
+            process_layer_kernel6_dual<ACT>(st, hot, sw, li, cond, in, out);
+        else
+            process_layer_kernel<15, ACT>(st, hot, sw, li, cond, in, out);
+
+        if (bend::active[li])
+            bend::After(li, in, out);
+
+        float* tmp = in;
+        in = out;
+        out = tmp;
+    }
+}
+
 NAM_A2_NOINLINE void process_block_48(A2State& st,
                                       A2HotState& hot,
                                       const A2SharedWeights& sw,
@@ -797,19 +844,14 @@ NAM_A2_NOINLINE void process_block_48(A2State& st,
         cond = explore::cond;
 #endif
 
-    for (int li = 0; li < kNumLayers; ++li)
+    switch (bend::act)
     {
-        if (kKernelSizes[li] == 6)
-            process_layer_kernel6_dual(st, hot, sw, li, cond, in, out);
-        else
-            process_layer_kernel<15>(st, hot, sw, li, cond, in, out);
-
-        if (bend::active[li])
-            bend::After(li, in, out);
-
-        float* tmp = in;
-        in = out;
-        out = tmp;
+        case bend::kActSlope: process_layers<bend::kActSlope>(st, hot, sw, cond, in, out); break;
+        case bend::kActSine:  process_layers<bend::kActSine>(st, hot, sw, cond, in, out);  break;
+#ifdef NAM_A2_EXPLORE
+        case bend::kActTanh:  process_layers<bend::kActTanh>(st, hot, sw, cond, in, out);  break;
+#endif
+        default:              process_layers<bend::kActTrained>(st, hot, sw, cond, in, out); break;
     }
 
     process_head(hot, sw, output);
