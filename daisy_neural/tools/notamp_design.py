@@ -47,7 +47,7 @@ from scipy.signal import lfilter
 HERE = pathlib.Path(__file__).resolve().parent
 PROJECT = HERE.parent
 sys.path.insert(0, str(HERE))
-from quantisation_study import make_synth, scale_peak  # noqa: E402
+from test_signal import make_synth, scale_peak  # noqa: E402
 
 STARTER = PROJECT / "captures" / "starter"
 HEADER = PROJECT / "src" / "notamps.h"

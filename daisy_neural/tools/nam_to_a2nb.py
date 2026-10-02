@@ -6,25 +6,22 @@ TONE3000 carries 700,000+ tones and A2 models are filterable by architecture,
 so the useful workflow is: download a .nam, run this, copy to the card. No C++,
 no rebuild, no reflash.
 
-The alternative path — nam_to_cpp_array.py into model_data_nam_a2.h, then
-export_captures.py — means editing a header and recompiling for every capture,
-which stops being reasonable at more than about five.
+The alternative — a capture compiled into the firmware as a C array — means editing
+a header and recompiling for every capture.
 
 What it extracts:
 
     SlimmableContainer   an A2 download is ONE file holding both sizes. We take
                          the submodel whose max_value is nearest 0.5, which is
                          A2-Lite at 3 channels — the only size the embedded
-                         engine runs. Same choice nam_to_cpp_array.py makes.
+                         engine runs.
     WaveNet              taken directly, but almost certainly rejected: a plain
                          NAM WaveNet is a different, larger topology and will
                          not have 1,871 weights.
 
-The weight count IS checked here, and that matters. nam_to_cpp_array.py emits
-`float x[kA2WeightCount] = {...}` whatever it extracted; too many weights is a
-compile error, but **too few is silently zero-padded** and produces a capture
-that loads cleanly and sounds wrong. Better to fail at conversion with a clear
-message.
+The weight count IS checked here, and that matters: a network with too few weights
+would otherwise be zero-padded and produce a capture that loads cleanly and sounds
+wrong. Better to fail at conversion with a clear message.
 
 Usage:
     python3 tools/nam_to_a2nb.py downloaded.nam
@@ -40,7 +37,7 @@ import sys
 
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-from export_captures import EXPECTED_WEIGHTS, NAME_LEN, pack, verify  # noqa: E402
+from a2nb import EXPECTED_WEIGHTS, NAME_LEN, pack, verify  # noqa: E402
 
 
 def extract(path):

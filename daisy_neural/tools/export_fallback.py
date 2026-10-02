@@ -3,11 +3,9 @@
 export_fallback.py — the compiled-in fallback capture, from a CC-licensed starter capture.
 
 With no card, or a card that will not read, the firmware plays one capture built into
-the binary rather than going silent. Until 2026-10-02 that was the JCM800 from
-nam/model_data_nam_a2.h — TONE3000 T3K-licensed, so it could be neither committed nor
-shipped. David's suggestion: fall back to a starter capture instead. Those are CC0 or
-CC-BY, so the header this writes is committed, and every build — release or not — has
-a fallback it may redistribute.
+the binary rather than going silent. It is a starter capture, so it is CC0 or CC BY:
+the header this writes is committed, and every build — release or not — has a
+fallback it may redistribute, with its credit.
 
 Writes nam/fallback_capture.h from captures/starter/<file>.a2nb, checking the .a2nb's
 CRC and that every weight survives the trip to text and back bit for bit.
@@ -65,9 +63,6 @@ def main():
 //   Licence: {CREDIT['licence']}.
 //   Changes: the A2-Lite network extracted from the .nam download and stored here as
 //   a C array; output gain {gain:.6g} set to match the starter set's level.
-//
-// Replaces the T3K-licensed JCM800 (2026-10-02), so this file is committed and every
-// build may be redistributed.
 #pragma once
 
 namespace fallback

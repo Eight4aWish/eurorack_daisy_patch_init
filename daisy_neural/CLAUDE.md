@@ -217,8 +217,8 @@ found, and no NAM or ToneX capture of any Eurorack module. Open ground.
 **Done when:** a downloaded A2 capture processes guitar audio on patch.init at 48kHz with
 no dropouts, and the measured CPU load is recorded here.
 
-**Done 2026-09-28.** All five captures run off the card on a fresh patch.init and sound
-like their amps. **CPU load 64%** average and peak (`BOOT_SRAM`, history in RAM_D2; 1% in
+**Done 2026-09-28.** Captures run off the card on a fresh patch.init and sound like
+their amps. **CPU load 64%** average and peak (`BOOT_SRAM`, history in RAM_D2; 1% in
 bypass), just above the references' 30–61%. The card needs a FAT32 partition of 2 GB or
 less — see the README.
 
@@ -234,15 +234,14 @@ less — see the README.
    16,764 B, RAM_D2 16,896 B, DTCM unused — so `BOOT_NONE` has only ~28 KB spare, which
    is the practical reason step 3 moves to `BOOT_SRAM`.
 3. ~~Lift the engine from nam-pedal `t3k-pedal` @ `6dc47a4`.~~ **Done — from bkshepherd
-   instead.** That repo ships the whole path: the runtime, the `.nam` → C array converter,
-   and five already-converted captures. nam-pedal's `nam2c.py` is not in its repo, so its
-   engine cannot be fed without writing a converter first. `nam/nam_a2_runtime.h` @
+   instead.** That repo ships the whole path: the runtime and a `.nam` converter.
+   nam-pedal's `nam2c.py` is not in its repo, so its engine cannot be fed without writing
+   a converter first. `nam/nam_a2_runtime.h` @
    `ccae0f2` (2026-09-08), MIT, licence in `LICENSE-daisyseedprojects.txt`.
    **Correction to this brief:** A2's API here is a fixed **48-sample block**, not sample
    by sample. The Patch SM's default block is also 48, so they line up exactly.
-4. ~~Start with one capture compiled in, `BOOT_SRAM`.~~ **Done, and it fits `BOOT_NONE`**
-   — JCM800, one of the five shipped; the other four stay unreferenced and `--gc-sections`
-   drops them. Engine + capture cost 11.3 KB of flash (84.5% used) and 88.5 KB of SRAM
+4. ~~Start with one capture compiled in, `BOOT_SRAM`.~~ **Done, and it fits `BOOT_NONE`**.
+   Engine + capture cost 11.3 KB of flash (84.5% used) and 88.5 KB of SRAM
    (the history buffer). The DTCM/D2 placement macros are neutralised so it runs without
    the bootloader; move to `BOOT_SRAM` with `nam/nam_a2_sections.lds` if measured CPU
    says the placement matters. QSPI capture bank or microSD comes later.
@@ -418,8 +417,8 @@ oversampling, and fits entirely in BRAM — no PSRAM, no tiering, none of the pl
 problem that constrains the Daisy build. The mesh in Silver and Gold is a far harder
 workload than any of this.
 
-**Precision is measured, not assumed** (`tools/quantisation_study.py`, run against the
-real engine compiled natively). A2's weights at 16-bit sit at −63 dB ESR with per-64
+**Precision is measured, not assumed** (a quantisation study run against the real engine
+compiled natively). A2's weights at 16-bit sit at −63 dB ESR with per-64
 scaling; 12-bit reaches −39.8 dB, about where differences stop being obvious; 8-bit is
 unusable. Scaling granularity is worth 1.5–2 bits on its own. Weights only — activations
 and accumulators are still float in that study, so read it as a veto, not a permit.

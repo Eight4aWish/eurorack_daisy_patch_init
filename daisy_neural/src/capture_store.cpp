@@ -175,7 +175,7 @@ bool Init()
     // 64 GB card formatted as one full-size FAT32 volume failed right here with
     // "hal 100000" (WP_ERASE_SKIP, a status that makes no sense during
     // identification). The same card repartitioned to a single 2 GB FAT32
-    // volume, rest unallocated, loaded all five captures. Why is not known;
+    // volume, rest unallocated, loaded every capture. Why is not known;
     // the Daisy bootloader also reads the card at every boot, which is one
     // place the volume size could matter before the app ever sees it.
     s_status = "hal";

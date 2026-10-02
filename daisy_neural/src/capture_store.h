@@ -3,7 +3,7 @@
  *
  * Scans the card root for *.a2nb, reads each 32-byte header for its name and
  * output gain, and loads weights on demand. Format is written by
- * tools/export_captures.py; see the README.
+ * tools/nam_to_a2nb.py (format in tools/a2nb.py); see the README.
  *
  * Nothing here is real-time safe. Loading reads a file and the caller then runs
  * the engine's prewarm(), so it belongs in the main loop with audio muted,
@@ -24,7 +24,7 @@ constexpr size_t kNameLen  = 12;
 constexpr size_t kPathLen  = 64;
 constexpr int    kMaxFiles = 32;  // room for more amps on the card
 
-// Must match tools/export_captures.py.
+// Must match tools/a2nb.py.
 constexpr uint32_t kMagic       = 0x424E3241;  // 'A2NB' little-endian
 constexpr uint16_t kVersion     = 1;
 constexpr size_t   kHeaderBytes = 32;

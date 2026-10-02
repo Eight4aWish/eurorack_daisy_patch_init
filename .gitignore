@@ -18,8 +18,7 @@
 # PlatformIO
 .pio/
 
-# Derived audio and scratch from the analysis tools. Regenerate with
-# tools/quantisation_study.py and tools/compare_captures.py.
+# Derived audio and scratch from the analysis tools.
 daisy_neural/quant_study/
 daisy_neural/amp_compare/
 
@@ -34,11 +33,9 @@ __pycache__/
 *.pyc
 daisy_neural/random_weights/
 
-# Third-party NAM captures. TONE3000's T3K licence forbids uploading or
-# redistributing them without each author's permission, so they live on the
-# working machine only — never in this public repo, and not in a private one
-# either. daisy_neural builds without them. See daisy_neural/README.md,
-# "Note on the captures".
+# NAM captures are never committed: they are their creators' work, licensed one by
+# one. daisy_neural builds without them; release assets carry the CC0/CC BY starter
+# set, credited in daisy_neural/STARTER_CAPTURES.md.
 daisy_neural/nam/model_data_nam_a2.h
 daisy_neural/captures/
 *.nam

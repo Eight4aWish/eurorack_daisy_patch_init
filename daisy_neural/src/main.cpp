@@ -94,9 +94,7 @@ using namespace patch_sm;
 #include "nam/nam_a2_runtime.h"
 // One capture is compiled in as a fallback, so a missing or unreadable card still
 // gives a working module: the Orange TH100 from the starter set, CC BY, generated into
-// nam/fallback_capture.h by tools/export_fallback.py, which carries the credit. Until
-// 2026-10-02 this was the JCM800 from nam/model_data_nam_a2.h, which is T3K-licensed;
-// the firmware no longer reads that header at all, so no build can ship it.
+// nam/fallback_capture.h by tools/export_fallback.py, which carries the credit.
 #include "nam/fallback_capture.h"
 static constexpr const char* kFallbackName    = fallback::kName;
 static const float* const    kFallbackWeights = fallback::kWeights;

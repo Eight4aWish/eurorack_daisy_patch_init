@@ -2,8 +2,7 @@
 """
 notamp_search.py — find not-amps that do not sound like a synth through a guitar amp.
 
-The first nine not-amps were chosen by ear from bends of five captures. This one
-measures. It maps where real guitar-amp captures sit in a space of audio
+Earlier not-amps were chosen by ear. This one measures. It maps where real guitar-amp captures sit in a space of audio
 descriptors, renders every transform on the menu (tools/a2_explore.cpp) applied to
 each starter capture at five settings of its one control, and keeps the transforms
 that (1) leave the amp region and stay out of it across most of the knob, (2) steer
@@ -49,7 +48,7 @@ import soundfile as sf
 HERE = pathlib.Path(__file__).resolve().parent
 PROJECT = HERE.parent
 sys.path.insert(0, str(HERE))
-from quantisation_study import make_synth, scale_peak  # noqa: E402
+from test_signal import make_synth, scale_peak  # noqa: E402
 
 SR = 48000
 OUT = PROJECT / "amp_compare" / "notamp_search"
@@ -125,8 +124,8 @@ def nam_lite(blob):
 
 
 def real_amps():
-    """Every real A2 capture on this machine: the downloaded packs and the five
-    development captures. Licence does not matter here — they are only measured."""
+    """Every real A2 capture on this machine: the downloaded packs, plus any raw
+    weight dumps in amp_compare/. They are only measured, never shipped."""
     amps = {}
     for z in sorted(DOWNLOADS.glob("*.zip")):
         try:

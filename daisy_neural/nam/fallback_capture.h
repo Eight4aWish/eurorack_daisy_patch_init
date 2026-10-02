@@ -7,9 +7,6 @@
 //   Licence: CC BY, as declared on TONE3000 (checked 2026-10-02).
 //   Changes: the A2-Lite network extracted from the .nam download and stored here as
 //   a C array; output gain 0.570394 set to match the starter set's level.
-//
-// Replaces the T3K-licensed JCM800 (2026-10-02), so this file is committed and every
-// build may be redistributed.
 #pragma once
 
 namespace fallback
