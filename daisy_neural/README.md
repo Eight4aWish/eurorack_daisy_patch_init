@@ -70,19 +70,25 @@ Gate In 1 and 2, Gate Out, CV_OUT_1.
 
 ## Pages
 
-**RUN** — capture name (drawn inverted while bypassed), input peak meter, average and
-maximum CPU load, `CAP 2/5` for the selection, and the raw trim/level knob reads on the
-bottom line as `T+0.5L+0.8`. With no card readable, the `CAP` line shows the reason
-instead — `mount`, `no captures`, `bad crc` — so a card problem reads as a card problem
-rather than a dead engine. The CPU figures are the ones
-phase 1 is done when it can record; the brief's references put A2 on a 480 MHz H7
-somewhere between 30% and 61%.
+**RUN**, top to bottom (layout from David, 2026-10-02):
 
-That bottom line exists because the pot scaling is **not confirmed**. libDaisy inits
+| Line | Shows |
+|---|---|
+| name | the capture or not-amp, drawn inverted while bypassed |
+| meter | the input peak, before the trim |
+| `CPU 64(99)` | average CPU load, with the peak in brackets (no `%`: the panel holds ten characters) |
+| `T+0.5M+0.8` | the raw reads of knobs 1 and 2 — trim and mix, the panel's top row |
+| `CAP 2/17` or `N3 S0.42` | knobs 3 and 4 — which capture, or which not-amp and where its steer sits; the bottom row |
+
+The two knob lines sit as the knobs do on the panel. With no card readable, the `CAP`
+line shows the reason instead — `mount`, `no captures`, `bad crc` — so a card problem
+reads as a card problem rather than a dead engine.
+
+The `T`/`M` line exists because the pot scaling is **not confirmed**. libDaisy inits
 CV_1–CV_8 alike as bipolar while the pots are wired 0–5 V, so what a knob actually spans
 is unknown until it is seen. The summing here is exactly what `daisy_multifx_oled` does
 and is known to work on this unit, so it stays — but **if there is no sound, read that
-line before suspecting anything else.** `L` at 0.0 with the knob turned up is the whole
+line before suspecting anything else.** `M` at 0.0 with the knob turned up is the whole
 explanation, and the fix is four lines in `main.cpp`, not in the engine.
 
 **HPF** — the bench check 2 page. AC coupling is settled; this measures the *corner*. Send

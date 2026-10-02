@@ -637,13 +637,21 @@ static void DrawRunPage()
     if(w > 0)
         display.FillRect(1, 10, w > 62 ? 62 : w, 5, true);
 
-    snprintf(line, sizeof(line), "CPU %2d%%",
-             (int)(cpu_meter.GetAvgCpuLoad() * 100.f + 0.5f));
+    // CPU load, average with the peak in brackets: "CPU 64(99)". David asked for
+    // "CPU 64% (99%)", but at six pixels a character the panel holds ten, so the
+    // percent signs go. Both clamped to two digits so the line never overruns.
+    const int cpu_avg = (int)(cpu_meter.GetAvgCpuLoad() * 100.f + 0.5f);
+    const int cpu_max = (int)(cpu_meter.GetMaxCpuLoad() * 100.f + 0.5f);
+    snprintf(line, sizeof(line), "CPU %2d(%2d)", cpu_avg > 99 ? 99 : cpu_avg, cpu_max > 99 ? 99 : cpu_max);
     display.DrawString(0, 18, line, false);
 
-    snprintf(line, sizeof(line), "MAX %2d%%",
-             (int)(cpu_meter.GetMaxCpuLoad() * 100.f + 0.5f));
-    display.DrawString(0, 26, line, false);
+    // The two knob lines below sit as the knobs do on the panel: knobs 1 and 2
+    // (trim, mix) on the top row, so their line comes first; knobs 3 and 4 (slot,
+    // steer) on the bottom row, so the slot/steer line comes last.
+    // Raw knob reads. Ten characters is the panel budget, so they share a line.
+    snprintf(line, sizeof(line), "T%+.1fM%+.1f",
+             (double)g_trim_raw, (double)g_mix_raw);
+    display.DrawString(0, 34, line, false);
 
     // Which capture, out of how many the card turned up. With no card this
     // shows the reason instead, so "no captures" or "mount" reads as a card
@@ -673,11 +681,6 @@ static void DrawRunPage()
         snprintf(line, sizeof(line), "CAP -/%d", n_caps);
     else
         snprintf(line, sizeof(line), "%.10s", captures::Status());
-    display.DrawString(0, 34, line, false);
-
-    // Raw knob reads. Ten characters is the panel budget, so they share a line.
-    snprintf(line, sizeof(line), "T%+.1fM%+.1f",
-             (double)g_trim_raw, (double)g_mix_raw);
     display.DrawString(0, 42, line, false);
 }
 
