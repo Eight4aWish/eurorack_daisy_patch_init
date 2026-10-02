@@ -1,5 +1,5 @@
 /**
- * NEURAL — neural audio networks on the Patch SM
+ * MIRTH — neural amp captures, and not-amps, on the Patch SM (folder: daisy_neural)
  *
  * Phase 1 skeleton: the signal chain, controls, metering and display that the
  * NAM A2 engine drops into, with the engine slot running as a straight
@@ -21,9 +21,17 @@
  *   CV_3 (+ CV_7 jack)   slot within the current bank
  *   CV_4 (+ CV_8 jack)   STEER — the not-amp's one control (not-amps bank only)
  *   B7 short press       bypass on/off, to A/B the engine against the dry input
- *   B7 long press        change page, RUN <-> DC (600 ms)
- *   B7 longer press      change bank, AMPS <-> NOT-AMPS (1.5 s)
+ *   B7 held 1.5 s        change bank, AMPS <-> NOT-AMPS
  *   CV_OUT_2 LED         lit when the engine is in circuit, dark when bypassed
+ *
+ * MIRTH LITE (make LITE=1, for a stock patch.init with no OLED):
+ *   B8 toggle            bank: down AMPS, up NOT-AMPS (as Joy Lite's toggle)
+ *   B7 short press       bypass on/off
+ *   B7 held 0.6 s        re-blink the current slot number
+ *   CV_OUT_2 LED         the slot number blinks when the slot or bank changes —
+ *                        a long blink is five, so 12 is long-long-short-short —
+ *                        then lit (engine in) or dark (bypassed). A fast flicker
+ *                        that never stops: no captures on the card.
  *
  * Two banks. AMPS: the captures on the card, played exactly as captured; the
  * steer knob does nothing there, on purpose. NOT-AMPS: twelve starter captures,
@@ -44,7 +52,9 @@
 
 #include "daisy_patch_sm.h"
 #include "daisysp.h"
+#if !MIRTH_LITE
 #include "oled_soft_i2c.h"
+#endif
 #include "capture_store.h"
 #include "notamps.h"
 #include <cmath>
@@ -180,7 +190,11 @@ class EngineSlot
 // Hardware and state
 // ================================================================
 DaisyPatchSM  patch;
+#if !MIRTH_LITE
 oled::SSD1306 display;
+#else
+Switch        bank_toggle;  // B8
+#endif
 Switch        nav_btn;
 CpuLoadMeter  cpu_meter;
 
@@ -195,33 +209,16 @@ CpuLoadMeter  cpu_meter;
 // occupies 80% of DTCMRAM instead. The build's region table is the only tell.
 NAM_A2_STATE_DATA EngineSlot engine;
 
-enum class Page
-{
-    Run = 0,
-    Dc,
-};
-
-static Page         g_page          = Page::Run;
 static bool         g_bypass        = false;
 static bool         g_display_dirty = true;
 
 // Metering, written in the audio ISR and read by the UI loop. Single writer,
 // single reader, and a torn float here would only flicker one frame.
 static volatile float g_in_peak = 0.f;  // block peak, |x|, for the RUN meter
-static volatile float g_in_dc   = 0.f;  // heavily smoothed signed input, DC page
-static volatile float g_dc_min  = 0.f;
-static volatile float g_dc_max  = 0.f;
 
-// Reference leg of the HPF measurement: the same LFO into CV_5, which is a
-// DC-coupled ±5V jack, so it shows what the signal is actually doing. Without
-// it a collapsed audio span is ambiguous — AC coupling and an unplugged cable
-// look identical. Read at block rate, which is plenty for a sub-1Hz LFO.
-static volatile float g_cv_dc  = 0.f;
-static volatile float g_cv_min = 0.f;
-static volatile float g_cv_max = 0.f;
-
-// One-pole coefficient for the DC reading, set in main() for ~50 ms.
-static float g_dc_coeff = 0.f;
+// MIRTH LITE's LED: a blink request (the slot number), set from the callback or the
+// main loop and rendered by the main loop.
+static volatile int g_blink_request = -1;
 
 // Raw knob reads, shown on the RUN page so unconfirmed pot scaling is visible
 // rather than mysterious. See the note in the audio callback.
@@ -299,19 +296,12 @@ static inline void SetLed(bool on)
     patch.WriteCvOut(CV_OUT_2, on ? kLedVolts : 0.0f);
 }
 
-static void ResetDcHold()
-{
-    g_dc_min  = 0.f;
-    g_dc_max  = 0.f;
-    g_cv_min  = 0.f;
-    g_cv_max  = 0.f;
-}
 
 // ================================================================
 // Controls
 // ================================================================
-static constexpr uint32_t kLongPressMs = 600;
-static constexpr uint32_t kBankPressMs = 1500;
+static constexpr uint32_t kLongPressMs = 600;   // LITE: re-blink
+static constexpr uint32_t kBankPressMs = 1500;  // OLED build: change bank
 
 static bool     g_btn_held        = false;
 static uint32_t g_btn_press_start = 0;
@@ -320,6 +310,11 @@ static void ProcessNav()
 {
     nav_btn.Debounce();
     const uint32_t now = System::GetNow();
+#if MIRTH_LITE
+    // The bank follows the toggle, live.
+    bank_toggle.Debounce();
+    g_bank = bank_toggle.Pressed() ? Bank::NotAmps : Bank::Amps;
+#endif
 
     if(nav_btn.Pressed())
     {
@@ -340,17 +335,15 @@ static void ProcessNav()
     const uint32_t dur = now - g_btn_press_start;
     g_btn_held         = false;
 
-    if(dur >= kBankPressMs)
-    {
-        g_bank = (g_bank == Bank::Amps) ? Bank::NotAmps : Bank::Amps;
-    }
-    else if(dur >= kLongPressMs)
-    {
-        g_page = (g_page == Page::Run) ? Page::Dc : Page::Run;
-        if(g_page == Page::Dc)
-            ResetDcHold();
-    }
+#if MIRTH_LITE
+    if(dur >= kLongPressMs)
+        g_blink_request = SlotIndex(g_active) + 1;
     else
+#else
+    if(dur >= kBankPressMs)
+        g_bank = (g_bank == Bank::Amps) ? Bank::NotAmps : Bank::Amps;
+    else
+#endif
     {
         g_bypass = !g_bypass;
         SetLed(!g_bypass);
@@ -460,7 +453,6 @@ void AudioCallback(AudioHandle::InputBuffer  in,
     }
 
     float peak = 0.f;
-    float dc   = g_in_dc;
 
     // Metering and trim first, over the whole block, because the engine wants
     // a contiguous 48 samples rather than one at a time.
@@ -477,9 +469,6 @@ void AudioCallback(AudioHandle::InputBuffer  in,
         const float a = fabsf(x);
         if(a > peak)
             peak = a;
-
-        // Slow one-pole, for watching a sub-1Hz LFO on the DC page.
-        dc += g_dc_coeff * (x - dc);
 
         scratch[i] = x * trim;
     }
@@ -538,20 +527,6 @@ void AudioCallback(AudioHandle::InputBuffer  in,
     }
 
     g_in_peak = peak;
-    g_in_dc   = dc;
-
-    if(dc < g_dc_min)
-        g_dc_min = dc;
-    if(dc > g_dc_max)
-        g_dc_max = dc;
-
-    // Reference leg: CV_5, a DC-coupled bipolar jack, block-rate.
-    const float cv = patch.GetAdcValue(CV_5);
-    g_cv_dc        = cv;
-    if(cv < g_cv_min)
-        g_cv_min = cv;
-    if(cv > g_cv_max)
-        g_cv_max = cv;
 
     cpu_meter.OnBlockEnd();
 }
@@ -620,6 +595,7 @@ static bool SwapSlot(int slot)
 // ================================================================
 // Display
 // ================================================================
+#if !MIRTH_LITE
 static void DrawRunPage()
 {
     char line[32];
@@ -684,53 +660,53 @@ static void DrawRunPage()
     display.DrawString(0, 34, line, false);
 }
 
-static void DrawDcPage()
-{
-    char line[24];
-
-    // The audio input is AC-coupled inside the Patch SM (the carrier wires the
-    // jacks straight through — see patch_init_schematic.pdf), so this page is
-    // not asking "is it AC?" but "where is the corner?".
-    //
-    // Send the same LFO to IN_L and to CV_5, sweep its frequency, and read RAT:
-    // the audio span divided by the CV span. CV_5 is DC-coupled so its span is
-    // the truth. RAT near 1.00 means the audio input is passing that frequency
-    // intact; RAT near 0.71 is the -3dB corner. That frequency is what sets the
-    // crossover for phase 5's split-path CV.
-    display.DrawString(0, 0, "HPF TEST", false);
-
-    snprintf(line, sizeof(line), "IN %+5.2f", (double)g_in_dc);
-    display.DrawString(0, 9, line, false);
-
-    const float in_span = g_dc_max - g_dc_min;
-    snprintf(line, sizeof(line), "SPN %4.2f", (double)in_span);
-    display.DrawString(0, 17, line, false);
-
-    snprintf(line, sizeof(line), "CV %+5.2f", (double)g_cv_dc);
-    display.DrawString(0, 25, line, false);
-
-    const float cv_span = g_cv_max - g_cv_min;
-    snprintf(line, sizeof(line), "CVS %4.2f", (double)cv_span);
-    display.DrawString(0, 33, line, false);
-
-    // Guarded: with no LFO on CV_5 the reference span is zero, and a ratio
-    // against nothing is worse than no reading at all.
-    if(cv_span > 0.02f)
-        snprintf(line, sizeof(line), "RAT %4.2f", (double)(in_span / cv_span));
-    else
-        snprintf(line, sizeof(line), "RAT  --");
-    display.DrawString(0, 41, line, false);
-}
-
 static void UpdateDisplay()
 {
     display.Clear();
-    if(g_page == Page::Run)
-        DrawRunPage();
-    else
-        DrawDcPage();
+    DrawRunPage();
     display.Update();
 }
+#else
+// MIRTH LITE's only display. A blink request becomes a pattern — a long blink per
+// five, then a short per one — after which the LED shows the engine state again.
+static void RenderLed(uint32_t now)
+{
+    static uint16_t pat[48];  // on/off durations, ms
+    static int      n = 0, i = 0;
+    static uint32_t next = 0;
+
+    if(captures::Count() == 0)  // nothing to play: flicker, and never stop
+    {
+        SetLed((now / 100) & 1);
+        return;
+    }
+    const int req = g_blink_request;
+    if(req >= 0)
+    {
+        g_blink_request = -1;
+        n = 0;
+        for(int k = 0; k < req / 5 && n < 46; k++) { pat[n++] = 600; pat[n++] = 250; }
+        for(int k = 0; k < req % 5 && n < 46; k++) { pat[n++] = 140; pat[n++] = 160; }
+        if(n == 0) { pat[n++] = 40; pat[n++] = 400; }  // a 0 (none loaded): one blip
+        pat[n++] = 0;  // end marker pair: pause before the steady state
+        pat[n++] = 500;
+        i    = 0;
+        next = now;
+        SetLed(false);
+    }
+    if(i < n)
+    {
+        if((int32_t)(now - next) >= 0)
+        {
+            SetLed((i % 2) == 0 && pat[i] > 0);
+            next = now + pat[i];
+            i++;
+        }
+        return;
+    }
+    SetLed(!g_bypass);
+}
+#endif
 
 // ================================================================
 // main
@@ -741,6 +717,16 @@ int main(void)
     const float sr = patch.AudioSampleRate();
 
     nav_btn.Init(patch.B7, sr, Switch::TYPE_MOMENTARY, Switch::POLARITY_INVERTED);
+#if MIRTH_LITE
+    bank_toggle.Init(patch.B8, patch.AudioCallbackRate(), Switch::TYPE_TOGGLE, Switch::POLARITY_NORMAL);
+    for(int i = 0; i < 40; i++)  // settle the debounce, then start in the toggle's bank
+    {
+        patch.ProcessAllControls();
+        bank_toggle.Debounce();
+        System::Delay(1);
+    }
+    g_bank = bank_toggle.Pressed() ? Bank::NotAmps : Bank::Amps;
+#endif
 
     patch.StartDac();
 
@@ -757,13 +743,10 @@ int main(void)
         g_want = g_active;
     }
 
-    // ~50 ms one-pole for the DC reading: slow enough to be readable, fast
-    // enough to follow a sub-1Hz LFO without lagging it.
-    g_dc_coeff = 1.f - expf(-1.f / (0.05f * sr));
-
+#if !MIRTH_LITE
     display.Init(patch.A2, patch.A3);
     display.Clear();
-    display.DrawStringCentered(4, "NEURAL", false);
+    display.DrawStringCentered(4, "MIRTH", false);
     display.DrawStringCentered(18, engine.Name(), false);
     {
         char line[24];
@@ -772,6 +755,7 @@ int main(void)
     }
     display.Update();
     System::Delay(1000);
+#endif
 
     SetLed(!g_bypass);
 
@@ -795,14 +779,22 @@ int main(void)
             }
             g_xf            = Xf::FadeIn;
             g_display_dirty = true;
+#if MIRTH_LITE
+            g_blink_request = g_active >= 0 ? SlotIndex(g_active) + 1 : 0;  // the new slot's number
+#endif
         }
 
         const uint32_t now = System::GetNow();
+#if MIRTH_LITE
+        (void)next_frame;
+        RenderLed(now);
+#else
         if(now >= next_frame || g_display_dirty)
         {
             next_frame      = now + 50;  // 20 fps; the soft I2C write is slow
             g_display_dirty = false;
             UpdateDisplay();
         }
+#endif
     }
 }

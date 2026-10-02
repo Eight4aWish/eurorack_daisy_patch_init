@@ -20,9 +20,10 @@ number is recorded.
 
 **Sets final, 2026-10-02.** After four bench sessions David called the twelve amps and the
 twelve not-amps settled and the firmware good enough for the video and for sharing.
-Release still needs: a build without the capture header (no T3K fallback in the `.bin`),
-the rename to Mirth, the HPF bench page removed, and the starter captures packaged with
-credits for the eight CC-BY ones.
+Done the same day: the rename (`mirth.bin`, MIRTH on the splash), the HPF bench page
+removed, and **Mirth Lite** (`make LITE=1`). Release still needs builds without the capture
+header (no T3K fallback in either `.bin`), and the starter captures packaged with credits
+for the eight CC-BY ones.
 
 **Two banks since 2026-09-29: AMPS and NOT-AMPS.** The random-seed slot came out: every
 seed was a variation on one "evil cello". Since 2026-10-02 NOT-AMPS holds twelve *not-amps*,
@@ -36,10 +37,9 @@ Two things, and the second is the reason it exists this early:
 1. **Runs NAM A2 captures off the card** — five of them, chosen with CV_3 — with input
    trim, output level, bypass for A/B against the dry input, an input peak meter for
    setting the trim, and a CPU load readout. Recording that CPU figure closes phase 1.
-2. **Phase 0 bench check 2** — bypass on turns it into the pass-through the brief asks
-   for, and the HPF page measures the audio input's high-pass corner. That the input is
-   AC-coupled is already settled; the corner frequency is not, and it decides where
-   phase 5 has to split audio-rate CV between a CV jack and an audio jack.
+2. ~~Phase 0 bench check 2~~ — the HPF page that measured the audio input's high-pass
+   corner was removed for release on 2026-10-02, never having been run. The corner still
+   decides where phase 5 splits audio-rate CV; the page is in git history at `f7b2509`.
 
 ## Signal path
 
@@ -66,13 +66,28 @@ samples late; the dry side is delayed by the same amount while one plays.
 | **CV_3** (+ CV_7 jack) | Slot within the current bank |
 | **CV_4** (+ CV_8 jack) | **STEER** — the not-amp's one control. Does nothing in AMPS, on purpose |
 | **B7** short press | Bypass on/off |
-| **B7** long press (600 ms) | Change page, RUN ↔ HPF |
-| **B7** longer press (1.5 s) | Change bank, AMPS ↔ NOT-AMPS |
+| **B7** held 1.5 s | Change bank, AMPS ↔ NOT-AMPS |
 | **CV_OUT_2** LED | Lit when the engine is in circuit, dark when bypassed |
 
 The trim exists so the signal can be set to the level the capture was trained at, which is
 why the peak meter reads the input *before* the trim rather than after. Free for later:
 Gate In 1 and 2, Gate Out, CV_OUT_1.
+
+### Mirth Lite — a stock patch.init, no screen
+
+`make LITE=1` → `build_lite/mirth_lite.bin`. Same source (`MIRTH_LITE`), same engine,
+captures, not-amps and knobs; no OLED code at all. The B8 toggle is still fitted on a
+stock unit, so it takes the bank, which frees B7's long hold:
+
+| Control | Mirth Lite |
+|---|---|
+| **B8** toggle | bank — down AMPS, up NOT-AMPS (Joy Lite's toggle sense) |
+| **B7** short press | bypass on/off |
+| **B7** held 0.6 s | re-blink the current slot number |
+| **LED** | blinks the slot number on a slot or bank change, then lit (engine in) or dark (bypassed). A **long blink is five**: 3 is short-short-short, 12 is long-long-short-short. A fast flicker that never stops: no captures on the card |
+
+Untested on hardware: David's Mirth is the OLED unit, whose B8 is gone. On it a Lite build
+would sit in AMPS (an absent toggle reads down) with the LED working — a partial test.
 
 ## Pages
 
@@ -97,14 +112,6 @@ and is known to work on this unit, so it stays — but **if there is no sound, r
 line before suspecting anything else.** `M` at 0.0 with the knob turned up is the whole
 explanation, and the fix is four lines in `main.cpp`, not in the engine.
 
-**HPF** — the bench check 2 page. AC coupling is settled; this measures the *corner*. Send
-one LFO to both IN_L and CV_5, and read `RAT` — the audio span over the CV span. CV_5 is
-DC-coupled so its span is the truth, so RAT is the audio input's response at that
-frequency: 1.00 passes intact, 0.71 is the −3dB corner. Holds reset on entering the page.
-
-The CV leg is there to disambiguate: without it, a collapsed audio span could equally
-mean AC coupling or an unplugged cable.
-
 ## Hardware
 
 - **Electrosmith Patch.Init()** (commercial unit, not a hand-built module)
@@ -116,8 +123,11 @@ mean AC coupling or an unplugged cable.
 
 ```sh
 cd daisy_neural
-make
+make            # Mirth, the OLED module   -> build/mirth.bin
+make LITE=1     # Mirth Lite, no screen    -> build_lite/mirth_lite.bin
 ```
+
+Each builds in its own folder, so the two never share objects.
 
 Builds `BOOT_SRAM` by default. That needs the Daisy bootloader on the unit — a one-off,
 installed with `make program-boot` or the Electrosmith web programmer.
@@ -168,7 +178,7 @@ cannot write QSPI, so BOOT+RESET is the wrong mode for `make flash`.
 
 **Or skip USB: update from the card.** The bootloader checks the card root for a `.bin` at
 every boot and flashes it when it differs from what is installed. Copy
-`build/daisy_neural.bin` to the card (then `rm /Volumes/DAISY/._*`), put it in, power-cycle. Keep exactly one
+`build/mirth.bin` (or `build_lite/mirth_lite.bin`) to the card (then `rm /Volumes/DAISY/._*`), put it in, power-cycle. Keep exactly one
 `.bin` in the root — the bootloader takes the first it finds — and leave it there; it is
 not re-flashed while unchanged. This is the easier route for iterating.
 
@@ -237,8 +247,8 @@ whenever the linker setup or the engine object is touched**:
    header only defines the macro; placement is the caller's job, as bkshepherd's own
    module shows.
 
-If flash ever gets tight again, dropping `-u _printf_float` and formatting the HPF page
-with integer maths is the largest single saving.
+If flash ever gets tight again, dropping `-u _printf_float` and formatting the RUN page
+with integer maths is the largest single saving (Mirth Lite formats nothing).
 
 ## The not-amps
 
@@ -636,9 +646,7 @@ In rough order, because each answers something the next depends on:
      would mean the dry delay is not lining up.
    - Each not-amp across its steer, then with CV on CV_8; the feedback ones at full steer
      for runaway.
-4. **Bench check 2**, while the unit is out: bypass on, one LFO to both IN_L and CV_5, long-press
-   to the HPF page, sweep the LFO and find where RAT hits 0.71. Record the corner in
-   [CLAUDE.md](CLAUDE.md) under Hardware.
+4. ~~Bench check 2~~ — dropped with the HPF page (2026-10-02); see "What it does today".
 
 If the trim range or the meter ballistics turn out wrong in use, those are one-line
 changes.

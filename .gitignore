@@ -3,6 +3,7 @@
 
 # Build output (generated)
 **/build/**
+**/build_lite/**
 
 # Common embedded outputs
 *.o

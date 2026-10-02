@@ -1,5 +1,12 @@
-# Project Name
-TARGET = daisy_neural
+# Project Name. `make` builds Mirth (the OLED module); `make LITE=1` builds Mirth Lite,
+# for a stock patch.init with no screen: the B8 toggle picks the bank and the LED
+# blinks the slot number. One source (src/main.cpp, MIRTH_LITE), two builds, kept in
+# separate build folders so their objects never mix.
+ifeq ($(LITE),1)
+TARGET    = mirth_lite
+else
+TARGET    = mirth
+endif
 
 # Library Locations
 PROJECT_MAKEFILE := $(abspath $(lastword $(MAKEFILE_LIST)))
@@ -19,13 +26,23 @@ include $(COMMON_MK)
 LIBDAISY_DIR ?= $(DAISY_ROOT)/libDaisy
 DAISYSP_DIR  ?= $(DAISY_ROOT)/DaisySP
 
-# Build directory
+# Build directory. A Lite build must never reuse the OLED build's objects (its main.o
+# calls a display it does not link). libDaisy's core Makefile, included below, sets
+# BUILD_DIR unconditionally, so this needs `override` to stick.
+ifeq ($(LITE),1)
+override BUILD_DIR := build_lite
+else
 BUILD_DIR ?= build
+endif
 
 # Sources
 CPP_SOURCES = src/main.cpp \
-              src/capture_store.cpp \
-              $(_P_UP1)/common/oled_soft_i2c.cpp
+              src/capture_store.cpp
+ifeq ($(LITE),1)
+C_DEFS += -DMIRTH_LITE=1
+else
+CPP_SOURCES += $(_P_UP1)/common/oled_soft_i2c.cpp
+endif
 
 # FatFS long-filename support. libDaisy compiles ff.c with LFN enabled but does
 # not build the code-page table it needs, so anything that walks a directory
