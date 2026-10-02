@@ -651,10 +651,10 @@ static void DrawRunPage()
     // Raw knob reads. Ten characters is the panel budget, so they share a line.
     snprintf(line, sizeof(line), "T%+.1fM%+.1f",
              (double)g_trim_raw, (double)g_mix_raw);
-    display.DrawString(0, 34, line, false);
+    display.DrawString(0, 26, line, false);
 
-    // Which capture, out of how many the card turned up. With no card this
-    // shows the reason instead, so "no captures" or "mount" reads as a card
+    // Which capture (AMP3) or which not-amp and its steer (NT03 S0.42), labels
+    // from David, 2026-10-02. With no card this shows the reason instead, so "no captures" or "mount" reads as a card
     // problem rather than looking like a dead engine.
     // Clamped before formatting: both are bounded by kMaxFiles in practice, but
     // the compiler cannot see that across a translation unit and warns that a
@@ -667,21 +667,21 @@ static void DrawRunPage()
         // A not-amp: which one of how many, and where the steer sits, since
         // the steer is the not-amp's whole character.
         const int k = SlotIndex(g_active) + 1;
-        snprintf(line, sizeof(line), "N%d S%.2f", k > 99 ? 99 : k, (double)g_steer);
+        snprintf(line, sizeof(line), "NT%02d S%.2f", k > 99 ? 99 : k, (double)g_steer);
     }
     else if(g_bank == Bank::NotAmps && n_caps > 0)
         // Asked for the not-amps but still on an amp: a not-amp failed to load,
         // usually because a capture it is built from is missing from the card.
         snprintf(line, sizeof(line), "N need cap");
     else if(n_caps > 0 && shown > 0)
-        snprintf(line, sizeof(line), "CAP %d/%d", shown, n_caps);
+        snprintf(line, sizeof(line), "AMP%d", shown);
     else if(n_caps > 0)
         // Card present but the fallback is playing — a load failed. The name
         // line already carries the trailing * that marks the compiled-in one.
-        snprintf(line, sizeof(line), "CAP -/%d", n_caps);
+        snprintf(line, sizeof(line), "AMP -");
     else
         snprintf(line, sizeof(line), "%.10s", captures::Status());
-    display.DrawString(0, 42, line, false);
+    display.DrawString(0, 34, line, false);
 }
 
 static void DrawDcPage()

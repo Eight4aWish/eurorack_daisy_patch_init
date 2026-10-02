@@ -78,10 +78,10 @@ Gate In 1 and 2, Gate Out, CV_OUT_1.
 | meter | the input peak, before the trim |
 | `CPU 64(99)` | average CPU load, with the peak in brackets (no `%`: the panel holds ten characters) |
 | `T+0.5M+0.8` | the raw reads of knobs 1 and 2 — trim and mix, the panel's top row |
-| `CAP 2/17` or `N3 S0.42` | knobs 3 and 4 — which capture, or which not-amp and where its steer sits; the bottom row |
+| `AMP2` or `NT03 S0.42` | knobs 3 and 4 — which capture, or which not-amp and where its steer sits; the bottom row |
 
-The two knob lines sit as the knobs do on the panel. With no card readable, the `CAP`
-line shows the reason instead — `mount`, `no captures`, `bad crc` — so a card problem
+The lines run on without a gap, and the two knob lines sit as the knobs do on the panel.
+With no card readable, the `AMP` line shows the reason instead — `mount`, `no captures`, `bad crc` — so a card problem
 reads as a card problem rather than a dead engine.
 
 The `T`/`M` line exists because the pot scaling is **not confirmed**. libDaisy inits
