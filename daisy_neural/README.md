@@ -366,7 +366,9 @@ per capture (`--combine --family-cap 3`; a cap of two stopped at ten):
 | rate ÷ on Bugera G5 | 2.6× | sub-octave bass synth |
 | past a partner on Bluesbreaker | 2.2× | sub-octave bass synth |
 
-Audition: `amp_compare/notamp_search/audition.wav` (gitignored). Measured, not yet heard.
+Audition: `amp_compare/notamp_search/audition.wav` (gitignored). **Heard and approved by David,
+2026-10-02:** every one has zones where it does not sound like a guitar amp. These replace the
+nine; next is firmware, with level tables measured per not-amp as before.
 
 ## Getting more captures
 
