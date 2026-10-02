@@ -165,7 +165,7 @@ static daisy::CpuLoadMeter cpu;
 // click log below to hostlink-cli and the web programmer's Device console:
 //   node deps/alchemy-sdk/tools/hostlink-cli/hostlink.mjs -p /dev/cu.usbmodem<serial> watch
 // On macOS use the cu.* node; the CLI's tty.* default blocks on open.
-static hostlink::Host        host("secret", "Secret", "0.1.0", SECRET_GIT_HASH);
+static hostlink::Host        host("secret", "Secret", "1.0.0", SECRET_GIT_HASH);
 static hostlink::Diagnostics debug;
 
 static hostlink::Gauge<float>    g_cpuAvg ("cpu.avg",   "CPU average");
