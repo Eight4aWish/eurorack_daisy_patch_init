@@ -242,13 +242,13 @@ ear — "The measured search" below has the numbers.
 | `LINEAR TRY` | Traynor TS 120 B | the same | the same |
 | `RECT ORG` | Orange TH100 | the same, the other way | slope, 0.01 → −1 (full-wave rectifying) |
 | `FB100 F57` | Fender 57 | output fed back after 480 samples (100 Hz) | loop gain, 0 → 0.95 |
-| `FB PCH PLX` | pLEXI-LORE | output fed back at gain 0.8 | loop delay — the pitch — 48 → 1,200 samples (log) |
 | `FRZ E TR` | Two Rock | layer 3's output held | hold, 1 → 1,024 samples (log) |
 | `FRZ M F57` | Fender 57 | layer 11's output held | the same |
 | `FRZ M KAY` | Kay 703 | the same | the same |
 | `FOLD ORG` | Orange TH100 | a triangle fold inside layer 11 | threshold, 1 → 0.05 (log); a flat +24 dB level correction |
 | `RATE SVT` | SVT-2 Pro | the engine at 1/R of the sample rate, held back up | R = 1, 2, 3, 4, 6 (stepped) |
 | `PAST BLU` | Bluesbreaker | weights pushed past it, away from the Bugera G5 | how far past, 1.0 → 1.3× |
+| `PAST PLX` | pLEXI-LORE | weights pushed past it, away from the SVT-2 Pro | the same |
 
 They find their captures on the card by name — the starter set, which ships with Mirth
 (CC0 / CC-BY) — so a missing one shows `N need cap`. The RUN page shows `N3 S0.42`:
@@ -283,6 +283,14 @@ feedback pair's idle output is a tone, and passes). The same investigation found
 output blocker removes, so its knob got ~38 dB quieter toward the top, PAST BLU ~20 dB.
 The tables are now measured after a replica of the firmware's DC blocker. FB PCH PLX
 "has some feedback" — by design; it self-oscillates with no input.
+
+**Third bench session, 2026-10-02.** FB PCH PLX's feedback grated: replaced by PAST PLX,
+the next noise-screened pick. RATE SVT had "a constant tone" — **a firmware bug**, not the
+not-amp: the rate streamer wrote each output sample before reading the input sample in the
+same place, and the firmware processes in place, so the output was fed back as input and
+sustained a tone (−11 dBFS out of silence on the Mac, once the harness processed in place).
+Almost certainly RATE BUG's "tone past 0.12" too. Fixed, and `a2_notamp` now processes in
+place like the firmware; RATE SVT kept for one more listen.
 
 **The activation is a firmware choice.** `nam/nam_a2_runtime.h` compiles each activation
 — as trained, a variable slope, a sine — as its own copy of the layer kernels, chosen once

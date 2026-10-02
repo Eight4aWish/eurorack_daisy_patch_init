@@ -8,11 +8,15 @@ They replace the nine of 2026-09-29. After the first bench session the same day,
 KAY (feedback that grated) and RATE BUG (a tone imposed at every reduced rate) were
 replaced by the search's next picks around the other ten: RECT ORG and FOLD ORG. After
 the second, SINE PLX (a noise amplifier: faint input noise came out as loud as playing)
-gave way to LINEAR TRY, the next pick that passes the noise screen.
+gave way to LINEAR TRY, the next pick that passes the noise screen. After the third,
+FB PCH PLX (feedback that grated) gave way to PAST PLX. RATE SVT's "constant tone" was a
+firmware bug, not the not-amp: the rate streamer wrote each output over its input before
+reading it, feeding output back as input; a2_notamp now processes in place, as the
+firmware does, so this check catches that class of bug.
 
 For each not-amp this:
   1. renders it through the firmware's own processor (tools/a2_notamp, which runs
-     src/notamp_dsp.h) and through the search harness it was chosen with
+     src/notamp_dsp.h in place, as the firmware does) and through the search harness it was chosen with
      (tools/a2_explore), and checks they agree — bit for bit, except RATE, which the
      firmware streams with 48·R samples of latency, so it is compared shifted;
   2. measures its output level at nine steer positions, relative to its source
@@ -55,13 +59,13 @@ TWELVE = [
     ("LINEAR TRY", "slope",   "TRAYNOR",    None,        0.01, 1.0,  False, 0,  0.0),
     ("RECT ORG",   "slope",   "ORANGE TH",  None,        0.01, -1.0, False, 0,  0.0),
     ("FB100 F57",  "fbgain",  "FENDER 57",  None,        0.0,  0.95, False, 0,  480.0),
-    ("FB PCH PLX", "fbpitch", "PLEXI LORE", None,        48.0, 1200.0, True, 0, 0.8),
     ("FRZ E TR",   "freeze",  "TWO ROCK",   None,        1.0,  1024.0, True, 3, 0.0),
     ("FRZ M F57",  "freeze",  "FENDER 57",  None,        1.0,  1024.0, True, 11, 0.0),
     ("FRZ M KAY",  "freeze",  "KAY 703",    None,        1.0,  1024.0, True, 11, 0.0),
     ("FOLD ORG",   "fold",    "ORANGE TH",  None,        1.0,  0.05, True,  11, 0.0),
     ("RATE SVT",   "rate",    "SVT-2 PRO",  None,        1.0,  6.0,  False, 0,  0.0),
     ("PAST BLU",   "morph",   "BUGERA G5",  "BLUESBRKR", 1.0,  1.3,  False, 0,  0.0),
+    ("PAST PLX",   "morph",   "SVT-2 PRO",  "PLEXI LORE", 1.0, 1.3,  False, 0,  0.0),
 ]
 RATE_STEPS = [1, 2, 3, 4, 6]
 KIND_ENUM = {"sine": "Sine", "slope": "Slope", "freeze": "Freeze", "fold": "Fold", "morph": "Morph",

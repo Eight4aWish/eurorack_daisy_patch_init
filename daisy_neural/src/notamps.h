@@ -20,8 +20,6 @@ constexpr Def kDefs[] = {
      {-0.00f, 2.75f, 5.71f, 9.76f, 9.14f, 3.75f, -0.54f, -3.08f, -5.37f}},
     {"FB100 F57", Kind::FbGain, "FENDER 57", nullptr, "FENDER 57", 0.0f, 0.95f, false, 0, 480.0f,
      {-0.00f, -1.04f, -0.94f, -1.00f, -1.08f, -1.22f, -1.34f, -1.35f, -1.42f}},
-    {"FB PCH PLX", Kind::FbPitch, "PLEXI LORE", nullptr, "PLEXI LORE", 48.0f, 1200.0f, true, 0, 0.8f,
-     {-0.86f, -0.45f, -0.41f, -0.30f, -0.21f, -0.47f, -0.35f, -0.39f, -0.38f}},
     {"FRZ E TR", Kind::Freeze, "TWO ROCK", nullptr, "TWO ROCK", 1.0f, 1024.0f, true, 3, 0.0f,
      {-0.00f, -0.00f, -0.00f, -0.02f, -0.02f, 0.15f, 1.35f, 8.41f, 7.47f}},
     {"FRZ M F57", Kind::Freeze, "FENDER 57", nullptr, "FENDER 57", 1.0f, 1024.0f, true, 11, 0.0f,
@@ -34,6 +32,8 @@ constexpr Def kDefs[] = {
      {-0.00f, 2.99f, 2.99f, 2.39f, 2.39f, 1.56f, 1.56f, 3.15f, 3.15f}},
     {"PAST BLU", Kind::Morph, "BUGERA G5", "BLUESBRKR", "BLUESBRKR", 1.0f, 1.3f, false, 0, 0.0f,
      {0.00f, -1.90f, -3.52f, -4.72f, -5.40f, -5.44f, -4.86f, -4.43f, -4.35f}},
+    {"PAST PLX", Kind::Morph, "SVT-2 PRO", "PLEXI LORE", "PLEXI LORE", 1.0f, 1.3f, false, 0, 0.0f,
+     {0.00f, -0.27f, 1.33f, 3.42f, 0.82f, -3.03f, -8.21f, -16.10f, -26.68f}},
 };
 constexpr int kCount = (int)(sizeof(kDefs) / sizeof(kDefs[0]));
 } // namespace notamps

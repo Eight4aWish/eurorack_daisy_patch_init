@@ -17,6 +17,7 @@
 #define NAM_A2_STATE_DATA
 #define NAM_A2_HOT_STATE_DATA
 #include "notamp_dsp.h"
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -93,8 +94,11 @@ int main(int argc, char** argv)
     {
         const float u = blocks > 1 ? u0 + (u1 - u0) * (float)b / (float)(blocks - 1) : u0;
         na.Apply(u, w.data(), [&](const float* nw) { load_weights(player.weights(), nw, w.size()); });
-        na.Process(in.data() + b * Bk, out.data() + b * Bk,
-                   [&](const float* x, float* y) { player.process_block_48(x, y); });
+        // In place, as the firmware calls it (EngineSlot::ProcessBlock(scratch, scratch)):
+        // the output overwrites the input buffer. Separate buffers hid a bug here once.
+        float* blk = out.data() + b * Bk;
+        std::copy(in.data() + b * Bk, in.data() + (b + 1) * Bk, blk);
+        na.Process(blk, blk, [&](const float* x, float* y) { player.process_block_48(x, y); });
     }
 
     FILE* f = fopen(argv[4], "wb");

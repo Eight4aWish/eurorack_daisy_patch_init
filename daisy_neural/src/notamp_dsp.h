@@ -166,12 +166,17 @@ class Processor
             // An output comes out 48·R samples after its input — see Latency().
             // Output before input, so a block's first output lands exactly 48·R
             // samples after its first input — the latency the dry side assumes.
+            // x and y may be the same buffer (the firmware processes in place), so
+            // the input sample is read before its output overwrites it. Writing
+            // first fed the output back as input: a self-sustaining tone, heard on
+            // the module as RATE BUG's and RATE SVT's "constant tone" (2026-10-02).
             for(int n = 0; n < kBlock; n++)
             {
+                const float xn = x[n];
                 y[n] = play_[pos_ / rate_];
                 if(pos_ < kBlock * rate_ - 1)
                     pos_++;
-                acc_ += x[n];
+                acc_ += xn;
                 if(++accN_ == rate_)
                 {
                     dec_[decN_++] = acc_ / (float)rate_;
