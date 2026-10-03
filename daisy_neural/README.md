@@ -14,8 +14,8 @@ what the engine was written for: weights in DTCMRAM, history in RAM_D2, both on-
 The compiled-in fallback is the Orange TH100 starter capture (CC BY, credited in
 `nam/fallback_capture.h`), so a missing or unreadable card still gives a working module,
 and every build carries CC-licensed data only. The twelve starter captures ship with the
-release, credited in [`STARTER_CAPTURES.md`](STARTER_CAPTURES.md). Mirth Lite has not yet
-been run on hardware.
+release, credited in [`STARTER_CAPTURES.md`](STARTER_CAPTURES.md). Mirth Lite was checked on a
+stock patch.init on 2026-10-03.
 
 ## What it does
 
@@ -65,13 +65,13 @@ stock unit, so it takes the bank, which frees B7's long hold:
 
 | Control | Mirth Lite |
 |---|---|
-| **B8** toggle | bank — down AMPS, up NOT-AMPS (Joy Lite's toggle sense) |
+| **B8** toggle | bank — up AMPS, down NOT-AMPS |
 | **B7** short press | bypass on/off |
 | **B7** held 0.6 s | re-blink the current slot number |
 | **LED** | blinks the slot number on a slot or bank change, then lit (engine in) or dark (bypassed). A **long blink is five**: 3 is short-short-short, 12 is long-long-short-short. A fast flicker that never stops: no captures on the card |
 
-Untested on hardware: David's Mirth is the OLED unit, whose B8 is gone. On it a Lite build
-would sit in AMPS (an absent toggle reads down) with the LED working — a partial test.
+Run on a stock patch.init on 2026-10-03, from a card made from the release files: everything
+as described here, with the toggle up for AMPS.
 
 ## Pages
 

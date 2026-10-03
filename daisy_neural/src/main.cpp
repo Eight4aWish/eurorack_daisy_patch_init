@@ -25,7 +25,7 @@
  *   CV_OUT_2 LED         lit when the engine is in circuit, dark when bypassed
  *
  * MIRTH LITE (make LITE=1, for a stock patch.init with no OLED):
- *   B8 toggle            bank: down AMPS, up NOT-AMPS (as Joy Lite's toggle)
+ *   B8 toggle            bank: up AMPS, down NOT-AMPS (checked on a stock unit, 2026-10-03)
  *   B7 short press       bypass on/off
  *   B7 held 0.6 s        re-blink the current slot number
  *   CV_OUT_2 LED         the slot number blinks when the slot or bank changes —
