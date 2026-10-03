@@ -1,5 +1,9 @@
 # daisy_neural — Mirth
 
+> **Released: v1.0.0, 2026-10-03.** Tags `mirth-v1.0.0` and `mirth_lite-v1.0.0`; assets
+> `mirth-v1.0.0.bin`, `mirth_lite-v1.0.0.bin`, the starter captures
+> (`mirth-v1.0.0-captures.zip`) and a notices file each.
+
 **Mirth** runs neural amp captures on a Daisy Patch.Init, with a 64×48 OLED: NAM A2-Lite
 networks read off the microSD card (AMPS), and twelve *not-amps* — captures bent inside
 the network, each with one control (NOT-AMPS). **Mirth Lite** (`make LITE=1`) is the same
