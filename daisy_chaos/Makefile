@@ -82,6 +82,18 @@ endif
 # out unless asked for: without this every value in a click report is blank.
 LDFLAGS += -u _printf_float
 
+# 480 MHz rather than libDaisy's default 400. The SDK's AlchemyLabV2::Init()
+# calls seed.Init() with no argument, and DaisySeed::Init(bool boost = false)
+# then picks 400 MHz -- a default Electrosmith keep from when the STM32H750 was
+# only rated to 400. Hermetic advertise the Alchemy Lab at 480 MHz, and the
+# patch.init's own init always boosts. The SDK has no option for it, so the link
+# wraps that one call and passes boost = true (BoostSeedInit in src/secret.cpp),
+# leaving the SDK and libDaisy untouched. `make CLOCK400=1` builds without it.
+ifneq ($(CLOCK400),1)
+LDFLAGS += -Wl,--wrap=_ZN5daisy9DaisySeed4InitEb
+C_DEFS  += -DSECRET_BOOST
+endif
+
 # ── Daisy bootloader build ───────────────────────────────────────────────────
 APP_TYPE = BOOT_SRAM
 LDSCRIPT = $(ALCHEMY_DIR)/cmake/linkers/alchemy_stm32h750ib_sram.lds

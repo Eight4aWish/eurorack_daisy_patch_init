@@ -173,6 +173,15 @@ runs in the control loop, so a model that costs too much can't freeze anything.
 It is for setting `maxStepsPerSecond` from this chip, not for playing:
 `make clean && make` again afterwards.
 
+**480 MHz.** Secret runs the STM32H750 at 480 MHz, where libDaisy's Seed init
+defaults to 400: a default Electrosmith keep from when the chip was only rated to
+400, while Hermetic advertise the Alchemy Lab at 480. The SDK's board init has no
+option for it, so the link wraps its one `seed.Init()` call and passes boost on
+(`--wrap` in the Makefile, the wrapper in `src/secret.cpp`); the SDK and libDaisy
+are untouched. The boot log line reports the clock. `make clean && make CLOCK400=1`
+builds a 400 MHz firmware, for comparison or if a board ever misbehaves at 480.
+First run 2026-10-09: boots and plays, idle load 11–12% → 9%.
+
 ## Flash
 
 **With Secret already running**, no buttons:

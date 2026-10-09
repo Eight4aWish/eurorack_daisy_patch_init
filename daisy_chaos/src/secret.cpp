@@ -500,6 +500,18 @@ static void Bench()
 }
 #endif
 
+/* ── 480 MHz: wrap the SDK's seed.Init() (see the Makefile) ─────────────── */
+// The linker sends the SDK's call to DaisySeed::Init(bool) here (--wrap), and
+// this calls the real one with boost on. A member function takes `this` as its
+// first argument, so the pointer stands in for it.
+#ifdef SECRET_BOOST
+extern "C" void __real__ZN5daisy9DaisySeed4InitEb(daisy::DaisySeed* seed, bool boost);
+extern "C" void __wrap__ZN5daisy9DaisySeed4InitEb(daisy::DaisySeed* seed, bool /*boost*/)
+{
+    __real__ZN5daisy9DaisySeed4InitEb(seed, true);
+}
+#endif
+
 int main()
 {
     hw.Init();
@@ -536,7 +548,8 @@ int main()
 
     if (!host.ConfigurationOk() || !debug.ConfigurationOk())
         debug.Error("HostLink setup failed");
-    debug.Info("Secret %s, CV %s", SECRET_GIT_HASH,
+    debug.Info("Secret %s, %lu MHz, CV %s", SECRET_GIT_HASH,
+               (unsigned long)(daisy::System::GetSysClkFreq() / 1000000u),
                hw.IsCalibrated() ? "calibrated" : "UNCALIBRATED (hold B1+B2 at power-on)");
 
     for (;;) loop.Tick();
