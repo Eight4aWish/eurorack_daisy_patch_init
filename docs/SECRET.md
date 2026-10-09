@@ -74,7 +74,7 @@ and one can live in Settings if it's missed.
 | P5 | **AD** envelope macro | |
 | P6 | **SR** envelope macro | |
 | B1 | model select (bank-of-4 selector across the rings) | |
-| B2 | lock mode: Scale / Force / Sync (section 2) | |
+| B2 | lock mode: Scale / Force / Sync (section 2) | built as Auto / Force / Sync; removed with SYNC 2026-10-09, B2 now idle |
 | B3 | **FREEZE**: capture the current cycle as a wavetable | |
 | J1 | **EXT DRIVE**: audio into a forced system | AC coupling is fine for audio |
 | J2 | **SYNC** in (edge-triggered reset) | AC coupling passes edges |
@@ -186,6 +186,9 @@ for the chaotic stretches between them.
 
 ### TAME: one control across all three (built and measured, 2026-09-30)
 
+*Superseded on 2026-10-09 by "TAME without sync", below: the pull described here is
+gone. Kept because the measurements still stand.*
+
 The plan here was a coupling strength `k·(A·cos φ_ref − x)` on every coherent
 system. Building it changed three things. `common/chaos_core/README.md` ("Pitch
 and TAME") has the detail, and `tools/tametest.cpp` holds the numbers.
@@ -229,6 +232,49 @@ A later refinement is a **phase-locked loop.** For coherent systems,
 φ to the reference gives exact pitch with no coupling term and no reset, leaving
 the amplitude chaos untouched. It's worth trying if the drive colours the tone too
 much.
+
+### TAME without sync (2026-10-09)
+
+A critical review found that SYNC, the per-cycle pull back to a snapshot, was hard
+sync: the pitch came from the reset clock and the output was a looped slice of the
+attractor. It took the most from the models it was used on most. Lorenz and Chua
+never switched lobes or scrolls inside a cycle, and Lorenz–Lü–Chen lost the same.
+Hindmarsh–Rose's slow variable was reset every cycle too, so its bursts never
+happened. David's call: no hard sync, and models left less tamed where that is
+their nature. So:
+
+- **TAME is the push alone,** across the whole knob, rising with TAME² to a
+  per-model ceiling (`ChaosBase::tameDriveMax`): 7.5% of X's own rate by default,
+  10% for Moore–Spiegel, and **0 for Lorenz and Chua**. They never lock, and a
+  push lowered their clarity from ~0.5 to ~0.2, so TAME leaves them exactly as
+  they are (`tametest` checks that they are bit-identical).
+- **B2 has no job.** It chose Auto / Force / Sync; it is kept for a later one.
+- **The driven models play in their real register.** Duffing and the driven
+  pendulum sound at their drive in 39 of 63 cells of their pot range; their other
+  cells are subharmonic windows, intervals below the note, as designed. The forced
+  Brusselator sounded at **half** its drive in 50 of 63: its limit cycle entrains
+  1:2. It is now tuned to ω/4π, and reads in tune in 46 cells
+  (`tools/registermap.cpp`). An earlier "Duffing is an octave below" came from
+  `tametest`'s three sample points landing in subharmonic windows.
+
+Push-only, at A1–A5 (55–880 Hz), three CHAOS settings each, |error| in cents by
+zero crossings, and clarity:
+
+| Model | TAME 0 | TAME 1 |
+| --- | --- | --- |
+| Rössler | 1–19, clarity ~0.7 | 1–5, clarity ~0.6, chaos intact |
+| Coupled Rössler | 0–3, ~0.85 | 0–2, ~0.8 |
+| Van der Pol | 1–26, periodic | exact |
+| Moore–Spiegel | 210–280, ~0.85 | 0–1 (5 by McLeod), ~0.77 |
+| Lorenz–Lü–Chen | ~11, ~0.75 | 0–23, ~0.75 |
+| Hindmarsh–Rose | 2–6, bursts intact | 0–4, bursts intact |
+| Forced Brusselator | within a cent by McLeod, 0.97 | within a cent, 1.00 |
+| Duffing, pendulum, Colpitts | their subharmonic and period-doubled windows | nudged, not locked |
+| Lorenz, Chua | as free | identical: no push |
+
+So the module no longer promises "noise to note on every model". It promises
+what the equations do: some lock, the driven ones sing subharmonics, and two stay
+wild.
 
 **FREEZE (B3)** covers the case these don't: capture N cycles of the tamed output
 into a buffer and play it as a wavetable. That's Ogham's decouple/drone applied to

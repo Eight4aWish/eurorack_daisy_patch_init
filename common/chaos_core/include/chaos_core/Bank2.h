@@ -42,12 +42,6 @@ namespace chaos_core {
         }
         void wrap() { s_[0] = wrapPi(s_[0]); if (s_[2] > 6.28318531f) s_[2] -= 6.28318531f; }
         bool escaped() const { return nonFinite(s_[0]) || diverged(s_[1]) || nonFinite(s_[2]); }
-        void blendState(const float* snap, float w) override {
-            s_[0] = wrapPi(s_[0] + w * shortWay(s_[0], snap[0]));
-            s_[1] += w * (snap[1] - s_[1]);
-            s_[2] = wrapPi(s_[2] + w * shortWay(s_[2], snap[2]));
-            if (s_[2] < 0.0f) s_[2] += 6.28318531f;
-        }
         float getX() const override { return sinf(s_[0]); }
         float getY() const override { return s_[1]; }
     private:
@@ -110,6 +104,7 @@ namespace chaos_core {
             xMin = -2.8f; xRange = 5.6f; yMin = -11.3f; yRange = 22.6f;
             cvScaleX = 1.6f; cvScaleY = 0.4f;
             pitchClass = PITCH_COHERENT;
+            tameDriveMax = 0.10f;   // 10%: within 5 cents at full TAME; 7.5% left it 25-45 off
             pitchGrid  = &kPitchGrid_MOORE_SPIEGEL;
         }
         void initState(float* s) const { s[0] = 0.1f; s[1] = 0.0f; s[2] = 0.0f; }
@@ -127,7 +122,10 @@ namespace chaos_core {
     // dx = A + x^2 y - (B + 1) x + F cos(phi),  dy = B x - x^2 y,  phi' = omega
     // Tomita & Kai's chaotic set: A = 0.4, B = 1.2, omega 0.81, F 0.05.
     // The unforced limit cycle needs B > 1 + A^2 = 1.16. CHAOS = F (forcing),
-    // CHAR = omega. Pitch is the drive's.
+    // CHAR = omega. The limit cycle entrains at HALF the drive: X's period is two
+    // drive periods in 50 of 63 cells of the pot range (MPM at TAME 0, 2026-10-09),
+    // four or five in the rest -- genuine subharmonic windows. So the note is half
+    // the drive, and those windows sound an octave or more below it.
     class ChaosBrusselator : public OdeModel<3, ChaosBrusselator> {
     public:
         ChaosBrusselator() {
@@ -144,7 +142,7 @@ namespace chaos_core {
             pitchClass = PITCH_FORCED;
             pitchGrid  = &kPitchGrid_BRUSSELATOR;
         }
-        float naturalFreq(float, float charV) const override { return charV * 0.15915494f; }
+        float naturalFreq(float, float charV) const override { return charV * 0.07957747f; }   // omega / 4pi
         void initState(float* s) const { s[0] = kA; s[1] = kB / kA; s[2] = 0.0f; }
         void deriv(const float* s, float drive, float* ds) const {
             const float x = s[0], y = s[1];
@@ -154,12 +152,6 @@ namespace chaos_core {
         }
         void wrap() { if (s_[2] > 6.28318531f) s_[2] -= 6.28318531f; }
         bool escaped() const { return diverged(s_[0]) || diverged(s_[1]) || nonFinite(s_[2]); }
-        void blendState(const float* snap, float w) override {
-            s_[0] += w * (snap[0] - s_[0]);
-            s_[1] += w * (snap[1] - s_[1]);
-            s_[2] = wrapPi(s_[2] + w * shortWay(s_[2], snap[2]));
-            if (s_[2] < 0.0f) s_[2] += 6.28318531f;
-        }
         float getX() const override { return s_[0] - kA; }
         float getY() const override { return s_[1] - kB / kA; }
     private:

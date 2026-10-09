@@ -25,22 +25,17 @@
 //   - The rate is scaled so the attractor's measured natural frequency lands on
 //     the note (ChaosBase::naturalFreq). TAME = 0 is just that: the free voice,
 //     in tune as far as the system has a pitch to tune.
-//   - FORCE (coherent and forced systems), in two halves. Up to TAME 0.5 a
-//     cosine at the note is added to dX, rising to 5% of X's own rate: the voice
-//     goes from free, through phase slips, to phase-locked chaos -- an exact
-//     pitch under a still-chaotic waveform, the pitched-but-gritty middle. Above
-//     0.5 the drive holds and SYNC's pull fades in, until TAME 1 is strictly
-//     periodic. Measured (tools/tametest.cpp): stronger drive alone does not
-//     get there -- past ~10% it throws Rossler into period-2 and chaos instead.
-//   - SYNC (incoherent systems, where drive alone never locks): Ogham's hard
-//     sync, softened. A snapshot is taken on the attractor, and at each cycle of
-//     the note the state moves TAME of the way back to it: 1 re-seeds exactly
-//     (strictly periodic), less lets the chaos leak through. The jump is hidden
-//     by a short output crossfade.
+//   - TAME adds a small periodic push at the note to dX: a cosine, rising with
+//     TAME squared to the model's own maximum (ChaosBase::tameDriveMax, a fraction
+//     of X's own rate). That is the equation plus a weak outside drive. Systems
+//     with a coherent rotation phase-lock to it with their chaos intact; driven
+//     systems keep singing their own subharmonics; Lorenz and Chua ignore a drive
+//     altogether, so their maximum is zero and TAME leaves them free.
 //
-// The reference runs in simulated time under FORCE (it has to keep pace with
-// the dynamics it drives) and in real time under SYNC (so the note stays
-// exact even when the step cap or the load governor slows the integration).
+// Until 2026-10-09 TAME's upper half also pulled the state back to a stored
+// snapshot once a cycle (SYNC): hard sync, which imposed the pitch by looping a
+// slice of the attractor. Removed at David's direction: the module plays what the
+// equations do, and a model that will not be tamed is left untamed.
 
 #include <math.h>
 #include "chaos_core/ChaosBase.h"
@@ -67,25 +62,6 @@ namespace chaos_core {
         // How long a drone <-> gated switch takes to open or shut the VCA. Short
         // enough to read as immediate, long enough not to click.
         static constexpr float kModeRampMs = 5.0f;
-        // AUTO picks FORCE or SYNC from the algorithm's PitchClass.
-        enum TameMode : unsigned char { TAME_AUTO, TAME_FORCE, TAME_SYNC };
-
-        // FORCE: drive amplitude at the top of its range, as a fraction of X's
-        // own rate of change (2 pi f_nat x refAmp), and the TAME value where the
-        // drive tops out and the sync pull begins. Measured: 1-7.5% locks most
-        // coherent settings with the chaos intact; 15% and up breaks them.
-        static constexpr float kDriveMax   = 0.05f;
-        static constexpr float kForceSplit = 0.5f;
-        // A snapshot survives parameter moves smaller than this fraction of the
-        // pot range, so CV on CHAOS or CHAR does not keep switching sync off.
-        static constexpr float kSnapTolerance = 0.05f;
-        // Cycles of the note to wait before taking a snapshot, so it comes from
-        // a settled -- under FORCE, locked -- trajectory. See syncStep().
-        static constexpr int kSettleCycles = 8;
-        // Output crossfade over a sync jump: this long, or a tenth of a cycle
-        // if that is shorter.
-        static constexpr float kDeclickMs = 0.5f;
-
         // Corner frequency of the output DC blocker. Low enough to leave the
         // lowest musical content alone, high enough to remove the offset an
         // attractor sitting off-centre would otherwise put on the output.
@@ -112,17 +88,10 @@ namespace chaos_core {
             dcL_ = dcR_ = 0.0f;      // flush DC history on switch
             stepAcc_   = 0.0f;
             loadScale_ = 1.0f;       // the throttle described the old algorithm's cost
-            tame_ = TAME_OFF; drive_ = 0.0f; syncW_ = 0.0f;
-            dclL_ = dclR_ = 0.0f;
-            snapValid_ = false; snapStale_ = false;   // a snapshot belongs to one attractor
-            captureWait_ = 0;
+            tame_ = TAME_OFF; drive_ = 0.0f;
             algo_ = a;               // atomic pointer store on a 32-bit target
         }
 
-        // Drop the sync snapshot, so the next one is taken afresh. Call it where
-        // the platform re-inits the attractor (a gate edge): the old snapshot
-        // would otherwise yank the new trajectory straight back.
-        void invalidateSnapshot() { snapValid_ = false; snapStale_ = false; captureWait_ = 0; }
         ChaosBase* algo() const { return algo_; }
 
         float getX() const { ChaosBase* a = algo_; return a ? a->getX() : 0.0f; }
@@ -137,7 +106,7 @@ namespace chaos_core {
         void setParams(float chaos, float charV, float simRate) {
             ChaosBase* a = algo_;
             if (!a) return;
-            tame_ = TAME_OFF; drive_ = 0.0f; syncW_ = 0.0f;
+            tame_ = TAME_OFF; drive_ = 0.0f;
             clearDrive(a);
             const StepSchedule sch = a->scheduleFor(simRate, sampleRate_);
             a->setParams(chaos, sch.stepDt, charV);
@@ -149,38 +118,22 @@ namespace chaos_core {
         }
 
         // Play a note: CHAOS, CHAR, pitch in Hz and TAME 0..1 (see the top of
-        // this file). Same interrupt caveat as setParams(). `mode` overrides the
-        // algorithm's own choice of FORCE or SYNC -- the panel's B2.
-        void setPitch(float chaos, float charV, float hz, float tame,
-                      TameMode mode = TAME_AUTO) {
+        // this file). Same interrupt caveat as setParams().
+        void setPitch(float chaos, float charV, float hz, float tame) {
             ChaosBase* a = algo_;
             if (!a) return;
             if (!(hz > 0.1f)) hz = 0.1f;                        // false for NaN too
             if (!(tame > 0.0f)) tame = 0.0f; else if (tame > 1.0f) tame = 1.0f;
-            if (mode == TAME_AUTO)
-                mode = (a->pitchClass == PITCH_INCOHERENT) ? TAME_SYNC : TAME_FORCE;
 
             float fNat = a->naturalFreq(chaos, charV);
             if (!(fNat > 1.0e-3f)) fNat = 1.0e-3f;
             const float simRate = hz / fNat;
 
-            // FORCE: drive over the lower part of the knob, squared so its
-            // first half stays near free-running (phase slips live there), then
-            // the sync pull, linear, over the upper part.
-            //
-            // SYNC: the pull alone, as 1 - (1 - TAME)^2. Measured on Lorenz and
-            // Chua, pulls below ~0.7 mostly inject a jump per cycle into chaos
-            // that stays chaotic (clarity 0.1-0.3, under the free voice's 0.5),
-            // and the pitched-but-gritty zone is pulls of ~0.8-0.97. This taper
-            // puts that zone in the upper-middle of the knob (TAME 0.55-0.8)
-            // rather than squeezing it into the last fifth. Whether the lower
-            // half's once-a-cycle jumps are useful grit is for the ear.
-            float drive = 0.0f, pull = 1.0f - (1.0f - tame) * (1.0f - tame);
-            if (mode == TAME_FORCE) {
-                const float lo = (tame < kForceSplit) ? tame / kForceSplit : 1.0f;
-                drive = kDriveMax * lo * lo * 6.2831853f * fNat * a->refAmp();
-                pull  = (tame > kForceSplit) ? (tame - kForceSplit) / (1.0f - kForceSplit) : 0.0f;
-            }
+            // The push: squared, so the first half of the knob stays near
+            // free-running (phase slips live there), up to the model's maximum.
+            float dmax = a->tameDriveMax;
+            if (!(dmax > 0.0f)) dmax = 0.0f;
+            const float drive = dmax * tame * tame * 6.2831853f * fNat * a->refAmp();
 
             const StepSchedule sch =
                 a->scheduleFor(simRate, sampleRate_, a->stableDt(chaos, charV));
@@ -191,53 +144,14 @@ namespace chaos_core {
             stepsPerSample_ = s;
             effectiveDt_    = sch.stepDt * s;
 
-            drive_ = drive;
-            refIncStep_   = fNat * sch.stepDt;         // FORCE: cycles per step
-            refIncSample_ = hz / sampleRate_;          // SYNC: cycles per sample
-            // Above the step cap the attractor can't reach the note, but SYNC's
-            // clock runs in real time and would: the pull then fires every step
-            // instead of once a cycle, and each one is a full state save and
-            // blend. Measured on the Alchemy Lab, that took Lorenz from 61% of a
-            // block to 107%. Hold the clock to the pitch the attractor actually
-            // reaches. Only when the cap is what limits it, so every note below
-            // the cap is computed exactly as before.
-            const float hzReach = effectiveDt_ * sampleRate_ * fNat;
-            if (hzReach < hz * 0.999f) refIncSample_ = hzReach / sampleRate_;
-            syncW_     = pull;
-            float tau  = kDeclickMs * 0.001f;
-            if (tau > 0.1f / hz) tau = 0.1f / hz;
-            dclMul_    = expf(-1.0f / (tau * sampleRate_));
-
-            // A snapshot from well away from here is from another attractor:
-            // retake it once the trajectory has settled (syncStep). Small moves
-            // keep it, and
-            // the loop simply integrates under the new settings from the old
-            // start -- still periodic, with the timbre following the knobs.
-            // fabsf: a range may run downwards (Rikitake's CHAOS does, so that
-            // turning it up is more chaotic). A negative tolerance marked every
-            // block as a move, and SYNC never got to take its snapshot.
-            const float cTol = kSnapTolerance * fabsf(a->chaosMax - a->chaosMin);
-            const float hTol = kSnapTolerance * fabsf(a->charMax - a->charMin);
-            if (fabsf(chaos - snapChaos_) > cTol || fabsf(charV - snapChar_) > hTol) {
-                snapStale_ = true;
-                captureWait_ = 0;
-                snapChaos_ = chaos; snapChar_ = charV;
-            }
-            tame_ = (mode == TAME_SYNC) ? TAME_ON_SYNC : TAME_ON_FORCE;
+            drive_      = drive;
+            refIncStep_ = fNat * sch.stepDt;           // cycles of the note per step
+            tame_       = TAME_ON;
         }
-        void setSyncEvery(int n) { syncEvery_ = (n < 1) ? 1 : (n > 64 ? 64 : n); }
 
-        // For a display, or a test: the drive amplitude in use (0 unless FORCE),
-        // and whether SYNC currently holds a snapshot to pull back to.
-        float driveAmp()    const { return drive_; }
-        bool  syncHolding() const { return snapValid_; }
-
-        // Event counters, for a host hunting clicks: each SYNC pull and each
-        // snapshot capture can move the output, and a host that sees a jump can
-        // check which of these advanced in the same block. Written only by
-        // render(), one word each.
-        uint32_t syncPulls()    const { return syncPulls_; }
-        uint32_t snapCaptures() const { return snapCaptures_; }
+        // For a display, or a test: the push amplitude in use (0 at TAME 0, and on
+        // a model whose maximum is 0).
+        float driveAmp() const { return drive_; }
 
         // RK4 steps per audio sample the current pitch asks for, before the load
         // governor's scale: the number that sets the CPU cost.
@@ -314,16 +228,14 @@ namespace chaos_core {
                 return;
             }
 
-            const bool sync  = (tame_ == TAME_ON_SYNC);
-            const bool force = (tame_ == TAME_ON_FORCE) && drive_ > 0.0f;
-            const bool pull  = syncW_ > 0.0f;
+            const bool force = drive_ > 0.0f;
             if (!force) clearDrive(a);
 
             for (int i = 0; i < n; i++) {
                 stepAcc_ += steps;
                 const int k = (int)stepAcc_;          // >= 1: steps >= 1
                 stepAcc_ -= (float)k;
-                const float inc = sync ? refIncSample_ / (float)k : refIncStep_;
+                const float inc = refIncStep_;
                 for (int j = 0; j < k; j++) {
                     if (force) {
                         float h = refPhase_ + 0.5f * inc; if (h >= 1.0f) h -= 1.0f;
@@ -337,20 +249,15 @@ namespace chaos_core {
                     if (refPhase_ >= 1.0f) {
                         refPhase_ -= 1.0f;
                         if (refPhase_ >= 1.0f) refPhase_ = 0.0f;
-                        if (pull && (!snapValid_ || snapStale_)) captureWait_++;
                     }
-                    if (pull) syncStep(a, inc, gL, gR);
                 }
                 envAdvance();
-                const float pl = a->getX() * gL + dclL_;
-                const float pr = a->getY() * gR + dclR_;
-                dclL_ *= dclMul_; dclR_ *= dclMul_;
-                output(pl, pr, outL, outR, i);
+                output(a->getX() * gL, a->getY() * gR, outL, outR, i);
             }
         }
 
     private:
-        enum TameState : unsigned char { TAME_OFF, TAME_ON_FORCE, TAME_ON_SYNC };
+        enum TameState : unsigned char { TAME_OFF, TAME_ON };
 
         static void clearDrive(ChaosBase* a) { a->tameD0 = a->tameDH = a->tameD1 = 0.0f; }
 
@@ -362,51 +269,6 @@ namespace chaos_core {
             r -= dcR_; dcR_ += r * dcCoeff_;
             outL[i] = l * envLevel_;
             outR[i] = r * envLevel_;
-        }
-
-        // SYNC's per-step bookkeeping. Once per cycle of the note (every
-        // syncEvery_ cycles), pull the state syncW_ of the way back to the
-        // snapshot, carrying the output's jump in the declick offsets.
-        //
-        // When the snapshot is taken matters most. It has to come from the
-        // settled, locked trajectory: taken two cycles after a cold start, before
-        // FORCE's drive had locked the phase, every pull dragged the phase back
-        // towards an unlocked point, the drive could not hold both, and at pull
-        // 0.2-0.3 Rossler slipped a cycle every ~36 -- 35-45 cents flat, periodic
-        // and wrong. So capture waits kSettleCycles, first time and every time.
-        //
-        // Where in the cycle is a smaller matter: the snapshot is taken at a
-        // peak of X, and syncAcc_ -- a second phase at the note's rate, zeroed at
-        // the capture -- brings every pull back to that same point, so a jump
-        // lands where it changes the amplitude rather than when X crosses zero.
-        // Being a fixed offset from the reference, it also keeps to one phase of
-        // FORCE's drive. A stale snapshot is pulled to until its replacement.
-        void syncStep(ChaosBase* a, float inc, float gL, float gR) {
-            const float x = a->getX();
-            const bool peak = (x1_ > x2_) && (x <= x1_);
-            x2_ = x1_; x1_ = x;
-            if ((!snapValid_ || snapStale_) && captureWait_ >= kSettleCycles) {
-                if (peak) {
-                    ++snapCaptures_;
-                    a->saveState(snap_);
-                    snapValid_ = true; snapStale_ = false;
-                    captureWait_ = 0; cycleCount_ = 0; syncAcc_ = 0.0f;
-                    return;
-                }
-            }
-            if (!snapValid_) return;
-            syncAcc_ += inc;
-            if (syncAcc_ < 1.0f) return;
-            syncAcc_ -= 1.0f;
-            if (syncAcc_ >= 1.0f) syncAcc_ = 0.0f;
-            if (++cycleCount_ < syncEvery_) return;
-            cycleCount_ = 0;
-            const float bl = a->getX() * gL + dclL_, br = a->getY() * gR + dclR_;
-            ++syncPulls_;
-            a->blendState(snap_, syncW_);
-            dclL_ = bl - a->getX() * gL;
-            dclR_ = br - a->getY() * gR;
-            x1_ = x2_ = a->getX();            // a pull is not a peak
         }
 
         void refreshEnv() {
@@ -466,15 +328,8 @@ namespace chaos_core {
 
         // TAME
         TameState tame_ = TAME_OFF;
-        float drive_ = 0.0f, syncW_ = 0.0f;
-        float refPhase_ = 0.0f, refIncStep_ = 0.0f, refIncSample_ = 0.0f;
-        float dclL_ = 0.0f, dclR_ = 0.0f, dclMul_ = 0.0f;
-        float snap_[ChaosBase::kMaxState] = {};
-        bool  snapValid_ = false, snapStale_ = false;
-        float snapChaos_ = -1.0e30f, snapChar_ = -1.0e30f;
-        int   syncEvery_ = 1, cycleCount_ = 0, captureWait_ = 0;
-        float syncAcc_ = 0.0f, x1_ = 0.0f, x2_ = 0.0f;
-        uint32_t syncPulls_ = 0, snapCaptures_ = 0;
+        float drive_ = 0.0f;
+        float refPhase_ = 0.0f, refIncStep_ = 0.0f;
     };
 
 }  // namespace chaos_core

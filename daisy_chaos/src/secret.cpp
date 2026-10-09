@@ -15,7 +15,7 @@
 //   P1 TUNE   27.5-880 Hz, exponential; + V/OCT (J3)
 //   P2 CHAOS  the bifurcation parameter; + CV (J5)
 //   P3 CHAR   the secondary parameter
-//   P4 TAME   free chaos (0) to a locked note (1); + CV (J6)
+//   P4 TAME   a push at the note, from none (0) to the model's maximum (1); + CV (J6)
 //   P5 AD     envelope attack + decay
 //   P6 SR     envelope sustain + release
 //
@@ -26,10 +26,11 @@
 //             blinks. Bank 1: Rossler, Van der Pol, Lorenz, Chua, Duffing, Coupled
 //             Rossler. Bank 2: Pendulum, Lorenz-Lu-Chen, Moore-Spiegel, Brusselator,
 //             Colpitts, Hindmarsh-Rose.
-//   B2        TAME mode: Auto, Force, Sync (Auto = the model's own choice)
+//   B2        unused, kept for a later job (TAME's mode button until 2026-10-09)
 //   B3        envelope: Drone (VCA open) or Gated by J4
-// Each button sits between the knobs it belongs with: B2 beside TAME, B3 between
-// AD and SR. Swapped 2026-10-02, when the panel layout made the old order look wrong.
+// Each button sits between the knobs it belongs with: B3 between AD and SR, and
+// B2 beside TAME, whose mode it chose. Swapped 2026-10-02, when the panel layout
+// made the old order look wrong.
 //
 //   J3 V/OCT in   J4 GATE in       J5 CHAOS CV in  J6 TAME CV in
 //   J7 X CV out   J8 Y CV out      J9 L (X) audio  J10 R (Y) audio
@@ -113,7 +114,7 @@ static VirtualKnob sustainRelease = VirtualKnob(kPotBottomRight, "SR")
     .Ring(Level({0x80, 0x80, 0x80}));
 
 /* ── Buttons ────────────────────────────────────────────────────────────── */
-static uint8_t s_env = 0, s_mode = 0;   // kept in sync by Bind()
+static uint8_t s_env = 0;   // kept in step by Bind()
 
 // Banks of six (chaos_core/Registry.h: bank 1, then bank 2), heading for up to six
 // banks. B1 has two menu levels, David's design (2026-10-09): a short press steps
@@ -151,23 +152,18 @@ static void OnB1Hold(void*) { s_bankLevel = !s_bankLevel; }
 static const char* kEnvNames[2] = {"Drone", "Gated"};
 static constexpr LedPanel::Rgb kEnvColors[2] = {{0x20, 0x20, 0x20}, {0xFF, 0xA0, 0x20}};
 
-// Order matches Voice::TameMode: AUTO, FORCE, SYNC.
-static const char* kModeNames[3] = {"Auto", "Force", "Sync"};
-static constexpr LedPanel::Rgb kModeColors[3] = {
-    {0x30, 0x30, 0x30}, {0x40, 0xFF, 0x80}, {0xB0, 0x40, 0xFF}};
-
 static VirtualButton modelButton = VirtualButton(kButtonB1, "Model")
     .Ident("model")
     .Tap(OnB1Tap, "Next patch (or bank, at the bank level)")
     .Hold(kLevelHoldMs, OnB1Hold, "Switch between the patch and bank levels");
 static VirtualButton envButton = VirtualButton(kButtonB3, "Envelope")
     .Ident("env").Selector(kEnvNames).Colors(kEnvColors).Bind(&s_env);
-static VirtualButton modeButton = VirtualButton(kButtonB2, "Tame mode")
-    .Ident("tame.mode").Selector(kModeNames).Colors(kModeColors).Bind(&s_mode);
 
+// B2 has no job: it chose TAME's mode until sync went (2026-10-09), and is kept
+// free for a later one. Left off the page, so it does nothing and stays dark.
 static Page page = Page(0)
     .Knobs(tune, chaos, character, tame, attackDecay, sustainRelease)
-    .Buttons(modelButton, modeButton, envButton);  // B1, B2, B3
+    .Buttons(modelButton, envButton);  // B1, B3
 
 /* ── Hardware and engine ────────────────────────────────────────────────── */
 static AlchemyLab         hw;
@@ -182,7 +178,7 @@ static daisy::CpuLoadMeter cpu;
 // click log below to hostlink-cli and the web programmer's Device console:
 //   node deps/alchemy-sdk/tools/hostlink-cli/hostlink.mjs -p /dev/cu.usbmodem<serial> watch
 // On macOS use the cu.* node; the CLI's tty.* default blocks on open.
-static hostlink::Host        host("secret", "Secret", "1.0.0", SECRET_GIT_HASH);
+static hostlink::Host        host("secret", "Secret", "1.1.0-dev", SECRET_GIT_HASH);
 static hostlink::Diagnostics debug;
 
 static hostlink::Gauge<float>    g_cpuAvg ("cpu.avg",   "CPU average");
@@ -205,21 +201,20 @@ static hostlink::Gauge<bool>     g_cal    ("cal",       "Board CV calibration lo
 // waveform: a full-scale sine at 880 Hz moves at most 0.12 per sample. When the
 // audio callback sees one it records the panel state and what else happened in
 // the same block, and the control loop logs it. The causes are the ones the
-// engine can produce: a divergence-guard re-seed, a SYNC pull or a new SYNC
-// snapshot, a GATE re-seed, a model change, or the governor cutting the pitch.
+// engine can produce: a divergence-guard re-seed, a GATE re-seed, a model
+// change, or the governor cutting the pitch.
 static constexpr float kJumpFs = 0.5f;
 
 enum : uint8_t {
-    kCauseGuard = 1, kCauseSyncPull = 2, kCauseSnapshot = 4,
-    kCauseGate  = 8, kCauseModel    = 16, kCauseGovernor = 32,
-    kCauseEnvelope = 64,   // B3 switched between Drone and Gated
+    kCauseGuard = 1, kCauseGate = 2, kCauseModel = 4, kCauseGovernor = 8,
+    kCauseEnvelope = 16,   // B3 switched between Drone and Gated
 };
 
 struct Jump {
     uint32_t seq;          // bumped on every recorded jump
     float    size;         // largest step in the block, full scale
     float    chaos, charV, hz, tame;
-    uint8_t  model, mode;  // mode already resolved from Auto
+    uint8_t  model;
     uint8_t  causes;
     bool     env;
 };
@@ -233,12 +228,12 @@ static Jump s_jump = {};   // written in the audio callback, copied out with IRQ
 struct Params {
     float    chaos, charV, hz, tame;
     float    atkMs, decMs, sustain, relMs;
-    uint8_t  model, mode;
+    uint8_t  model;
     bool     env, gate;
     uint32_t retrig;   // bumped on every GATE rising edge
 };
 static Params   s_params = {5.0f, 0.23f, 110.0f, 0.0f, 10.0f, 200.0f, 0.5f, 200.0f,
-                            0, 0, false, false, 0};
+                            0, false, false, 0};
 static uint32_t s_retrigSeen = 0;
 
 static inline float ExpoMap(float n, float lo, float hi) {
@@ -253,10 +248,10 @@ static inline float Clamp5(float v) {
 }
 
 /* ── Load governor ──────────────────────────────────────────────────────── */
-// The step caps in chaos_core were measured on the Teensy at 600 MHz without
-// TAME; this board runs at 400 MHz and TAME adds work per step. If a block runs
-// long, run fewer integration steps -- the pitch goes flat -- rather than
-// overrun.
+// The step caps in chaos_core are measured on this board (make BENCH=1), but a
+// block can still run long: the callback's own work comes on top, and a cap may
+// be set close. If one does, run fewer integration steps -- the pitch goes flat
+// -- rather than overrun.
 //
 // It has to live here, in the audio callback. The first build ran it from the
 // control loop's frame, but an overrunning callback starves the control loop,
@@ -311,7 +306,6 @@ static void AudioCallback(daisy::AudioHandle::InputBuffer  /*in*/,
     if (p.retrig != s_retrigSeen) {                  // GATE edge: re-seed
         s_retrigSeen = p.retrig;
         a->init();
-        voice.invalidateSnapshot();
         causes |= kCauseGate;
     }
     if (voice.loadScale() < 0.999f) causes |= kCauseGovernor;
@@ -320,14 +314,11 @@ static void AudioCallback(daisy::AudioHandle::InputBuffer  /*in*/,
     voice.setEnvEnabled(p.env);
     voice.setEnvGate(p.gate);
     voice.setEnvADSR(p.atkMs, p.decMs, p.sustain, p.relMs);
-    voice.setPitch(p.chaos, p.charV, p.hz, p.tame, static_cast<Voice::TameMode>(p.mode));
+    voice.setPitch(p.chaos, p.charV, p.hz, p.tame);
 
     const uint32_t guard0 = a->guardTrips;
-    const uint32_t pulls0 = voice.syncPulls(), snaps0 = voice.snapCaptures();
     voice.render(out[0], out[1], n);
-    if (a->guardTrips      != guard0) causes |= kCauseGuard;
-    if (voice.syncPulls()    != pulls0) causes |= kCauseSyncPull;
-    if (voice.snapCaptures() != snaps0) causes |= kCauseSnapshot;
+    if (a->guardTrips != guard0) causes |= kCauseGuard;
 
     // X / Y CV, the raw state rather than the limited audio: the true attractor
     // for a scope. Once per block -- 2 kHz at 48 kHz / 24.
@@ -349,8 +340,6 @@ static void AudioCallback(daisy::AudioHandle::InputBuffer  /*in*/,
         s_jump.chaos  = p.chaos;  s_jump.charV = p.charV;
         s_jump.hz     = p.hz;     s_jump.tame  = p.tame;
         s_jump.model  = p.model;
-        s_jump.mode   = p.mode ? p.mode
-                      : (a->pitchClass == PITCH_INCOHERENT ? Voice::TAME_SYNC : Voice::TAME_FORCE);
         s_jump.causes = causes;
         s_jump.env    = p.env;
         g_jumps.Set(s_jump.seq);
@@ -403,7 +392,6 @@ static void Poll(uint32_t /*t_ms*/)
     p.sustain = srN;
     p.relMs   = ExpoMap(srN, kRelMinMs, kRelMaxMs);
     p.model  = model;
-    p.mode   = s_mode < 3 ? s_mode : 0;
     p.env    = s_env != 0;
     p.gate   = s_gateHigh;
     p.retrig = s_retrig;
@@ -429,19 +417,18 @@ static void LogClick(const Jump& j, uint32_t missed)
 {
     char why[48] = "";
     static const struct { uint8_t bit; const char* name; } kNames[] = {
-        {kCauseGuard, "guard "}, {kCauseSyncPull, "sync-pull "}, {kCauseSnapshot, "snapshot "},
-        {kCauseGate, "gate "},   {kCauseModel, "model "},        {kCauseGovernor, "governor "},
-        {kCauseEnvelope, "envelope "}};
+        {kCauseGuard, "guard "}, {kCauseGate, "gate "}, {kCauseModel, "model "},
+        {kCauseGovernor, "governor "}, {kCauseEnvelope, "envelope "}};
     for (const auto& c : kNames)
         if (j.causes & c.bit) strncat(why, c.name, sizeof why - strlen(why) - 1);
     if (!why[0]) strcpy(why, "none ");
     why[strlen(why) - 1] = '\0';
 
     const uint8_t m = j.model < N_ALGOS ? j.model : 0;
-    debug.Warn("click %.2f FS (+%lu more): %s, CHAOS %.3f, CHAR %.3f, %.1f Hz, TAME %.2f %s, %s [%s]",
+    debug.Warn("click %.2f FS (+%lu more): %s, CHAOS %.3f, CHAR %.3f, %.1f Hz, TAME %.2f, %s [%s]",
                (double)j.size, (unsigned long)missed, kModelNames[m],
                (double)j.chaos, (double)j.charV, (double)j.hz, (double)j.tame,
-               kModeNames[j.mode < 3 ? j.mode : 0], j.env ? "Gated" : "Drone", why);
+               j.env ? "Gated" : "Drone", why);
 }
 
 static void Frame()
@@ -450,7 +437,7 @@ static void Frame()
     hw.seed.SetLed(s_governed);
 
     // Panel changes, so the click log can be read against what was played.
-    static uint8_t model = 0xFF, env = 0xFF, mode = 0xFF;
+    static uint8_t model = 0xFF, env = 0xFF;
     static int8_t  level = -1;
     if (s_model != model) {
         model = s_model;
@@ -459,7 +446,6 @@ static void Frame()
     }
     if (level != (int8_t)s_bankLevel) { level = (int8_t)s_bankLevel; debug.Info("B1 level: %s", s_bankLevel ? "bank" : "patch"); }
     if (s_env   != env)   { env   = s_env;   debug.Info("Envelope: %s", kEnvNames[env ? 1 : 0]); }
-    if (s_mode  != mode)  { mode  = s_mode;  debug.Info("TAME mode: %s", kModeNames[mode < 3 ? mode : 0]); }
 
     const uint32_t now = daisy::System::GetNow();
 
@@ -476,11 +462,10 @@ static void Frame()
             s_peakLoad = 0.0f;
         }
         const Params p = s_params;
-        debug.Info("load peak %.0f%% avg %.0f%%, steps %.1f, gov %.2f | %s %.1f Hz, TAME %.2f %s, guard %lu",
+        debug.Info("load peak %.0f%% avg %.0f%%, steps %.1f, gov %.2f | %s %.1f Hz, TAME %.2f, guard %lu",
                    (double)(peak * 100.0f), (double)(cpu.GetAvgCpuLoad() * 100.0f),
                    (double)voice.stepsPerSample(), (double)voice.loadScale(),
                    kModelNames[p.model < N_ALGOS ? p.model : 0], (double)p.hz, (double)p.tame,
-                   kModeNames[p.mode < 3 ? p.mode : 0],
                    (unsigned long)algos[p.model < N_ALGOS ? p.model : 0]->guardTrips);
     }
 
@@ -500,14 +485,14 @@ static void Frame()
 
 #ifdef SECRET_BENCH
 /* ── make BENCH=1: measure every model's step cap on this board ─────────── */
-// The caps in chaos_core came from the Teensy at 600 MHz without TAME, and the
-// Chua episode showed they don't carry over. Before audio starts, run each model
+// The caps in chaos_core came first from the Teensy at 600 MHz without TAME, and
+// the Chua episode showed they don't carry over. Before audio starts, run each model
 // flat out and log the load, so each cap can be set from this chip.
 //
 // It runs in the control loop, not the audio callback, so nothing can be starved
 // whatever a model costs. The pitch asked for is far above anything playable, so
 // the schedule clamps at the cap: the worst block the model can produce. TAME 1
-// is the worst case per step (FORCE's drive and the pull both run every step).
+// is the worst case per step (the push's three cosines run every step).
 // The real callback adds a few percent on top: the click scan, CV and gauges.
 static void Bench()
 {

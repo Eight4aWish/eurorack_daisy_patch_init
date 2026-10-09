@@ -7,13 +7,13 @@
 // of the L output with the McLeod pitch method (normalised square difference):
 //
 //   zc       1200 log2(rate / target), rate from the interpolated upward zero
-//            crossings of L. The lock measure for FORCE: a phase-locked voice
-//            reads 0 exactly, however chaotic its waveform.
+//            crossings of L. The lock measure: a phase-locked voice reads 0
+//            exactly, however chaotic its waveform.
 //   mpm      the same from McLeod's method, the median over four windows. The
-//            measure for SYNC, whose strictly periodic cycle may cross zero
-//            more than once (Lorenz's X can switch lobes twice in one). It reads
-//            a period-2 waveform -- alternating big and small loops -- as the
-//            octave below, which is strictly its period but not what zc hears.
+//            measure where X may cross zero more than once a cycle (Lorenz's X
+//            can switch lobes twice in one). It reads a period-2 waveform --
+//            alternating big and small loops -- as the octave below, which is
+//            strictly its period but not what zc hears.
 //   clarity  the NSDF peak height, 0..1. 1 is exactly periodic; ~0.8 is a clear
 //            pitch with roughness; below ~0.6 the pitch is weak or gone.
 //
@@ -21,12 +21,12 @@
 // settings (30%, 60%, 90% of the pot) at mid CHAR. McLeod's period search is
 // limited to +-1.3 octaves of the target.
 //
-// Pass/fail (exit status 1 on any failure), against what the design promises:
-//   - TAME = 1 is strictly periodic at the note, in either mode: |mpm| < 5
-//     cents and clarity > 0.97 at every pitch.
-//   - Everything below 1 is reported, not judged. How close the table gets a
-//     free chaotic system, and how the middle of the knob sounds, are findings
-//     and ear decisions, not specs.
+// Pass/fail (exit status 1 on any failure). Since 2026-10-09 TAME is a push and
+// nothing more, so it promises no lock: how close each model gets is a finding
+// and an ear decision, reported, not judged. What is checked:
+//   - the reference is a cosine (cos2pi against libm);
+//   - a model whose push ceiling is zero (tameDriveMax, Lorenz and Chua) plays
+//     bit-identically at every TAME: the knob must leave it free, not nearly so.
 //
 // Build:
 //   g++ -O2 -std=c++17 -I common/chaos_core/include
@@ -34,7 +34,7 @@
 //       -o /tmp/tametest && /tmp/tametest
 //   (one line; split here for readability)
 //
-// Args: [algo index] [auto|force|sync]   (default: every algorithm, auto)
+// Args: [algo index]   (default: every algorithm)
 
 #include "models.h"   // the shipping six, plus candidates with -DCHAOS_CANDIDATES
 #include "chaos_core/Voice.h"
@@ -43,7 +43,6 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
-#include <cstring>
 #include <vector>
 
 using namespace chaos_core;
@@ -93,16 +92,18 @@ Est mpm(const float* x, int W, float tLo, float tHi) {
 
 struct Result { float cents, clarity, zcCents; };
 
-Result play(ChaosBase* a, float chaos, float charV, float hz, float tame, Voice::TameMode mode) {
+Result play(ChaosBase* a, float chaos, float charV, float hz, float tame,
+            std::vector<float>* out = nullptr) {
     Voice v;
     v.setSampleRate(kSr);
     v.setAlgo(a);
     const int warm = (int)(0.4f * kSr), len = 4 * kWin;
     std::vector<float> L(warm + len + kBlock), R(warm + len + kBlock);   // last block overhangs
     for (int i = 0; i < warm + len; i += kBlock) {
-        v.setPitch(chaos, charV, hz, tame, mode);
+        v.setPitch(chaos, charV, hz, tame);
         v.render(&L[i], &R[i], kBlock);
     }
+    if (out) out->assign(L.begin() + warm, L.begin() + warm + len);
     const float T = kSr / hz;
     std::vector<float> h, c;
     for (int w = 0; w < 4; w++) {
@@ -131,12 +132,7 @@ Result play(ChaosBase* a, float chaos, float charV, float hz, float tame, Voice:
 
 int main(int argc, char** argv) {
     int only = -1;
-    Voice::TameMode mode = Voice::TAME_AUTO;
     if (argc > 1) only = std::atoi(argv[1]);
-    if (argc > 2) {
-        if (!std::strcmp(argv[2], "force")) mode = Voice::TAME_FORCE;
-        else if (!std::strcmp(argv[2], "sync")) mode = Voice::TAME_SYNC;
-    }
 
     // The reference cosine has to be a cosine.
     float cosErr = 0.0f;
@@ -158,15 +154,22 @@ int main(int argc, char** argv) {
         const float cap = a->maxStepsPerSecond;
         a->maxStepsPerSecond = 1.0e9f;
         struct Restore { ChaosBase* a; float cap; ~Restore() { a->maxStepsPerSecond = cap; } } restore{a, cap};
-        Voice::TameMode m = mode;
-        if (m == Voice::TAME_AUTO)
-            m = (a->pitchClass == PITCH_INCOHERENT) ? Voice::TAME_SYNC : Voice::TAME_FORCE;
-        const bool sync = (m == Voice::TAME_SYNC);
-        std::printf("\n%s  [%s]  |zc| |mpm| cents, clarity\n  TAME ", a->name,
-                    sync ? "SYNC" : "FORCE");
+        static const char* kClass[] = {"coherent", "forced", "incoherent"};
+        std::printf("\n%s  [%s, push %.1f%%]  |zc| |mpm| cents, clarity\n  TAME ", a->name,
+                    kClass[a->pitchClass], 100.0f * a->tameDriveMax);
         for (float hz : kPitches) std::printf("  %9.0f Hz  ", hz);
         std::printf("\n");
         const float charV = 0.5f * (a->charMin + a->charMax);
+        if (!(a->tameDriveMax > 0.0f)) {
+            // No push: TAME must change nothing at all.
+            const float chaos = 0.5f * (a->chaosMin + a->chaosMax);
+            std::vector<float> free, full;
+            play(a, chaos, charV, 220.0f, 0.0f, &free);
+            play(a, chaos, charV, 220.0f, 1.0f, &full);
+            const bool same = (free == full);
+            if (!same) fails++;
+            std::printf("  TAME 1 against TAME 0: %s\n", same ? "bit-identical" : "DIFFERS!");
+        }
         for (float tame : kTames) {
             std::printf("  %4.2f", tame);
             for (float hz : kPitches) {
@@ -174,7 +177,7 @@ int main(int argc, char** argv) {
                 float clar = 0.0f;
                 for (float cn : kChaosN) {
                     const float chaos = a->chaosMin + (a->chaosMax - a->chaosMin) * cn;
-                    const Result r = play(a, chaos, charV, hz, tame, m);
+                    const Result r = play(a, chaos, charV, hz, tame);
                     cents.push_back(std::fabs(r.cents));
                     zcs.push_back(std::fabs(r.zcCents));
                     clar += r.clarity;
@@ -183,9 +186,7 @@ int main(int argc, char** argv) {
                 std::sort(zcs.begin(), zcs.end());
                 const float c = cents[1];
                 clar /= 3.0f;
-                const bool bad = (tame == 1.0f) && (c >= 5.0f || clar <= 0.97f);
-                if (bad) fails++;
-                std::printf("  %4.0f %4.0f %4.2f%s", std::min(zcs[1], 9999.0f), c, clar, bad ? "!" : " ");
+                std::printf("  %4.0f %4.0f %4.2f ", std::min(zcs[1], 9999.0f), c, clar);
             }
             std::printf("\n");
         }

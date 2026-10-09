@@ -35,17 +35,19 @@ namespace chaos_core {
         float refCentre, refAmp;
     };
 
-    // How TAME pulls a voice onto the requested pitch (docs/SECRET.md, section 2).
+    // What kind of pitch a system has (docs/SECRET.md, section 2). Descriptive:
+    // Voice treats every class the same way, time-scaling plus TAME's push, and
+    // the push's ceiling (tameDriveMax) is what differs per model.
     enum PitchClass : unsigned char {
-        PITCH_COHERENT,     // rotation rate barely moves: scale + drive
-        PITCH_FORCED,       // locked to an internal drive: scale by that drive + drive
-        PITCH_INCOHERENT    // no stable rotation: scale + Ogham-style sync
+        PITCH_COHERENT,     // rotation rate barely moves: locks to the push
+        PITCH_FORCED,       // driven by its own equation: sings that drive's subharmonics
+        PITCH_INCOHERENT    // no stable rotation: an average pitch at best
     };
 
     // ─── ChaosBase ────────────────────────────────────────────────────────────────
     // Abstract base for all chaotic algorithms. Subclasses populate metadata fields
     // in their constructors and implement the pure-virtual methods: init,
-    // setParams, stepSample, getX, getY, and saveState/loadState for TAME's sync.
+    // setParams, stepSample, getX, getY, and saveState/loadState.
     class ChaosBase {
     public:
         const char* name       = "?";
@@ -167,6 +169,14 @@ namespace chaos_core {
         const PitchGrid* pitchGrid   = nullptr;   // set from PitchTables.h
         float            fNatDefault = 0.16f;     // cycles per sim time, if no grid
 
+        // TAME's push at full TAME, as a fraction of X's own rate (2 pi fNat x
+        // refAmp). Measured push-only, 2026-10-09 (docs/SECRET.md, section 2):
+        // 7.5% phase-locks Rossler within 5 cents with its chaos intact, and more
+        // starts to bend the attractor. Zero where a push only adds noise --
+        // Lorenz and Chua never lock, and their clarity halves under one -- so
+        // TAME leaves those free.
+        float tameDriveMax = 0.075f;
+
         // Largest numerically safe step at these parameters. dtBase unless the
         // system's stiffness moves with a parameter, as Van der Pol's does with mu.
         virtual float stableDt(float chaos, float charV) const {
@@ -206,19 +216,12 @@ namespace chaos_core {
         // every trajectory bit-identical to an unforced one.
         float tameD0 = 0.0f, tameDH = 0.0f, tameD1 = 0.0f;
 
-        // State access for TAME's sync: a snapshot on the attractor is taken
-        // once, then the state is pulled back to it every cycle.
+        // State access, for a host that wants to hold or restore a trajectory.
+        // TAME's sync pulled back to a snapshot through these until 2026-10-09;
+        // nothing in Voice uses them now.
         static constexpr int kMaxState = 8;
         virtual int  saveState(float* s) const = 0;   // returns the count written
         virtual void loadState(const float* s) = 0;
-        // Move `w` of the way from the current state to `snap` (w = 1 is a full
-        // re-seed). Override where a state variable is an angle.
-        virtual void blendState(const float* snap, float w) {
-            float s[kMaxState];
-            const int n = saveState(s);
-            for (int i = 0; i < n; i++) s[i] += w * (snap[i] - s[i]);
-            loadState(s);
-        }
 
         virtual ~ChaosBase() {}
         virtual void  init()                                          = 0;

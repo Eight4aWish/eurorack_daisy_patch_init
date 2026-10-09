@@ -35,8 +35,10 @@ for the reference consumer.
 - `tools/pitchmap.cpp`: natural frequency and jitter per point; `--emit` writes
   `PitchTables.h`
 - `tools/tametest.cpp`: plays notes through `setPitch()` and measures them,
-  in cents and clarity, across pitch and TAME; fails unless TAME 1 is strictly
-  periodic at the note
+  in cents and clarity, across pitch and TAME; fails if a model with no push
+  (`tameDriveMax` 0) changes at all with TAME
+- `tools/registermap.cpp`: the octave a driven model actually sounds in, over its
+  whole CHAOS × CHAR plane
 - `tools/tamerender.cpp`: audition WAVs of TAME sweeps and arpeggios
 
 This library moved here from `eurorack_modules/libs/chaos_core` on 2026-09-30,
@@ -127,9 +129,6 @@ voice.setPitch(/*chaos*/ 5.6f, /*char*/ 0.23f, /*hz*/ 220.0f, /*tame*/ 0.4f);
 // audio callback
 voice.render(outL, outR, blockSize);           // floats, nominally -1..+1
 ```
-
-On a gate edge that re-inits the attractor, also call `voice.invalidateSnapshot()`,
-or SYNC will pull the new trajectory straight back to the old one.
 
 ## Divergence guard
 
@@ -237,15 +236,24 @@ took a simulated-time rate. The full design and its measurements are in
 
 - **Scale.** The rate is `hz / naturalFreq(chaos, char)`: the attractor's own
   rotation, measured by `pitchmap` over the whole CHAOS × CHAR plane, lands on the
-  note. That is TAME 0, the free voice. Duffing overrides `naturalFreq` with its
-  drive frequency, ω/2π, so its subharmonic windows stay intervals below the note.
-- **FORCE** (coherent and forced systems). TAME 0–0.5 adds a cosine at the note
-  to dX, up to 5% of X's own rate: free, then phase slips, then **phase-locked
-  chaos**, an exact pitch under a waveform that is still chaotic. TAME 0.5–1 holds
-  the drive and fades in SYNC's pull.
-- **SYNC** (incoherent systems: Lorenz, Chua). A snapshot is taken on the settled
-  attractor, and once per cycle of the note the state is pulled `1 − (1 − TAME)²`
-  of the way back to it. At 1 the voice is strictly periodic.
+  note. That is TAME 0, the free voice. The driven models override `naturalFreq`
+  with their drive: Duffing and the pendulum sound at it (ω/2π) across most of
+  their range, so their subharmonic windows stay intervals below the note; the
+  Brusselator's limit cycle entrains at half its drive, so it is tuned to ω/4π.
+- **TAME is a push.** It adds a cosine at the note to dX, rising with TAME² to the
+  model's own ceiling, `tameDriveMax`, as a fraction of X's own rate: 7.5% by
+  default, 10% for Moore–Spiegel, and 0 for Lorenz and Chua. That is the equation
+  plus a weak outside drive. Coherent systems go from free, through phase slips,
+  to **phase-locked chaos**: an exact pitch under a waveform that is still chaotic.
+  Driven systems keep their own subharmonics. A model with a ceiling of 0 is
+  bit-identical at every TAME.
+
+Until 2026-10-09 the top half of TAME also pulled the whole state back to a stored
+snapshot once a cycle (SYNC), and Lorenz and Chua used that pull across the whole
+knob. It was hard sync: the pitch came from the reset clock, the output was a slice
+of attractor looped, and Hindmarsh–Rose's bursts and Lorenz's lobe switching never
+happened. It was removed so that every sound the module makes is the equations'
+own; the models that will not be tamed are left untamed.
 
 What the measurements changed along the way, since each is a trap for the next
 edit:
@@ -254,24 +262,30 @@ edit:
   half is extra damping, which changed the system's own frequency, pulling Rössler
   up to 160 cents flat before it locked. Pure forcing leaves the dynamics alone.
 - **Strong drive does not lock; it breaks.** Past ~10% of X's rate, forced Rössler
-  goes to period 2 and chaos rather than a cleaner lock. That is why the top of the
-  knob hands over to SYNC instead of driving harder.
-- **Snapshot only a settled trajectory.** Taken two cycles after a cold start,
-  before the drive had locked, every pull dragged the phase towards an unlocked
-  point, and Rössler slipped a cycle every ~36: periodic, and 45 cents flat. The
-  capture now waits eight cycles.
+  goes to period 2 and chaos rather than a cleaner lock. That is why the ceiling is
+  per model and mostly 7.5%.
+- **A push makes Lorenz and Chua worse, not tamer.** They never lock, and their
+  clarity falls from ~0.5 to ~0.2 under a push. Hence their ceiling of 0.
+- **Measure a driven model's register over the whole plane.** `tametest` samples
+  three CHAOS settings at mid CHAR, and for Duffing those happen to sit in
+  subharmonic windows, which read as "an octave below". `tools/registermap.cpp`
+  covers a 9 × 7 grid: Duffing and the pendulum sound at their drive in 39 of 63
+  cells, the Brusselator at half its drive in 50.
 - **Measure lock by zero crossings, not autocorrelation alone.** McLeod's method
   reads a period-2 waveform (alternating big and small loops) as the octave below.
   A phase-locked chaotic voice has an exact crossing rate. `tametest` shows both.
 
-`tools/tametest.cpp` holds the current results. At TAME 1 every algorithm is
-strictly periodic at 55–880 Hz (|error| < 5 cents, clarity > 0.97). With TAME off,
-`Voice` is bit-identical to the Teensy build's, trajectories and `setParams()`
-path both, checked against the frozen copy in `eurorack_modules`.
+`tools/tametest.cpp` holds the current results, push only (2026-10-09): Rössler
+locks within ~5 cents at full TAME, Coupled Rössler within 2, Moore–Spiegel within
+5, Van der Pol exactly; Lorenz–Lü–Chen and Hindmarsh–Rose are within a few cents
+from the scaling alone; the Brusselator is within a cent with clarity 0.97–1.00.
+With TAME at 0, `Voice` is bit-identical to the Teensy build's, trajectories and
+`setParams()` path both, checked against the frozen copy in `eurorack_modules`.
 
-Cost, host x86: FORCE adds ~60% per sample on Rössler (three reference cosines
-per step, against ~90 cycles of RK4). SYNC adds almost nothing. Reusing each
-step's end value as the next one's start would cut FORCE to two cosines.
+Cost, host x86: the push adds ~60% per sample on Rössler (three reference cosines
+per step, against ~90 cycles of RK4), and nothing at TAME 0 or on a model whose
+ceiling is 0. Reusing each step's end value as the next one's start would cut it
+to two cosines.
 
 ## Candidates (host tools only)
 
@@ -315,9 +329,9 @@ For TAME it also needs:
 
 - the drive, `D0` / `DH` / `D1`, added to dX at the four RK4 stages (start, the
   two midpoints, end), exactly as the existing six do;
-- `saveState` / `loadState`, and `blendState` if a state variable is an angle;
-- a `pitchClass`, a `pitchGrid` from `PitchTables.h`, and `stableDt` if its safe
-  step moves with a parameter;
+- `saveState` / `loadState`;
+- a `pitchClass`, a `pitchGrid` from `PitchTables.h`, a `tameDriveMax` if 7.5%
+  doesn't suit it, and `stableDt` if its safe step moves with a parameter;
 - then regenerate the tables, `pitchmap --emit`, and run `tametest`.
 
 The metadata is the expensive part, because most of it can only be arrived at by
@@ -347,9 +361,9 @@ automatically a fault — see Chua above.
 - `Voice`'s envelope ramps the VCA over `kModeRampMs` (5 ms) when it is switched
   between drone and gated, in either direction. It used to snap open or shut in a
   single sample, which clicked on every switch.
-- For hosts hunting clicks, `Voice` also counts SYNC pulls (`syncPulls()`) and
-  snapshot captures (`snapCaptures()`), and reports `stepsPerSample()`, the
-  figure that sets the CPU cost.
+- For hosts hunting clicks, each model counts its divergence-guard re-seeds
+  (`guardTrips`), and `Voice` reports `stepsPerSample()`, the figure that sets the
+  CPU cost.
 - Not thread-safe. `stepSample()` is expected to run in one audio context while
   `setParams()` is called from a control context — the field writes are
   word-sized, and a torn parameter update is at worst one sample of a stale

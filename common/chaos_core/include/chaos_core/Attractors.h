@@ -185,9 +185,11 @@ namespace chaos_core {
             yMin       = -120.0f; yRange  = 235.0f;  // z-rho, measured -118.7..+112.9
             cvScaleX   = 0.085f; cvScaleY = 0.041f;  // full state -> +/-4.9 V, was set for rho<=32
             // Lobe switching has no steady rate outside the periodic windows, so
-            // TAME defaults to sync. The grid (X crossings, i.e. lobe switches)
-            // only sets how much trajectory fits in one cycle.
+            // there is no pitch to lock: TAME leaves it free. The grid (X
+            // crossings, i.e. lobe switches) puts the average switching rate on
+            // the note, which is as much pitch as the butterfly has.
             pitchClass = PITCH_INCOHERENT;
+            tameDriveMax = 0.0f;   // never locks; a push only adds noise
             pitchGrid  = &kPitchGrid_LORENZ;
         }
         void init() override { x_ = 0.1f; y_ = 0.0f; z_ = 0.0f; }
@@ -243,7 +245,8 @@ namespace chaos_core {
             xMin       = -5.0f;  xRange   = 10.0f;
             yMin       = -6.0f;  yRange   = 12.0f;  // z axis for phase plot
             cvScaleX   = 1.30f;  cvScaleY = 1.00f;
-            pitchClass = PITCH_INCOHERENT;   // scroll switching, like Lorenz: sync
+            pitchClass = PITCH_INCOHERENT;   // scroll switching, like Lorenz
+            tameDriveMax = 0.0f;             // never locks; a push only adds noise
             pitchGrid  = &kPitchGrid_CHUA;
         }
         void init() override { x_ = 0.5f; y_ = 0.0f; z_ = 0.0f; }
@@ -335,17 +338,6 @@ namespace chaos_core {
         void init() override { x_ = 1.0f; y_ = 0.0f; phi_ = 0.0f; }
         int  saveState(float* s) const override { s[0] = x_; s[1] = y_; s[2] = phi_; return 3; }
         void loadState(const float* s) override { x_ = s[0]; y_ = s[1]; phi_ = s[2]; }
-        // phi is an angle: blend along the short way round, never through pi.
-        void blendState(const float* snap, float w) override {
-            x_ += w * (snap[0] - x_);
-            y_ += w * (snap[1] - y_);
-            float d = snap[2] - phi_;
-            if (d >  3.14159265f) d -= 6.28318531f;
-            if (d < -3.14159265f) d += 6.28318531f;
-            phi_ += w * d;
-            if (phi_ < 0.0f)       phi_ += 6.28318531f;
-            if (phi_ > 6.28318f)   phi_ -= 6.28318531f;
-        }
         void setParams(float chaos, float rate, float charV) override {
             gamma_ = chaos; dt_ = rate; omega_ = charV;
         }

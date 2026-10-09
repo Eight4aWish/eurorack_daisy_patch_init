@@ -4,6 +4,14 @@
 > `secret-v1.0.0.bin`; the page is at <https://eight4awish.com/modules/secret/>.
 > The four low-topping models ship as they are, listed as a known limit.
 >
+> **In development since 2026-10-09 (1.1.0-dev, unreleased; on David's module).**
+> TAME's SYNC is gone, at David's direction: no hard sync, and models left less
+> tamed where that is their nature. TAME is now the push alone, rising to each
+> model's own ceiling; Lorenz and Chua have none, so TAME leaves them free. B2 has
+> no job, kept for a later one. The Brusselator is tuned to the octave it actually
+> sounds in. B1 picks banks of six. This section describes the new build; v1.0.0
+> is described by the page and the tag.
+>
 > **Bench after release, 2026-10-02, on the 1.0.0 build.** Scope (step 6): both the
 > X/Y CV on J7/J8 and the audio on J9/J10 draw on Tiliqua's `xbeam`. V/Oct (step 4):
 > pitch follows J3. The octave scale was not measured against a tuner. David's
@@ -42,7 +50,8 @@
 
 A chaotic oscillator for the **Hermetic Modular Alchemy Lab (V2)**. It runs
 continuous strange attractors as audio, with V/Oct, and a **TAME** control that
-goes from free chaos to a locked note without losing the grit in between.
+pushes the attractor towards the note. The models with a rotation lock to it with
+their chaos intact; the ones that won't be tamed stay free.
 
 *Seven for a secret, never to be told.* **Secret** is the release name. It
 succeeds the Teensy 4.1 **Chaos** module in
@@ -56,15 +65,16 @@ firmware is frozen and whose hardware will be repurposed.
 | P1 **TUNE** | 27.5–880 Hz, exponential; plus V/OCT on J3 |
 | P2 **CHAOS** | the bifurcation parameter; plus CV on J5 |
 | P3 **CHAR** | the secondary parameter |
-| P4 **TAME** | free chaos (0) to a locked note (1); plus CV on J6 |
+| P4 **TAME** | a push at the note, from none (0) to the model's ceiling (1); plus CV on J6 |
 | P5 **AD** | envelope attack + decay |
 | P6 **SR** | envelope sustain + release |
 | B1 | model, in banks of six. Short press steps the current level; long press (0.8 s) switches between the patch and bank levels (see below) |
-| B2 | TAME mode: Auto, Force, Sync (Auto is the model's own choice) |
+| B2 | no job; kept for a later one (TAME's mode, Auto / Force / Sync, until 2026-10-09) |
 | B3 | envelope: Drone (VCA open) or Gated by J4 |
 
 Each button sits between the knobs it belongs with: B2 beside TAME, B3 between AD and SR
-(swapped 2026-10-02; until then B2 was the envelope and B3 the TAME mode).
+(swapped 2026-10-02; until then B2 was the envelope and B3 the TAME mode). The faceplate
+still prints TAME MODE by B2, until B2 has its new job.
 
 | Jack | Job |
 | --- | --- |
@@ -90,6 +100,21 @@ blinks.
 | magenta | 4 | Chua | Forced Brusselator |
 | green | 5 | Duffing | Chaotic Colpitts |
 | white | 6 | Coupled Rössler | Hindmarsh–Rose |
+
+**TAME, model by model.** TAME adds a cosine at the note to the equation, the
+textbook way to drive an oscillator. It rises with the square of the knob, so the
+first half stays near free-running, up to a ceiling set per model from push-only
+measurements (`chaos_core/tools/tametest.cpp`, 2026-10-09):
+
+| Model | Ceiling | What TAME does |
+| --- | --- | --- |
+| Rössler, Coupled Rössler | 7.5% | locks within ~5 / 2 cents, chaos intact |
+| Van der Pol | 7.5% | periodic anyway: exact from mid-knob |
+| Moore–Spiegel | 10% | locks within ~5 cents at the top |
+| Lorenz–Lü–Chen, Hindmarsh–Rose | 7.5% | within a few cents from the scaling alone; the push tightens it a little, and Hindmarsh–Rose's bursts survive |
+| Duffing, Driven pendulum, Forced Brusselator | 7.5% | driven by their own equations: they sing their subharmonics, an octave, a twelfth or two octaves below in their periodic windows |
+| Chaotic Colpitts | 7.5% | settles into its period-doubling patterns |
+| Lorenz, Chua | 0 | never lock, and a push only made them noisier: TAME leaves them free |
 
 What each one is, and why it was chosen, is in `docs/SECRET.md`, section 3.
 
@@ -200,9 +225,9 @@ hang is the port, not the firmware.
 **The click log.** The audio callback watches every sample-to-sample step. One
 over 0.5 of full scale is a discontinuity, not a waveform: a full-scale sine at
 880 Hz moves at most 0.12 per sample. For each one it logs the model, CHAOS, CHAR,
-pitch, TAME and its resolved mode, Drone or Gated, and what else happened in that
-block: a `guard` re-seed, a `sync-pull`, a new SYNC `snapshot`, a `gate` re-seed,
-a `model` change, or the `governor` holding the pitch back. At most four lines a
+pitch, TAME, Drone or Gated, and what else happened in that block: a `guard`
+re-seed, a `gate` re-seed, a `model` change, or the `governor` holding the pitch
+back. At most four lines a
 second; `+N more` counts the ones in between. Panel changes are logged too, so
 the clicks can be read against what was being played.
 
@@ -214,10 +239,10 @@ In order, so a failure points at one thing:
    (Rössler).
 2. **Sound.** J9/J10 into the mixer, TUNE at noon (~155 Hz), TAME at 0: Rössler's
    rough, pitched drone.
-3. **TAME.** Turn it up: free, then locked but still gritty, then a clean
-   periodic tone at the top. Try each model on B1, and B2 to compare Force and
-   Sync. These are the listening tests from `SECRET.md` section 2.
-4. **V/Oct.** With TAME at 1 (strictly periodic, so a tuner can read it), feed J3
+3. **TAME.** Turn it up on Rössler: free, then phase slips, then locked but still
+   gritty. Try each model on B1 against the table above. These are the listening
+   tests from `SECRET.md` section 2.
+4. **V/Oct.** On Van der Pol with TAME at 1 (periodic, so a tuner can read it), feed J3
    from a quantiser (Scales) and check octaves. TUNE trims the offset. If
    octaves come out consistently stretched or squeezed, that's the input gain,
    and the reason for the calibration below.

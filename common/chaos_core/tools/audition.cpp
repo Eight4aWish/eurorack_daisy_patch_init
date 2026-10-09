@@ -6,7 +6,7 @@
 // candidates in reserve (bank 2 was chosen from these nine on 2026-10-01). Host build.
 //
 // Each file is 48 kHz 16-bit stereo (L = X, R = Y, as J9/J10), rendered through
-// Voice::setPitch() with TAME's mode on Auto and the envelope off (drone), in four
+// Voice::setPitch() with the envelope off (drone), in four
 // sections separated by half a second of silence:
 //
 //   1  CHAOS swept end to end over 10 s, CHAR at the model's spot, TAME 0
