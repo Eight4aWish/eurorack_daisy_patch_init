@@ -32,7 +32,7 @@
 >
 > **Twelve models (2026-10-01).** Bank 2 was chosen by ear from nine measured
 > candidates (`docs/SECRET.md`, section 3) and added after bank 1 as one list of
-> twelve on B1. A bank selector waits for a third bank. Every model's step cap
+> twelve on B1. (Since 2026-10-09, two banks of six on B1's two levels.) Every model's step cap
 > is measured on the board with `make BENCH=1`: at its cap with TAME on, a block
 > takes 64–71% of its time, so nothing can overrun. On this chip four models top out
 > inside the playing range, and a note above the top plateaus: Hindmarsh–Rose
@@ -59,7 +59,7 @@ firmware is frozen and whose hardware will be repurposed.
 | P4 **TAME** | free chaos (0) to a locked note (1); plus CV on J6 |
 | P5 **AD** | envelope attack + decay |
 | P6 **SR** | envelope sustain + release |
-| B1 | model, twelve in one list (see below) |
+| B1 | model, in banks of six. Short press steps the current level; long press (0.8 s) switches between the patch and bank levels (see below) |
 | B2 | TAME mode: Auto, Force, Sync (Auto is the model's own choice) |
 | B3 | envelope: Drone (VCA open) or Gated by J4 |
 
@@ -75,19 +75,23 @@ Each button sits between the knobs it belongs with: B2 beside TAME, B3 between A
 | J7 / J8 | X / Y CV out: the raw attractor, for a scope (Tiliqua `xbeam`) |
 | J9 / J10 | audio L (X) / R (Y) |
 
-**B1's twelve models**, in order, by the colour both of its LEDs show:
+**B1: banks of six** (David's design, 2026-10-09; heading for up to six banks). Two
+menu levels. At the **patch level** (the power-on level) a short press steps to the next
+model in the bank; at the **bank level** it steps to the next bank, keeping the patch
+number. A long press (0.8 s) switches level. B1's **top LED shows the bank** and its
+**bottom LED the patch**, both in the same six colours; at the bank level the top LED
+blinks.
 
-| | Bank 1 | | Bank 2 |
+| Colour | Bank / patch | Bank 1 | Bank 2 |
 | --- | --- | --- | --- |
-| orange | Rössler | red | Driven pendulum |
-| yellow | Van der Pol | cyan | Lorenz–Lü–Chen |
-| blue | Lorenz | violet | Moore–Spiegel |
-| magenta | Chua | lime | Forced Brusselator |
-| green | Duffing | pink | Chaotic Colpitts |
-| white | Coupled Rössler | teal | Hindmarsh–Rose |
+| orange | 1 | Rössler | Driven pendulum |
+| yellow | 2 | Van der Pol | Lorenz–Lü–Chen |
+| blue | 3 | Lorenz | Moore–Spiegel |
+| magenta | 4 | Chua | Forced Brusselator |
+| green | 5 | Duffing | Chaotic Colpitts |
+| white | 6 | Coupled Rössler | Hindmarsh–Rose |
 
-Bank 2's colours sit in the hue gaps between bank 1's. What each one is, and why
-it was chosen, is in `docs/SECRET.md`, section 3.
+What each one is, and why it was chosen, is in `docs/SECRET.md`, section 3.
 
 CV into CHAOS and TAME: ±5 V sweeps the knob from its centre to either end. The
 rings show knob plus CV. Each button's LED shows its current choice by colour.
@@ -206,7 +210,7 @@ the clicks can be read against what was being played.
 
 In order, so a failure points at one thing:
 
-1. **It boots.** The rings show the six knob positions, and B1's LED is orange
+1. **It boots.** The rings show the six knob positions, and both of B1's LEDs are orange
    (Rössler).
 2. **Sound.** J9/J10 into the mixer, TUNE at noon (~155 Hz), TAME at 0: Rössler's
    rough, pitched drone.

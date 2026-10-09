@@ -410,7 +410,10 @@ B1 + a ring picks the family and the TAME behaviour is predictable within a bank
 
 ### Banks of six; bank 2 chosen by ear (2026-10-01)
 
-**Banks of six**, heading for six banks (36 models). Six rings make six slots: in
+**Banks of six**, heading for six banks (36 models). *Superseded 2026-10-09 by David's
+design: B1 short press steps, long press switches between the bank and patch levels;
+B1's top LED shows the bank and its bottom LED the patch, in one sequence of six
+colours (daisy_chaos/README.md).* The first idea, kept for the record: in
 bank-select mode each ring can show one model of the bank in its colour, and B1's
 colour coding carries straight over. Each bank is balanced between FORCE and SYNC
 models, so TAME stays predictable within a bank. Bank 1 is the shipping six.

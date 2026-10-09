@@ -19,9 +19,13 @@
 //   P5 AD     envelope attack + decay
 //   P6 SR     envelope sustain + release
 //
-//   B1        model, twelve in one list: Rossler, Van der Pol, Lorenz, Chua,
-//             Duffing, Coupled Rossler (bank 1), then Pendulum, Lorenz-Lu-Chen,
-//             Moore-Spiegel, Brusselator, Colpitts, Hindmarsh-Rose (bank 2)
+//   B1        banks of six models, two menu levels. A short press steps the
+//             current level; a long press (0.8 s) switches between the patch level
+//             and the bank level. B1's top LED shows the bank, its bottom LED the
+//             patch, both in the same six colours; at the bank level the top LED
+//             blinks. Bank 1: Rossler, Van der Pol, Lorenz, Chua, Duffing, Coupled
+//             Rossler. Bank 2: Pendulum, Lorenz-Lu-Chen, Moore-Spiegel, Brusselator,
+//             Colpitts, Hindmarsh-Rose.
 //   B2        TAME mode: Auto, Force, Sync (Auto = the model's own choice)
 //   B3        envelope: Drone (VCA open) or Gated by J4
 // Each button sits between the knobs it belongs with: B2 beside TAME, B3 between
@@ -109,29 +113,40 @@ static VirtualKnob sustainRelease = VirtualKnob(kPotBottomRight, "SR")
     .Ring(Level({0x80, 0x80, 0x80}));
 
 /* ── Buttons ────────────────────────────────────────────────────────────── */
-static uint8_t s_model = 0, s_env = 0, s_mode = 0;   // kept in sync by Bind()
+static uint8_t s_env = 0, s_mode = 0;   // kept in sync by Bind()
 
-// One list of twelve on B1 for now: bank 1, then bank 2 (chaos_core/Registry.h).
-// A bank selector waits until there is a third bank. Twelve colours, both of
-// B1's LEDs; bank 2's six sit in the hue gaps between bank 1's.
-static_assert(N_ALGOS == 12, "one name and one colour per model");
+// Banks of six (chaos_core/Registry.h: bank 1, then bank 2), heading for up to six
+// banks. B1 has two menu levels, David's design (2026-10-09): a short press steps
+// whichever level is active, a long press switches level. The active model is
+// bank * 6 + patch. Changing bank keeps the patch number.
+static constexpr uint8_t kNumBanks  = N_ALGOS / kBankSize;   // kBankSize: chaos_core/Registry.h
+static constexpr uint32_t kLevelHoldMs = 800;
+static_assert(N_ALGOS % kBankSize == 0, "whole banks of six");
+static_assert(N_ALGOS == 12, "one name per model");
+static uint8_t s_bank = 0, s_patch = 0, s_model = 0;
+static bool    s_bankLevel = false;   // false: patch level (the power-on level)
 static const char* kModelNames[N_ALGOS] = {
     "Rossler", "Van der Pol", "Lorenz", "Chua", "Duffing", "Coupled Rossler",
     "Pendulum", "Lorenz-Lu-Chen", "Moore-Spiegel", "Brusselator", "Colpitts",
     "Hindmarsh-Rose"};
-static constexpr LedPanel::Rgb kModelColors[N_ALGOS] = {
-    {0xFF, 0x60, 0x00},   // Rossler          orange
-    {0xFF, 0xFF, 0x40},   // Van der Pol      yellow
-    {0x40, 0x80, 0xFF},   // Lorenz           blue
-    {0xFF, 0x00, 0xC0},   // Chua             magenta
-    {0x00, 0xFF, 0x60},   // Duffing          green
-    {0xFF, 0xFF, 0xFF},   // Coupled Rossler  white
-    {0xFF, 0x00, 0x00},   // Pendulum         red
-    {0x00, 0xD0, 0xFF},   // Lorenz-Lu-Chen   cyan, Lorenz's relative
-    {0x80, 0x00, 0xFF},   // Moore-Spiegel    violet
-    {0xA0, 0xFF, 0x00},   // Brusselator      lime
-    {0xFF, 0x60, 0x90},   // Colpitts         pink
-    {0x00, 0xFF, 0xC0}};  // Hindmarsh-Rose   teal
+// One sequence of six colours, used for both the bank (B1's top LED) and the
+// patch within it (the bottom LED): bank 1's colours from the twelve-in-a-list build.
+static constexpr LedPanel::Rgb kSix[kBankSize] = {
+    {0xFF, 0x60, 0x00},   // 1 orange
+    {0xFF, 0xFF, 0x40},   // 2 yellow
+    {0x40, 0x80, 0xFF},   // 3 blue
+    {0xFF, 0x00, 0xC0},   // 4 magenta
+    {0x00, 0xFF, 0x60},   // 5 green
+    {0xFF, 0xFF, 0xFF}};  // 6 white
+
+static void SelectModel() { s_model = static_cast<uint8_t>(s_bank * kBankSize + s_patch); }
+static void OnB1Tap(void*)
+{
+    if (s_bankLevel) s_bank  = static_cast<uint8_t>((s_bank + 1) % kNumBanks);
+    else             s_patch = static_cast<uint8_t>((s_patch + 1) % kBankSize);
+    SelectModel();
+}
+static void OnB1Hold(void*) { s_bankLevel = !s_bankLevel; }
 
 static const char* kEnvNames[2] = {"Drone", "Gated"};
 static constexpr LedPanel::Rgb kEnvColors[2] = {{0x20, 0x20, 0x20}, {0xFF, 0xA0, 0x20}};
@@ -142,7 +157,9 @@ static constexpr LedPanel::Rgb kModeColors[3] = {
     {0x30, 0x30, 0x30}, {0x40, 0xFF, 0x80}, {0xB0, 0x40, 0xFF}};
 
 static VirtualButton modelButton = VirtualButton(kButtonB1, "Model")
-    .Ident("model").Selector(kModelNames).Colors(kModelColors).Bind(&s_model);
+    .Ident("model")
+    .Tap(OnB1Tap, "Next patch (or bank, at the bank level)")
+    .Hold(kLevelHoldMs, OnB1Hold, "Switch between the patch and bank levels");
 static VirtualButton envButton = VirtualButton(kButtonB3, "Envelope")
     .Ident("env").Selector(kEnvNames).Colors(kEnvColors).Bind(&s_env);
 static VirtualButton modeButton = VirtualButton(kButtonB2, "Tame mode")
@@ -395,6 +412,18 @@ static void Poll(uint32_t /*t_ms*/)
     s_params = p;
 }
 
+/* ── Render: B1's two LEDs ──────────────────────────────────────────────── */
+// Runs after the frame's clear and the button bank's colours, so these stick.
+// Top = bank, bottom = patch. At the bank level the top LED blinks, about twice a
+// second, to say which level a short press will step.
+static void Render(uint32_t t_ms)
+{
+    const bool showTop = !s_bankLevel || ((t_ms / 250u) & 1u) == 0u;
+    hw.leds.SetButton(kButtonB1, LedPanel::ButtonLed::Top,
+                      showTop ? kSix[s_bank % kBankSize] : LedPanel::Rgb{0, 0, 0});
+    hw.leds.SetButton(kButtonB1, LedPanel::ButtonLed::Bottom, kSix[s_patch % kBankSize]);
+}
+
 /* ── Frame (16 ms): governor LED and the USB log ────────────────────────── */
 static void LogClick(const Jump& j, uint32_t missed)
 {
@@ -422,7 +451,13 @@ static void Frame()
 
     // Panel changes, so the click log can be read against what was played.
     static uint8_t model = 0xFF, env = 0xFF, mode = 0xFF;
-    if (s_model != model) { model = s_model; debug.Info("Model: %s", kModelNames[model < N_ALGOS ? model : 0]); }
+    static int8_t  level = -1;
+    if (s_model != model) {
+        model = s_model;
+        debug.Info("Model: %s (bank %u, patch %u)", kModelNames[model < N_ALGOS ? model : 0],
+                   (unsigned)(s_bank + 1), (unsigned)(s_patch + 1));
+    }
+    if (level != (int8_t)s_bankLevel) { level = (int8_t)s_bankLevel; debug.Info("B1 level: %s", s_bankLevel ? "bank" : "patch"); }
     if (s_env   != env)   { env   = s_env;   debug.Info("Envelope: %s", kEnvNames[env ? 1 : 0]); }
     if (s_mode  != mode)  { mode  = s_mode;  debug.Info("TAME mode: %s", kModeNames[mode < 3 ? mode : 0]); }
 
@@ -548,7 +583,8 @@ int main()
         .Use(buttons)
         .Use(host)
         .OnPoll(Poll)
-        .OnFrame(Frame);
+        .OnFrame(Frame)
+        .OnRender(Render);
 
     if (!host.ConfigurationOk() || !debug.ConfigurationOk())
         debug.Error("HostLink setup failed");
