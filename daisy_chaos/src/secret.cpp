@@ -67,12 +67,22 @@ static_assert(std::is_same_v<AlchemyLab, AlchemyLabV2>,
 /* ── Jacks: indices into hw.cv[] / hw.cv_jacks[], which start at J3 ─────── */
 // V/OCT and GATE side by side, the pair a sequencer drives; then the two
 // modulation inputs in knob order.
+#ifndef SECRET_JACKSHIFT
 static constexpr uint8_t kJackVoct  = 0;   // J3
 static constexpr uint8_t kJackGate  = 1;   // J4
 static constexpr uint8_t kJackChaos = 2;   // J5
 static constexpr uint8_t kJackTame  = 3;   // J6
 static constexpr uint8_t kJackX     = 4;   // J7, STM32 DAC: fast
 static constexpr uint8_t kJackY     = 5;   // J8, STM32 DAC: fast
+#else
+// make JACKSHIFT=1: every input one panel column along, for a board whose J3 has
+// failed (David's, 2026-10-10: J3 sits at +12 V). V/OCT J5, GATE J6, CHAOS CV J7,
+// TAME CV J8; J3 and J4 unused, and no X/Y CV out -- watch the audio instead.
+static constexpr uint8_t kJackVoct  = 2;   // J5
+static constexpr uint8_t kJackGate  = 3;   // J6
+static constexpr uint8_t kJackChaos = 4;   // J7
+static constexpr uint8_t kJackTame  = 5;   // J8
+#endif
 
 // Knob CV depth. Value() spans +-10 V across 0..1, so 2.0 makes +-5 V sweep a
 // knob from its centre to either end.
@@ -304,8 +314,10 @@ static void AudioCallback(daisy::AudioHandle::InputBuffer  /*in*/,
 
     // X / Y CV, the raw state rather than the limited audio: the true attractor
     // for a scope. Once per block -- 2 kHz at 48 kHz / 24.
+#ifndef SECRET_JACKSHIFT
     hw.cv_jacks[kJackX].SetVolts(Clamp5(voice.getX() * a->cvScaleX));
     hw.cv_jacks[kJackY].SetVolts(Clamp5(voice.getY() * a->cvScaleY));
+#endif
 
     // Click hunting: the largest sample-to-sample step, across the block edge too.
     float worst = 0.0f, pl = s_prevL, pr = s_prevR;
@@ -521,8 +533,12 @@ int main()
     cpu.Init(hw.SampleRate(), static_cast<int>(hw.BlockSize()));
     s_ticksPerSample = static_cast<float>(daisy::System::GetTickFreq()) / hw.SampleRate();
 
+#ifndef SECRET_JACKSHIFT
     hw.cv_jacks[kJackX].EnableCvOutput();
     hw.cv_jacks[kJackY].EnableCvOutput();
+#else
+    for (uint8_t j = 0; j < 6; j++) hw.cv_jacks[j].DisableCvOutput();   // all six as inputs
+#endif
 
     g_cpuAvg.Unit("%");
     g_cpuMax.Unit("%");

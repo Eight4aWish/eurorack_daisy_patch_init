@@ -78,6 +78,12 @@ ifeq ($(BENCH),1)
 C_DEFS += -DSECRET_BENCH
 endif
 
+# make clean && make JACKSHIFT=1: every input one panel column along (V/OCT J5,
+# GATE J6, CHAOS CV J7, TAME CV J8), no X/Y CV out. For a board with a dead J3.
+ifeq ($(JACKSHIFT),1)
+C_DEFS += -DSECRET_JACKSHIFT
+endif
+
 # The USB log formats numbers with %f, and newlib-nano's printf leaves floats
 # out unless asked for: without this every value in a click report is blank.
 LDFLAGS += -u _printf_float
