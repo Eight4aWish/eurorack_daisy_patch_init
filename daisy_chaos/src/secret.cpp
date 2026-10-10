@@ -75,11 +75,11 @@ static constexpr uint8_t kJackTame  = 3;   // J6
 static constexpr uint8_t kJackX     = 4;   // J7, STM32 DAC: fast
 static constexpr uint8_t kJackY     = 5;   // J8, STM32 DAC: fast
 #else
-// make JACKSHIFT=1: every input one panel column along, for a board whose J3 has
-// failed (David's, 2026-10-10: J3 sits at +12 V). V/OCT J5, GATE J6, CHAOS CV J7,
-// TAME CV J8; J3 and J4 unused, and no X/Y CV out -- watch the audio instead.
+// make JACKSHIFT=1: for a board whose J3 has failed (David's, 2026-10-10: J3 sits
+// at +12 V). V/OCT J5, GATE stays on J4, CHAOS CV J7, TAME CV J8; J3 and J6 unused
+// (J6 read no gate on that board), and no X/Y CV out -- watch the audio instead.
 static constexpr uint8_t kJackVoct  = 2;   // J5
-static constexpr uint8_t kJackGate  = 3;   // J6
+static constexpr uint8_t kJackGate  = 1;   // J4
 static constexpr uint8_t kJackChaos = 4;   // J7
 static constexpr uint8_t kJackTame  = 5;   // J8
 #endif
