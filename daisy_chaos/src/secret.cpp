@@ -15,7 +15,7 @@
 //   P1 TUNE   27.5-880 Hz, exponential; + V/OCT (J3)
 //   P2 CHAOS  the bifurcation parameter; + CV (J5)
 //   P3 CHAR   the secondary parameter
-//   P4 TAME   a push at the note, from none (0) to the model's maximum (1); + CV (J6)
+//   P4 TAME   delayed feedback onto the system's own orbits, none (0) to full (1); + CV (J6)
 //   P5 AD     envelope attack + decay
 //   P6 SR     envelope sustain + release
 //
@@ -32,8 +32,11 @@
 //   J7 X CV out   J8 Y CV out      J9 L (X) audio  J10 R (Y) audio
 //
 // In Gated mode a rising edge on GATE re-seeds the attractor, as on the Teensy:
-// the transient back onto the attractor is the percussive part of a hit. Drone
-// ignores GATE entirely.
+// the transient back onto the attractor is the percussive part of a hit. Only
+// from silence: if the last note is still sounding, the envelope retriggers from
+// where it is and the trajectory carries on. Each channel's attack starts at its
+// next zero crossing, so a fast attack doesn't open onto a waveform mid-swing.
+// Drone ignores GATE entirely.
 //
 // Boot gestures belong to the board, not this firmware: hold B3 at power-on for
 // DFU (flashing), B1 + B2 for the factory CV calibration.
@@ -222,11 +225,9 @@ struct Params {
     float    atkMs, decMs, sustain, relMs;
     uint8_t  model;
     bool     env, gate;
-    uint32_t retrig;   // bumped on every GATE rising edge
 };
 static Params   s_params = {5.0f, 0.23f, 110.0f, 0.0f, 10.0f, 200.0f, 0.5f, 200.0f,
-                            0, false, false, 0};
-static uint32_t s_retrigSeen = 0;
+                            0, false, false};
 
 static inline float ExpoMap(float n, float lo, float hi) {
     return lo * powf(hi / lo, n);
@@ -295,11 +296,6 @@ static void AudioCallback(daisy::AudioHandle::InputBuffer  /*in*/,
     }
     voice.setAlgo(a);                                // no-op unless it changed
 
-    if (p.retrig != s_retrigSeen) {                  // GATE edge: re-seed
-        s_retrigSeen = p.retrig;
-        a->init();
-        causes |= kCauseGate;
-    }
     if (voice.loadScale() < 0.999f) causes |= kCauseGovernor;
     if (p.env != s_envSeen) { s_envSeen = p.env; causes |= kCauseEnvelope; }
 
@@ -308,9 +304,10 @@ static void AudioCallback(daisy::AudioHandle::InputBuffer  /*in*/,
     voice.setEnvADSR(p.atkMs, p.decMs, p.sustain, p.relMs);
     voice.setPitch(p.chaos, p.charV, p.hz, p.tame);
 
-    const uint32_t guard0 = a->guardTrips;
+    const uint32_t guard0 = a->guardTrips, seeds0 = voice.reseeds();
     voice.render(out[0], out[1], n);
-    if (a->guardTrips != guard0) causes |= kCauseGuard;
+    if (a->guardTrips  != guard0) causes |= kCauseGuard;
+    if (voice.reseeds() != seeds0) causes |= kCauseGate;   // a GATE edge's re-seed
 
     // X / Y CV, the raw state rather than the limited audio: the true attractor
     // for a scope. Once per block -- 2 kHz at 48 kHz / 24.
@@ -358,19 +355,16 @@ static void AudioCallback(daisy::AudioHandle::InputBuffer  /*in*/,
 }
 
 /* ── 1 ms poll: gate, V/Oct, knobs + CV -> Params ───────────────────────── */
-static bool     s_gateHigh = false;
-static uint32_t s_retrig   = 0;
+static bool s_gateHigh = false;
 
 static void Poll(uint32_t /*t_ms*/)
 {
-    // Only Gated re-seeds on a GATE edge, where the envelope's attack starts from
-    // silence at the same instant and hides the jump. In Drone the gate has no
-    // job -- the envelope ignores it -- and a re-seed with the VCA open was a
-    // click on every sequenced note.
-    const bool  gated = s_env != 0;
-    const float g     = hw.cv_jacks[kJackGate].Volts();
-    if (!s_gateHigh && g > kGateOn)       { s_gateHigh = true; if (gated) ++s_retrig; }
-    else if (s_gateHigh && g < kGateOff)  { s_gateHigh = false; }
+    // GATE, with hysteresis. Only Gated acts on it, and the voice does that itself
+    // (setReseedOnGate in main): each note's attack waits for its channel to cross
+    // zero, and a gate re-seeds the attractor only from silence.
+    const float g = hw.cv_jacks[kJackGate].Volts();
+    if (!s_gateHigh && g > kGateOn)       s_gateHigh = true;
+    else if (s_gateHigh && g < kGateOff)  s_gateHigh = false;
 
     const uint8_t model = s_model < N_ALGOS ? s_model : 0;
     const ChaosBase* a  = algos[model];
@@ -388,7 +382,6 @@ static void Poll(uint32_t /*t_ms*/)
     p.model  = model;
     p.env    = s_env != 0;
     p.gate   = s_gateHigh;
-    p.retrig = s_retrig;
 
     daisy::ScopedIrqBlocker block;
     s_params = p;
@@ -468,7 +461,7 @@ static void Frame()
 // It runs in the control loop, not the audio callback, so nothing can be starved
 // whatever a model costs. The pitch asked for is far above anything playable, so
 // the schedule clamps at the cap: the worst block the model can produce. TAME 1
-// is the worst case per step (the push's three cosines run every step).
+// is the worst case per step (the feedback's history and three reads run every step).
 // The real callback adds a few percent on top: the click scan, CV and gauges.
 static void Bench()
 {
@@ -530,6 +523,7 @@ int main()
 
     voice.setSampleRate(hw.SampleRate());
     voice.setAlgo(algos[0]);
+    voice.setReseedOnGate(true);    // Gated: a gate re-seeds, from silence only
     cpu.Init(hw.SampleRate(), static_cast<int>(hw.BlockSize()));
     s_ticksPerSample = static_cast<float>(daisy::System::GetTickFreq()) / hw.SampleRate();
 

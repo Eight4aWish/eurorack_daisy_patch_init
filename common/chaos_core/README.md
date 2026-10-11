@@ -35,8 +35,8 @@ for the reference consumer.
 - `tools/pitchmap.cpp`: natural frequency and jitter per point; `--emit` writes
   `PitchTables.h`
 - `tools/tametest.cpp`: plays notes through `setPitch()` and measures them,
-  in cents and clarity, across pitch and TAME; fails if a model with no push
-  (`tameDriveMax` 0) changes at all with TAME
+  in cents and clarity, across pitch and TAME; fails if a model with no TAME
+  (`tameGain` 0) changes at all with TAME
 - `tools/registermap.cpp`: the octave a driven model actually sounds in, over its
   whole CHAOS × CHAR plane
 - `tools/tamerender.cpp`: audition WAVs of TAME sweeps and arpeggios
@@ -75,20 +75,22 @@ what `dtBase` reaches is produced by running **more integration steps per audio
 sample**, not by enlarging `dt`. That buys pitch with CPU, and a step is not the
 same price in every system, so the ceiling is per-algorithm:
 
-| Algorithm | X / Y outputs | cyc/step, Teensy estimate | cyc/step, Alchemy Lab, TAME 1 | cap (steps/s) |
+| Algorithm | X / Y outputs | cyc/step, Teensy estimate | cyc/step, Alchemy Lab | cap (steps/s) |
 | --- | --- | ---: | ---: | ---: |
-| Rössler | x, y | ~88 | ~466 | 550,000 |
-| Van der Pol | x, y | ~83 | ~392 | 650,000 |
-| Lorenz | x, z−ρ (centred) | ~89 | ~298 | 860,000 |
-| Chua | x, z | ~178 | ~335 | 770,000 |
-| Duffing | x, y | ~543 | ~844 | 300,000 |
-| Coupled Rössler | x₁, x₂ (the other oscillator) | ~178 | ~631 | 410,000 |
+| Rössler | x, y | ~88 | ~242 | 810,000 |
+| Van der Pol | x, y | ~83 | ~185 | 840,000 |
+| Lorenz | x, z−ρ (centred) | ~89 | ~252 | 1,140,000 |
+| Chua | x, z | ~178 | ~279 | 980,000 |
+| Duffing | x, y | ~543 | ~602 | 410,000 |
+| Coupled Rössler | x₁, x₂ (the other oscillator) | ~178 | ~429 | 530,000 |
 
 The Teensy column was static counts from emitted Cortex-M7 code. The Alchemy Lab
-column is measured on the board (400 MHz, 2026-10-01) by Secret's `make BENCH=1`,
-which runs each model at its cap before audio starts. It is 2–3× higher, and TAME
-adds up to half again. The caps are now set from it, so the worst block takes about
-65% of its time; bank 2's are in `Bank2.h`, and the table with top pitches is in
+column is measured on the board by Secret's `make BENCH=1`, which runs each model
+at its cap before audio starts: at 400 MHz on 2026-10-01, and again at 480 MHz on
+2026-10-09/10, when Secret moved to the higher clock (final run with delayed-feedback
+TAME: 53–65% of a block at every cap). It is 2–3× the Teensy's, and
+TAME's feedback adds up to a fifth again. The caps are set from it, so the worst
+block, at TAME 1, takes about 65% of its time; bank 2's are in `Bank2.h`, and the table with top pitches is in
 `docs/SECRET.md`. A cap is per chip: re-measure on new hardware rather than
 carrying one over. `tametest` lifts the caps, because it tests TAME, not the chip.
 
@@ -240,32 +242,55 @@ took a simulated-time rate. The full design and its measurements are in
   with their drive: Duffing and the pendulum sound at it (ω/2π) across most of
   their range, so their subharmonic windows stay intervals below the note; the
   Brusselator's limit cycle entrains at half its drive, so it is tuned to ω/4π.
-- **TAME is a push.** It adds a cosine at the note to dX, rising with TAME² to the
-  model's own ceiling, `tameDriveMax`, as a fraction of X's own rate: 7.5% by
-  default, 10% for Moore–Spiegel, and 0 for Lorenz and Chua. That is the equation
-  plus a weak outside drive. Coherent systems go from free, through phase slips,
-  to **phase-locked chaos**: an exact pitch under a waveform that is still chaotic.
-  Driven systems keep their own subharmonics. A model with a ceiling of 0 is
-  bit-identical at every TAME.
+- **TAME is delayed feedback control** (Pyragas 1992). It adds
+  `K (v(t − T) − v(t))` to one equation, where `v` is a state variable (X unless
+  the model names another, `tameVar`), `T` one period of the note, and
+  `K = tameGain × TAME² × 2π fNat`. On a periodic orbit of the equations with
+  period `T` the term is zero, so what TAME settles the voice on is one of the
+  system's own unstable orbits, not an imposed waveform. Rough to clean as the knob
+  turns, with the control doing a few percent of the work. A model with a gain of 0
+  is bit-identical at every TAME.
 
-Until 2026-10-09 the top half of TAME also pulled the whole state back to a stored
-snapshot once a cycle (SYNC), and Lorenz and Chua used that pull across the whole
-knob. It was hard sync: the pitch came from the reset clock, the output was a slice
-of attractor looped, and Hindmarsh–Rose's bursts and Lorenz's lobe switching never
-happened. It was removed so that every sound the module makes is the equations'
-own; the models that will not be tamed are left untamed.
+| Model | Gain, variable | TAME 0 → 1 (clarity) | Control at TAME 1 |
+| --- | --- | --- | --- |
+| Rössler | 0.5, X | 0.70 → 1.00 | ~3% |
+| Coupled Rössler | 1.0, X | 0.86 → 1.00 | ~5% |
+| Duffing | 1.0, X | 0.40 → 0.88, subharmonics onto the note | ~18% |
+| Pendulum | 3.0, θ (unwrapped) | 0.54 → 0.91 | 4–13% |
+| Moore–Spiegel | 0.1, x″ (into the jerk equation) | 0.85 → 1.00 | 9% |
+| Colpitts | 0.1, X | 0.81 → 0.96; the orbit sits ~3 semitones off the free voice | 8% |
+| Hindmarsh–Rose | 0.5, z (the slow current) | 0.72 → 0.82: bursts regularise | 13% |
+| Van der Pol, Brusselator | 0.3, X | periodic already: held as they are | ~0 |
+| Lorenz, Chua, Lorenz–Lü–Chen | 0 | free | — |
 
-What the measurements changed along the way, since each is a trap for the next
-edit:
+"Control" is the feedback's mean size against `v`'s own rate (2π fNat × its
+standard deviation). Clarity is the McLeod NSDF peak: 1 is exactly periodic.
 
-- **Forcing, not diffusive coupling.** `K(ref − x)` was tried first. Its `−Kx`
-  half is extra damping, which changed the system's own frequency, pulling Rössler
-  up to 160 cents flat before it locked. Pure forcing leaves the dynamics alone.
-- **Strong drive does not lock; it breaks.** Past ~10% of X's rate, forced Rössler
-  goes to period 2 and chaos rather than a cleaner lock. That is why the ceiling is
-  per model and mostly 7.5%.
-- **A push makes Lorenz and Chua worse, not tamer.** They never lock, and their
-  clarity falls from ~0.5 to ~0.2 under a push. Hence their ceiling of 0.
+What TAME was, and why each version went (2026-10-09/10, `docs/SECRET.md`
+section 2):
+
+- **A cosine push at the note, plus SYNC.** The push phase-locked coherent systems
+  with their chaos intact; over TAME's upper half a pull back to a stored snapshot
+  once a cycle (SYNC) did the rest, and was Lorenz's and Chua's whole TAME. SYNC
+  was hard sync: the pitch came from the reset clock and the output was a looped
+  slice of attractor, so Hindmarsh–Rose's bursts and Lorenz's lobe switching never
+  happened. Removed.
+- **The push alone.** Faithful, but inaudible on most models: the scaling already
+  puts them within a few cents of the note, and the push only tightened that. On
+  Lorenz and Chua it halved their clarity. Replaced by delayed feedback.
+
+Traps for the next edit:
+
+- **Effort tells finding from forcing.** High clarity with the control near or
+  above the system's own rate is the feedback imposing a waveform, not finding an
+  orbit. Lorenz reaches clarity 0.97 only at 160–230%, through any variable: hence
+  its gain of 0. Pick gains by clarity *and* effort.
+- **The variable matters.** X fails on Moore–Spiegel, the pendulum and
+  Hindmarsh–Rose; the jerk equation, θ and the slow current work. Only `OdeModel`
+  routes past X; the hand-written steppers in `Attractors.h` take it on dX.
+- **Record history only while TAME is up.** Kept at TAME 0 it cost Hindmarsh–Rose
+  about 5% of a block for nothing; it is now dropped at TAME 0 and rebuilt over one note
+  period when TAME rises, which also means no stale history after a pause.
 - **Measure a driven model's register over the whole plane.** `tametest` samples
   three CHAOS settings at mid CHAR, and for Duffing those happen to sit in
   subharmonic windows, which read as "an octave below". `tools/registermap.cpp`
@@ -275,17 +300,12 @@ edit:
   reads a period-2 waveform (alternating big and small loops) as the octave below.
   A phase-locked chaotic voice has an exact crossing rate. `tametest` shows both.
 
-`tools/tametest.cpp` holds the current results, push only (2026-10-09): Rössler
-locks within ~5 cents at full TAME, Coupled Rössler within 2, Moore–Spiegel within
-5, Van der Pol exactly; Lorenz–Lü–Chen and Hindmarsh–Rose are within a few cents
-from the scaling alone; the Brusselator is within a cent with clarity 0.97–1.00.
-With TAME at 0, `Voice` is bit-identical to the Teensy build's, trajectories and
-`setParams()` path both, checked against the frozen copy in `eurorack_modules`.
+`tools/tametest.cpp` holds the current results. With TAME at 0, `Voice` is
+bit-identical to the Teensy build's, trajectories and `setParams()` path both,
+checked against the frozen copy in `eurorack_modules`.
 
-Cost, host x86: the push adds ~60% per sample on Rössler (three reference cosines
-per step, against ~90 cycles of RK4), and nothing at TAME 0 or on a model whose
-ceiling is 0. Reusing each step's end value as the next one's start would cut it
-to two cosines.
+Cost: per step, one history write and three interpolated reads, about 120 cycles
+on the Alchemy Lab, and nothing at TAME 0 or on a model whose gain is 0.
 
 ## Candidates (host tools only)
 
@@ -327,11 +347,15 @@ an instance to `Registry.cpp` and bump `N_ALGOS`. No platform file changes.
 
 For TAME it also needs:
 
-- the drive, `D0` / `DH` / `D1`, added to dX at the four RK4 stages (start, the
-  two midpoints, end), exactly as the existing six do;
+- TAME's term, `D0` / `DH` / `D1`, added to dX at the four RK4 stages (start, the
+  two midpoints, end), exactly as the existing models do (`OdeModel` does this for
+  you, and can route it to another equation);
 - `saveState` / `loadState`;
-- a `pitchClass`, a `pitchGrid` from `PitchTables.h`, a `tameDriveMax` if 7.5%
-  doesn't suit it, and `stableDt` if its safe step moves with a parameter;
+- a `pitchClass`, a `pitchGrid` from `PitchTables.h`, and `stableDt` if its safe
+  step moves with a parameter;
+- a `tameGain` (and `tameVar`, `tameAngle`), found by sweeping gains and
+  variables and reading clarity against effort, as above; 0 if nothing finds an
+  orbit;
 - then regenerate the tables, `pitchmap --emit`, and run `tametest`.
 
 The metadata is the expensive part, because most of it can only be arrived at by
@@ -358,6 +382,17 @@ automatically a fault — see Chua above.
 ## Notes
 
 - Single-precision throughout; assumes a hardware FPU.
+- The envelope runs per channel (L and R), and each attack waits for its own
+  channel to cross zero (`kOnsetMaxMs`, 25 ms at most; `setOnsetAtZero(false)`
+  restores immediate attacks), so a fast attack doesn't open onto a waveform
+  mid-swing.
+- With `setReseedOnGate(true)` the voice re-seeds the attractor on a gate's
+  rising edge itself, but only from silence (below `kSilentLevel`, −60 dB); a gate
+  that comes while the last note still sounds retriggers the envelope from where
+  it is and leaves the trajectory alone. Re-seeding under an open VCA (long gates,
+  a long decay) jumped the output, and a 2 ms choke before the re-seed was worse.
+  A re-seed centres the DC blocker on the seed, so the note starts at exactly zero
+  and opens at once. `reseeds()` counts them for a click log.
 - `Voice`'s envelope ramps the VCA over `kModeRampMs` (5 ms) when it is switched
   between drone and gated, in either direction. It used to snap open or shut in a
   single sample, which clicked on every switch.

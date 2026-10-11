@@ -25,12 +25,13 @@ namespace chaos_core {
             charMin  = 0.4f;  charMax  = 0.8f;    // measured: chaos 0.44-0.72, period-1 above ~0.76
             dtBase = 0.1f;   divergeBound = 100.0f;
             simRateMin = 100.0f; simRateMax = 10000.0f;
-            maxStepsPerSecond = 150000.0f;   // measured on the Alchemy Lab (400 MHz, 2026-10-01): TAME 1 at the cap <= 65% of a block; ~1675 cyc/step (sin, cos)
+            maxStepsPerSecond = 180000.0f;   // measured on the Alchemy Lab (480 MHz, 2026-10-09): TAME 1 took 52% of a block at 150k, scaled to ~65%; ~1441 cyc/step (sin, cos)
             modScale = 0.1f;  modMin = chaosMin; modMax = chaosMax;
             gainL = 1.472f; gainR = 0.674f;   // measured, characterise
             xMin = -1.0f; xRange = 2.0f; yMin = -3.0f; yRange = 6.0f;
             cvScaleX = 4.5f; cvScaleY = 1.5f;
             pitchClass = PITCH_FORCED;   // pitch is the drive's, like Duffing
+            tameGain = 3.0f; tameAngle = true;   // TAME through theta: clarity 0.54 -> 0.91, control 4-13%
             pitchGrid  = &kPitchGrid_PENDULUM;
         }
         float naturalFreq(float, float charV) const override { return charV * 0.15915494f; }
@@ -66,12 +67,14 @@ namespace chaos_core {
             charMin  = 24.0f; charMax  = 130.0f;
             dtBase = 0.004f; divergeBound = 600.0f;   // z runs near r
             simRateMin = 50.0f; simRateMax = 2000.0f;
-            maxStepsPerSecond = 600000.0f;   // measured on the Alchemy Lab (400 MHz, 2026-10-01): TAME 1 at the cap <= 65% of a block; ~432 cyc/step
+            maxStepsPerSecond = 750000.0f;   // measured on the Alchemy Lab (480 MHz, 2026-10-09): TAME 0, no push took 52% of a block at 600k, scaled to ~65%; ~416 cyc/step
             modScale = 0.1f;  modMin = chaosMin; modMax = chaosMax;
             gainL = 0.0505f; gainR = 0.0691f;   // measured, characterise
             xMin = -45.0f; xRange = 92.0f; yMin = -86.0f; yRange = 166.0f;
             cvScaleX = 0.10f; cvScaleY = 0.055f;
             pitchClass = PITCH_INCOHERENT;   // lobe switching, as Lorenz
+            // tameGain 0: feedback through any variable either did nothing or
+            // cleaned it only by forcing (control 26-120%). TAME leaves it free.
             pitchGrid  = &kPitchGrid_LORENZ_LU_CHEN;
         }
         void initState(float* s) const { s[0] = 1.0f; s[1] = 1.0f; s[2] = 20.0f; }
@@ -98,13 +101,13 @@ namespace chaos_core {
             charMin  = 4.0f;  charMax  = 9.0f;
             dtBase = 0.01f;  divergeBound = 200.0f;
             simRateMin = 50.0f; simRateMax = 4000.0f;
-            maxStepsPerSecond = 450000.0f;   // measured on the Alchemy Lab (400 MHz, 2026-10-01): TAME 1 at the cap <= 65% of a block; ~567 cyc/step
+            maxStepsPerSecond = 540000.0f;   // measured on the Alchemy Lab (480 MHz, 2026-10-09): TAME 1 took 54% of a block at 450k, scaled to ~65%; ~405 cyc/step
             modScale = 1.0f;  modMin = chaosMin; modMax = chaosMax;
             gainL = 0.599f; gainR = 0.195f;   // measured, characterise
             xMin = -2.8f; xRange = 5.6f; yMin = -11.3f; yRange = 22.6f;
             cvScaleX = 1.6f; cvScaleY = 0.4f;
             pitchClass = PITCH_COHERENT;
-            tameDriveMax = 0.10f;   // 10%: within 5 cents at full TAME; 7.5% left it 25-45 off
+            tameGain = 0.1f; tameVar = 2;   // TAME through the jerk equation: clarity 0.85 -> 1.00, control 9%
             pitchGrid  = &kPitchGrid_MOORE_SPIEGEL;
         }
         void initState(float* s) const { s[0] = 0.1f; s[1] = 0.0f; s[2] = 0.0f; }
@@ -134,12 +137,13 @@ namespace chaos_core {
             charMin  = 0.6f;  charMax  = 1.0f;
             dtBase = 0.1f;   divergeBound = 50.0f;
             simRateMin = 100.0f; simRateMax = 10000.0f;
-            maxStepsPerSecond = 225000.0f;   // measured on the Alchemy Lab (400 MHz, 2026-10-01): TAME 1 at the cap <= 65% of a block; ~1136 cyc/step (cos)
+            maxStepsPerSecond = 270000.0f;   // measured on the Alchemy Lab (480 MHz, 2026-10-09): TAME 1 took 53% of a block at 225k, scaled to ~65%; ~944 cyc/step (cos)
             modScale = 0.02f; modMin = chaosMin; modMax = chaosMax;
             gainL = 1.975f; gainR = 0.914f;   // measured, characterise
             xMin = -0.3f; xRange = 1.7f; yMin = -2.2f; yRange = 2.6f;
             cvScaleX = 3.3f; cvScaleY = 2.0f;
             pitchClass = PITCH_FORCED;
+            tameGain = 0.3f;   // TAME: periodic already, so the feedback holds it with ~no control
             pitchGrid  = &kPitchGrid_BRUSSELATOR;
         }
         float naturalFreq(float, float charV) const override { return charV * 0.07957747f; }   // omega / 4pi
@@ -173,12 +177,13 @@ namespace chaos_core {
             charMin  = 1.0f;  charMax  = 3.0f;
             dtBase = 0.02f;  divergeBound = 400.0f;    // x2 reaches ~66 where bounded
             simRateMin = 50.0f; simRateMax = 4000.0f;
-            maxStepsPerSecond = 225000.0f;   // measured on the Alchemy Lab (400 MHz, 2026-10-01): TAME 1 at the cap <= 65% of a block; ~1130 cyc/step (exp)
+            maxStepsPerSecond = 260000.0f;   // measured on the Alchemy Lab (480 MHz, 2026-10-09): TAME 1 took 55% of a block at 225k, scaled to ~65%; ~987 cyc/step (exp)
             modScale = 0.3f;  modMin = chaosMin; modMax = chaosMax;
             gainL = 0.0596f; gainR = 0.462f;   // measured, characterise
             xMin = -4.0f; xRange = 71.0f; yMin = -5.6f; yRange = 13.7f;
             cvScaleX = 0.07f; cvScaleY = 0.6f;
             pitchClass = PITCH_COHERENT;
+            tameGain = 0.1f;   // TAME: clarity 0.81 -> 0.96, control 8%; the orbit sits ~3 semitones off the free voice
             pitchGrid  = &kPitchGrid_COLPITTS;
         }
         void initState(float* s) const { s[0] = 0.1f; s[1] = 0.0f; s[2] = 0.0f; }
@@ -210,12 +215,13 @@ namespace chaos_core {
             charMin  = 0.001f; charMax = 0.02f;
             dtBase = 0.02f;  divergeBound = 200.0f;   // y reaches ~-17 where bounded
             simRateMin = 50.0f; simRateMax = 4000.0f;
-            maxStepsPerSecond = 550000.0f;   // measured on the Alchemy Lab (400 MHz, 2026-10-01): TAME 1 at the cap <= 65% of a block; ~472 cyc/step
+            maxStepsPerSecond = 510000.0f;   // measured on the Alchemy Lab (480 MHz, 2026-10-09): TAME 1 (delayed feedback) took 85% of a block at 670k, scaled to ~65%; ~485 cyc/step
             modScale = 0.3f;  modMin = chaosMin; modMax = chaosMax;
             gainL = 0.549f; gainR = 0.173f;   // measured, characterise (centred outputs)
             xMin = -1.0f; xRange = 4.2f; yMin = -8.8f; yRange = 17.6f;
             cvScaleX = 2.2f; cvScaleY = 0.3f;
             pitchClass = PITCH_INCOHERENT;
+            tameGain = 0.5f; tameVar = 2;   // TAME through the slow current z: bursts regularise, clarity 0.72 -> 0.82, control 13%
             pitchGrid  = &kPitchGrid_HINDMARSH_ROSE;
         }
         void initState(float* s) const { s[0] = -1.6f; s[1] = -10.0f; s[2] = 2.0f; }

@@ -27,7 +27,9 @@ namespace chaos_core {
     // by tools/pitchmap.cpp and emitted into PitchTables.h. f[] is row-major,
     // `rows` CHAOS values from cLo to cHi by `cols` CHAR values from hLo to hHi, in
     // cycles per unit of simulated time. refCentre/refAmp describe X (mean, and
-    // sqrt(2) x standard deviation), so a reference cosine can sit where X swings.
+    // sqrt(2) x standard deviation): measured with the table, for TAME's cosine
+    // push, which went on 2026-10-10. Nothing reads them now; they stay in the
+    // generated tables rather than change the format.
     struct PitchGrid {
         int   rows, cols;
         float cLo, cHi, hLo, hHi;
@@ -36,10 +38,10 @@ namespace chaos_core {
     };
 
     // What kind of pitch a system has (docs/SECRET.md, section 2). Descriptive:
-    // Voice treats every class the same way, time-scaling plus TAME's push, and
-    // the push's ceiling (tameDriveMax) is what differs per model.
+    // Voice treats every class the same way, time-scaling plus TAME's delayed
+    // feedback, and the feedback's gain is what differs per model.
     enum PitchClass : unsigned char {
-        PITCH_COHERENT,     // rotation rate barely moves: locks to the push
+        PITCH_COHERENT,     // rotation rate barely moves: a pitch with roughness
         PITCH_FORCED,       // driven by its own equation: sings that drive's subharmonics
         PITCH_INCOHERENT    // no stable rotation: an average pitch at best
     };
@@ -169,13 +171,22 @@ namespace chaos_core {
         const PitchGrid* pitchGrid   = nullptr;   // set from PitchTables.h
         float            fNatDefault = 0.16f;     // cycles per sim time, if no grid
 
-        // TAME's push at full TAME, as a fraction of X's own rate (2 pi fNat x
-        // refAmp). Measured push-only, 2026-10-09 (docs/SECRET.md, section 2):
-        // 7.5% phase-locks Rossler within 5 cents with its chaos intact, and more
-        // starts to bend the attractor. Zero where a push only adds noise --
-        // Lorenz and Chua never lock, and their clarity halves under one -- so
-        // TAME leaves those free.
-        float tameDriveMax = 0.075f;
+        // TAME: delayed feedback control (Pyragas 1992; Voice.h). Full TAME adds
+        // K (v(t - T) - v(t)) to one equation, K = tameGain x 2 pi fNat and T one
+        // note period. Set per model from host measurements (tools/tametest.cpp,
+        // 2026-10-10): a gain that cleans the voice while the control stays a small
+        // fraction of v's own rate -- it finds an orbit of the equations rather
+        // than imposing one. 0 where no gain does that (Lorenz, Chua,
+        // Lorenz-Lu-Chen): TAME leaves those free.
+        float tameGain = 0.0f;
+        // Which state variable the feedback reads and whose equation takes it: X
+        // (0) unless a model locks better through another (Moore-Spiegel's jerk,
+        // Hindmarsh-Rose's slow current). Only OdeModel routes past 0; the hand-
+        // written steppers in Attractors.h take it on dX. tameAngle: that variable
+        // wraps (the pendulum's theta), so its history is unwrapped and the
+        // difference taken the short way round.
+        int   tameVar   = 0;
+        bool  tameAngle = false;
 
         // Largest numerically safe step at these parameters. dtBase unless the
         // system's stiffness moves with a parameter, as Van der Pol's does with mu.
@@ -202,18 +213,12 @@ namespace chaos_core {
             const float b = r1[j] + (r1[j + 1] - r1[j]) * fv;
             return a + (b - a) * fu;
         }
-        float refCentre() const { return pitchGrid ? pitchGrid->refCentre : 0.0f; }
-        float refAmp()    const { return pitchGrid ? pitchGrid->refAmp    : 1.0f; }
 
-        // TAME's drive, written by Voice before every step: a cosine at the note,
-        // sampled at the start (D0), middle (DH) and end (D1) of the step so RK4
-        // sees it as the smooth forcing it is. Each algorithm adds it to dx.
-        //
-        // Pure forcing, not diffusive coupling. K(ref - x) was tried first, and
-        // its -Kx half is extra damping on X: it changed the system it was meant
-        // to entrain, pulling Rossler up to 160 cents flat before it locked.
-        // Forcing leaves the autonomous dynamics alone and only pulls. Zero leaves
-        // every trajectory bit-identical to an unforced one.
+        // TAME's term, written by Voice before every step: K (v(t - T) - v(t))
+        // sampled at the start (D0), middle (DH) and end (D1) of the step, so RK4
+        // sees it as a smooth input. Each algorithm adds it to dx (an OdeModel to
+        // the equation tameVar names). Zero leaves every trajectory bit-identical
+        // to an uncontrolled one.
         float tameD0 = 0.0f, tameDH = 0.0f, tameD1 = 0.0f;
 
         // State access, for a host that wants to hold or restore a trajectory.
@@ -222,6 +227,13 @@ namespace chaos_core {
         static constexpr int kMaxState = 8;
         virtual int  saveState(float* s) const = 0;   // returns the count written
         virtual void loadState(const float* s) = 0;
+        // The variable TAME's delayed feedback reads (tameVar), once a step: a
+        // model with its state in an array overrides this rather than copy it all.
+        virtual float tameState() const {
+            float s[kMaxState];
+            saveState(s);
+            return s[tameVar];
+        }
 
         virtual ~ChaosBase() {}
         virtual void  init()                                          = 0;

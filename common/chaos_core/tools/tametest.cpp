@@ -21,12 +21,11 @@
 // settings (30%, 60%, 90% of the pot) at mid CHAR. McLeod's period search is
 // limited to +-1.3 octaves of the target.
 //
-// Pass/fail (exit status 1 on any failure). Since 2026-10-09 TAME is a push and
-// nothing more, so it promises no lock: how close each model gets is a finding
-// and an ear decision, reported, not judged. What is checked:
-//   - the reference is a cosine (cos2pi against libm);
-//   - a model whose push ceiling is zero (tameDriveMax, Lorenz and Chua) plays
-//     bit-identically at every TAME: the knob must leave it free, not nearly so.
+// Pass/fail (exit status 1 on any failure). TAME is delayed feedback (Voice.h)
+// and promises no lock: how clean each model gets is a finding and an ear
+// decision, reported, not judged. What is checked: a model whose gain is zero
+// (tameGain: Lorenz, Chua, Lorenz-Lu-Chen) plays bit-identically at every TAME --
+// the knob must leave it free, not nearly so.
 //
 // Build:
 //   g++ -O2 -std=c++17 -I common/chaos_core/include
@@ -134,14 +133,7 @@ int main(int argc, char** argv) {
     int only = -1;
     if (argc > 1) only = std::atoi(argv[1]);
 
-    // The reference cosine has to be a cosine.
-    float cosErr = 0.0f;
-    for (int i = 0; i < 100000; i++) {
-        const float p = i / 100000.0f;
-        cosErr = std::max(cosErr, std::fabs(cos2pi(p) - (float)std::cos(6.283185307 * p)));
-    }
-    std::printf("cos2pi max error %.2e\n", cosErr);
-    int fails = (cosErr > 1e-4f) ? 1 : 0;
+    int fails = 0;
 
     for (int ai = 0; ai < nModels(); ai++) {
         if (only >= 0 && ai != only) continue;
@@ -155,12 +147,12 @@ int main(int argc, char** argv) {
         a->maxStepsPerSecond = 1.0e9f;
         struct Restore { ChaosBase* a; float cap; ~Restore() { a->maxStepsPerSecond = cap; } } restore{a, cap};
         static const char* kClass[] = {"coherent", "forced", "incoherent"};
-        std::printf("\n%s  [%s, push %.1f%%]  |zc| |mpm| cents, clarity\n  TAME ", a->name,
-                    kClass[a->pitchClass], 100.0f * a->tameDriveMax);
+        std::printf("\n%s  [%s, gain %.2f on variable %d]  |zc| |mpm| cents, clarity\n  TAME ", a->name,
+                    kClass[a->pitchClass], a->tameGain, a->tameVar);
         for (float hz : kPitches) std::printf("  %9.0f Hz  ", hz);
         std::printf("\n");
         const float charV = 0.5f * (a->charMin + a->charMax);
-        if (!(a->tameDriveMax > 0.0f)) {
+        if (!(a->tameGain > 0.0f)) {
             // No push: TAME must change nothing at all.
             const float chaos = 0.5f * (a->chaosMin + a->chaosMax);
             std::vector<float> free, full;

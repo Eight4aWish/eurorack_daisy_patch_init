@@ -25,33 +25,26 @@
 //   - The rate is scaled so the attractor's measured natural frequency lands on
 //     the note (ChaosBase::naturalFreq). TAME = 0 is just that: the free voice,
 //     in tune as far as the system has a pitch to tune.
-//   - TAME adds a small periodic push at the note to dX: a cosine, rising with
-//     TAME squared to the model's own maximum (ChaosBase::tameDriveMax, a fraction
-//     of X's own rate). That is the equation plus a weak outside drive. Systems
-//     with a coherent rotation phase-lock to it with their chaos intact; driven
-//     systems keep singing their own subharmonics; Lorenz and Chua ignore a drive
-//     altogether, so their maximum is zero and TAME leaves them free.
+//   - TAME is delayed feedback control (Pyragas 1992). It adds
+//     K (v(t - T) - v(t)) to one equation: v a state variable (X unless the model
+//     names another, ChaosBase::tameVar), T one period of the note, and
+//     K = ChaosBase::tameGain x TAME^2 x 2 pi fNat. On a periodic orbit of the
+//     equations with period T the term is zero, so what TAME holds the voice on
+//     is one of the system's own unstable orbits, not an imposed waveform: rough
+//     to clean as the knob turns, with the control doing a few percent of the
+//     work. A model no gain tames without forcing (Lorenz, Chua, Lorenz-Lu-Chen)
+//     has a gain of 0, and TAME leaves it free.
 //
-// Until 2026-10-09 TAME's upper half also pulled the state back to a stored
-// snapshot once a cycle (SYNC): hard sync, which imposed the pitch by looping a
-// slice of the attractor. Removed at David's direction: the module plays what the
-// equations do, and a model that will not be tamed is left untamed.
+// What TAME was before (docs/SECRET.md, section 2): until 2026-10-09 a cosine
+// push at the note, plus over its upper half a pull back to a stored snapshot
+// once a cycle (SYNC) -- hard sync, a looped slice of the attractor. Then the push
+// alone, which the scaling had already made redundant: inaudible on most models.
+// Delayed feedback replaced it on 2026-10-10.
 
 #include <math.h>
 #include "chaos_core/ChaosBase.h"
 
 namespace chaos_core {
-
-    // cos(2 pi p) for p in [0, 1). Polynomial, error below 3e-5: enough for a
-    // reference signal, and far cheaper than cosf on a Cortex-M7.
-    inline float cos2pi(float p) {
-        float a = fabsf(p - 0.5f);                 // cos(2 pi p) = -cos(2 pi a)
-        float sgn = -1.0f;
-        if (a > 0.25f) { a = 0.5f - a; sgn = 1.0f; }
-        const float t2 = 39.4784176f * a * a;      // (2 pi a)^2, a in [0, 1/4]
-        return sgn * (1.0f + t2 * (-0.5f + t2 * (1.0f / 24.0f
-                     + t2 * (-1.0f / 720.0f + t2 * (1.0f / 40320.0f)))));
-    }
 
     class Voice {
     public:
@@ -62,6 +55,10 @@ namespace chaos_core {
         // How long a drone <-> gated switch takes to open or shut the VCA. Short
         // enough to read as immediate, long enough not to click.
         static constexpr float kModeRampMs = 5.0f;
+        // Below this the VCA counts as shut (-60 dB): a gate re-seeds only then.
+        static constexpr float kSilentLevel = 0.001f;
+        // Longest a gate's attack waits for its channel to cross zero.
+        static constexpr float kOnsetMaxMs = 25.0f;
         // Corner frequency of the output DC blocker. Low enough to leave the
         // lowest musical content alone, high enough to remove the offset an
         // attractor sitting off-centre would otherwise put on the output.
@@ -89,6 +86,7 @@ namespace chaos_core {
             stepAcc_   = 0.0f;
             loadScale_ = 1.0f;       // the throttle described the old algorithm's cost
             tame_ = TAME_OFF; drive_ = 0.0f;
+            histFilled_ = 0;                           // the history was another attractor's
             algo_ = a;               // atomic pointer store on a 32-bit target
         }
 
@@ -129,11 +127,11 @@ namespace chaos_core {
             if (!(fNat > 1.0e-3f)) fNat = 1.0e-3f;
             const float simRate = hz / fNat;
 
-            // The push: squared, so the first half of the knob stays near
-            // free-running (phase slips live there), up to the model's maximum.
-            float dmax = a->tameDriveMax;
-            if (!(dmax > 0.0f)) dmax = 0.0f;
-            const float drive = dmax * tame * tame * 6.2831853f * fNat * a->refAmp();
+            // The feedback gain: squared, so the first half of the knob stays
+            // near free-running, up to the model's own gain.
+            float gain = a->tameGain;
+            if (!(gain > 0.0f)) gain = 0.0f;
+            const float k = gain * tame * tame * 6.2831853f * fNat;
 
             const StepSchedule sch =
                 a->scheduleFor(simRate, sampleRate_, a->stableDt(chaos, charV));
@@ -144,14 +142,27 @@ namespace chaos_core {
             stepsPerSample_ = s;
             effectiveDt_    = sch.stepDt * s;
 
-            drive_      = drive;
-            refIncStep_ = fNat * sch.stepDt;           // cycles of the note per step
-            tame_       = TAME_ON;
+            drive_    = k;
+            tauSteps_ = 1.0f / (fNat * sch.stepDt);    // one note period, in steps
+            tame_     = TAME_ON;
         }
 
-        // For a display, or a test: the push amplitude in use (0 at TAME 0, and on
-        // a model whose maximum is 0).
-        float driveAmp() const { return drive_; }
+        // For a display, or a test: the feedback gain in use, K above (0 at TAME 0,
+        // and on a model whose gain is 0).
+        float feedbackGain() const { return drive_; }
+
+        // Gated mode: re-seed the attractor on a gate's rising edge, as the Teensy
+        // build did -- the transient back onto the attractor is the percussive
+        // part of a hit -- but only from silence. If the last note is still
+        // sounding (its release, or a gate with a short gap) the envelope
+        // retriggers from where it is and the trajectory carries on unbroken.
+        // Re-seeding under an open VCA was a jump in the output, up to 0.4 of full
+        // scale with long gates and a long decay. A 2 ms choke before the re-seed
+        // was tried first and was worse: a VCA cut is a click too. The feedback's
+        // history goes with the old trajectory; control resumes a note period on.
+        void setReseedOnGate(bool on) { reseedOnGate_ = on; }
+        // Re-seeds done, for a host hunting clicks. Written by render() only.
+        uint32_t reseeds() const { return reseeds_; }
 
         // RK4 steps per audio sample the current pitch asks for, before the load
         // governor's scale: the number that sets the CPU cost.
@@ -163,7 +174,10 @@ namespace chaos_core {
 
         void setEnvEnabled(bool e) { envEnabled_ = e; }   // off -> VCA stays open (drone)
         void setEnvGate(bool g)    { envGate_    = g; }   // gate input, level not edge
-        EnvStage envStage() const  { return envStage_; }
+        EnvStage envStage() const  { return envStage_[0]; }   // L; R runs its own
+        float    envLevel() const  { return envLevel_[0]; }
+        // Start each attack at a zero crossing (default on). See render().
+        void     setOnsetAtZero(bool on) { onsetAtZero_ = on; }
 
         // Attack linear; decay/release exponential (~ -60 dB). Decay approaches the
         // sustain level, release falls from there to zero.
@@ -194,20 +208,41 @@ namespace chaos_core {
             // Switching between drone and gated ramps the VCA over kModeRampMs in
             // either direction. It used to snap -- fully open to fully shut in one
             // sample, and back -- and both were clicks.
+            // The envelope runs once per channel: L carries X and R carries Y,
+            // and each attack waits for its own channel to cross zero, so the
+            // VCA opens where the waveform is near nothing (kOnsetMaxMs at most).
+            // Opening a fast attack wherever the waveform happened to be -- often
+            // far from zero -- was a click at every note at short AD; a slow
+            // attack hid it, which is why AD past halfway cured it.
             if (!envEnabled_) {
                 // Disabled: VCA open (drone), gate ignored. Hold the edge
                 // detector low rather than tracking the live gate, so a gate that
                 // is already high when the envelope is switched on still reads as
                 // a rising edge and starts the note straight away, instead of
                 // leaving the voice closed until the gate next cycles.
-                if (envStage_ != ENV_OPEN) envStage_ = ENV_OPENING;
+                for (int c = 0; c < 2; c++) {
+                    if (envStage_[c] != ENV_OPEN) envStage_[c] = ENV_OPENING;
+                    armed_[c] = false;
+                }
                 envGatePrev_ = false;
             } else {
-                if (envStage_ == ENV_OPEN || envStage_ == ENV_OPENING) envStage_ = ENV_CLOSING;
+                for (int c = 0; c < 2; c++)
+                    if (envStage_[c] == ENV_OPEN || envStage_[c] == ENV_OPENING) envStage_[c] = ENV_CLOSING;
                 const bool g = envGate_;
-                if (g && !envGatePrev_)      envStage_ = ENV_ATTACK;    // rising -> (re)trigger
-                else if (!g && envGatePrev_ && envStage_ != ENV_CLOSED && envStage_ != ENV_CLOSING)
-                    envStage_ = ENV_RELEASE;
+                if (g && !envGatePrev_) {                               // rising -> (re)trigger
+                    const float lv = envLevel_[0] > envLevel_[1] ? envLevel_[0] : envLevel_[1];
+                    if (reseedOnGate_ && lv <= kSilentLevel) reseedPending_ = true;
+                    for (int c = 0; c < 2; c++) {
+                        if (onsetAtZero_) { armed_[c] = true; armAge_[c] = 0; }
+                        else envStage_[c] = ENV_ATTACK;
+                    }
+                } else if (!g && envGatePrev_) {
+                    // A channel still waiting for its crossing keeps its note: the
+                    // attack runs when the crossing comes and releases at the top.
+                    for (int c = 0; c < 2; c++)
+                        if (!armed_[c] && envStage_[c] != ENV_CLOSED && envStage_[c] != ENV_CLOSING)
+                            envStage_[c] = ENV_RELEASE;
+                }
                 envGatePrev_ = g;
             }
 
@@ -218,40 +253,56 @@ namespace chaos_core {
             if (tame_ == TAME_OFF) {
                 // setParams() path: exactly the Teensy build's loop.
                 for (int i = 0; i < n; i++) {
+                    if (reseedPending_) reseed(a);
                     stepAcc_ += steps;
                     const int k = (int)stepAcc_;
                     stepAcc_ -= (float)k;
                     for (int j = 0; j < k; j++) a->stepSample();
-                    envAdvance();
+                    envAdvance(0); envAdvance(1);
                     output(a->getX() * gL, a->getY() * gR, outL, outR, i);
                 }
                 return;
             }
 
-            const bool force = drive_ > 0.0f;
-            if (!force) clearDrive(a);
+            // No feedback (TAME 0, or a gain of 0): nothing to add, and no history
+            // kept, so none goes stale before TAME comes back up.
+            const bool control = drive_ > 0.0f;
+            if (!control) { clearDrive(a); histFilled_ = 0; }
 
             for (int i = 0; i < n; i++) {
+                if (reseedPending_) reseed(a);
                 stepAcc_ += steps;
                 const int k = (int)stepAcc_;          // >= 1: steps >= 1
                 stepAcc_ -= (float)k;
-                const float inc = refIncStep_;
                 for (int j = 0; j < k; j++) {
-                    if (force) {
-                        float h = refPhase_ + 0.5f * inc; if (h >= 1.0f) h -= 1.0f;
-                        float e = refPhase_ + inc;        if (e >= 1.0f) e -= 1.0f;
-                        a->tameD0 = drive_ * cos2pi(refPhase_);
-                        a->tameDH = drive_ * cos2pi(h);
-                        a->tameD1 = drive_ * cos2pi(e);
+                    if (control) {
+                        // v(t - T) at the step's start, middle and end, against v(t)
+                        // there, extrapolated along the last step's slope.
+                        float x0 = a->tameState();
+                        if (a->tameAngle) {          // unwrap, so the history is continuous
+                            thetaU_ += wrapAngle(x0 - thetaRaw_); thetaRaw_ = x0; x0 = thetaU_;
+                        }
+                        const int   n  = histHead_;
+                        hist_[n] = x0;
+                        histHead_ = (n + 1) & (kHist - 1);
+                        if (histFilled_ < kHist) histFilled_++;
+                        const float slope = x0 - histPrev_;
+                        histPrev_ = x0;
+                        if (tauSteps_ < (float)(kHist - 4) && (float)histFilled_ > tauSteps_ + 3.0f) {
+                            float e0 = delayed(n, tauSteps_)        - x0;
+                            float eh = delayed(n, tauSteps_ - 0.5f) - (x0 + 0.5f * slope);
+                            float e1 = delayed(n, tauSteps_ - 1.0f) - (x0 + slope);
+                            if (a->tameAngle) { e0 = wrapAngle(e0); eh = wrapAngle(eh); e1 = wrapAngle(e1); }
+                            a->tameD0 = drive_ * e0;
+                            a->tameDH = drive_ * eh;
+                            a->tameD1 = drive_ * e1;
+                        } else {
+                            clearDrive(a);
+                        }
                     }
                     a->stepSample();
-                    refPhase_ += inc;
-                    if (refPhase_ >= 1.0f) {
-                        refPhase_ -= 1.0f;
-                        if (refPhase_ >= 1.0f) refPhase_ = 0.0f;
-                    }
                 }
-                envAdvance();
+                envAdvance(0); envAdvance(1);
                 output(a->getX() * gL, a->getY() * gR, outL, outR, i);
             }
         }
@@ -261,14 +312,51 @@ namespace chaos_core {
 
         static void clearDrive(ChaosBase* a) { a->tameD0 = a->tameDH = a->tameD1 = 0.0f; }
 
+        // A gate's re-seed, from silence (see setReseedOnGate).
+        void reseed(ChaosBase* a) {
+            a->init();
+            histFilled_    = 0;
+            reseedPending_ = false;
+            onsetResync_   = true;    // the jump to the seed is not a zero crossing
+            // Centre the DC blocker on the seed, so the new note's output starts
+            // at exactly zero -- the attack can open at once, with nothing to
+            // click. Left on the old trajectory's mean it sat the new one off
+            // centre, and the first zero crossing came 15-18 ms late.
+            dcL_ = tanhf(a->getX() * a->gainL);
+            dcR_ = tanhf(a->getY() * a->gainR);
+            for (int c = 0; c < 2; c++)
+                if (armed_[c]) { armed_[c] = false; envStage_[c] = ENV_ATTACK; }
+            ++reseeds_;
+        }
+
+        // The feedback's history of v, one entry per step, read back with linear
+        // interpolation. 4096 steps covers a note period down to ~12 Hz at one
+        // step per sample; below that the feedback switches itself off.
+        static constexpr int kHist = 4096;
+        static float wrapAngle(float d) {
+            while (d >  3.14159265f) d -= 6.28318531f;
+            while (d < -3.14159265f) d += 6.28318531f;
+            return d;
+        }
+        float delayed(int n, float d) const {
+            const float pos = (float)(n + kHist) - d;     // d < kHist: never negative
+            const int   i0  = (int)pos;
+            const float f   = pos - (float)i0;
+            const float a0 = hist_[i0 & (kHist - 1)], a1 = hist_[(i0 + 1) & (kHist - 1)];
+            return a0 + (a1 - a0) * f;
+        }
+
         // Soft limiter, DC blocker and envelope, from pre-limiter values.
         void output(float l, float r, float* outL, float* outR, int i) {
             l = tanhf(l);
             r = tanhf(r);
             l -= dcL_; dcL_ += l * dcCoeff_;
             r -= dcR_; dcR_ += r * dcCoeff_;
-            outL[i] = l * envLevel_;
-            outR[i] = r * envLevel_;
+            if (onsetResync_) { prev_[0] = l; prev_[1] = r; onsetResync_ = false; }
+            onset(0, l);
+            onset(1, r);
+            outL[i] = l * envLevel_[0];
+            outR[i] = r * envLevel_[1];
         }
 
         void refreshEnv() {
@@ -278,36 +366,48 @@ namespace chaos_core {
             float rel = relMs_ * perMs; if (rel < 1.0f) rel = 1.0f;
             envAtkInc_ = 1.0f / atk;
             envRampInc_ = 1.0f / (kModeRampMs * perMs);
+            onsetMax_   = (int)(kOnsetMaxMs * perMs);
             envDecMul_ = expf(-6.908f / dec);      // ln(0.001) ~= -6.908
             envRelMul_ = expf(-6.908f / rel);
         }
 
-        void envAdvance() {
-            switch (envStage_) {
+        void envAdvance(int c) {
+            switch (envStage_[c]) {
                 case ENV_ATTACK:
-                    envLevel_ += envAtkInc_;
-                    if (envLevel_ >= 1.0f) { envLevel_ = 1.0f; envStage_ = ENV_DECAY; }
+                    envLevel_[c] += envAtkInc_;
+                    if (envLevel_[c] >= 1.0f) { envLevel_[c] = 1.0f; envStage_[c] = envGate_ ? ENV_DECAY : ENV_RELEASE; }
                     break;
                 case ENV_DECAY:
-                    envLevel_ = envSus_ + (envLevel_ - envSus_) * envDecMul_;
-                    if (envLevel_ - envSus_ <= 0.0008f) { envLevel_ = envSus_; envStage_ = ENV_SUSTAIN; }
+                    envLevel_[c] = envSus_ + (envLevel_[c] - envSus_) * envDecMul_;
+                    if (envLevel_[c] - envSus_ <= 0.0008f) { envLevel_[c] = envSus_; envStage_[c] = ENV_SUSTAIN; }
                     break;
-                case ENV_SUSTAIN: envLevel_ = envSus_; break;
+                case ENV_SUSTAIN: envLevel_[c] = envSus_; break;
                 case ENV_RELEASE:
-                    envLevel_ *= envRelMul_;
-                    if (envLevel_ <= 0.0008f) { envLevel_ = 0.0f; envStage_ = ENV_CLOSED; }
+                    envLevel_[c] *= envRelMul_;
+                    if (envLevel_[c] <= 0.0008f) { envLevel_[c] = 0.0f; envStage_[c] = ENV_CLOSED; }
                     break;
                 case ENV_OPENING:
-                    envLevel_ += envRampInc_;
-                    if (envLevel_ >= 1.0f) { envLevel_ = 1.0f; envStage_ = ENV_OPEN; }
+                    envLevel_[c] += envRampInc_;
+                    if (envLevel_[c] >= 1.0f) { envLevel_[c] = 1.0f; envStage_[c] = ENV_OPEN; }
                     break;
                 case ENV_CLOSING:
-                    envLevel_ -= envRampInc_;
-                    if (envLevel_ <= 0.0f) { envLevel_ = 0.0f; envStage_ = ENV_CLOSED; }
+                    envLevel_[c] -= envRampInc_;
+                    if (envLevel_[c] <= 0.0f) { envLevel_[c] = 0.0f; envStage_[c] = ENV_CLOSED; }
                     break;
-                case ENV_OPEN:   envLevel_ = 1.0f; break;
-                case ENV_CLOSED: envLevel_ = 0.0f; break;
+                case ENV_OPEN:   envLevel_[c] = 1.0f; break;
+                case ENV_CLOSED: envLevel_[c] = 0.0f; break;
             }
+        }
+
+        // A gate's attack, held until this channel's pre-VCA signal crosses zero.
+        void onset(int c, float v) {
+            if (armed_[c]) {
+                if ((v >= 0.0f) != (prev_[c] >= 0.0f) || ++armAge_[c] >= onsetMax_) {
+                    armed_[c] = false;
+                    envStage_[c] = ENV_ATTACK;
+                }
+            }
+            prev_[c] = v;
         }
 
         ChaosBase* algo_ = nullptr;
@@ -320,16 +420,26 @@ namespace chaos_core {
         volatile bool  envEnabled_ = false;   // off by default — a drone voice
         volatile bool  envGate_    = false;
         bool           envGatePrev_ = false;
-        EnvStage       envStage_   = ENV_OPEN;
-        float          envLevel_   = 1.0f;
+        EnvStage       envStage_[2] = {ENV_OPEN, ENV_OPEN};    // per channel, L then R
+        float          envLevel_[2] = {1.0f, 1.0f};
+        bool           armed_[2]    = {false, false};          // attack waiting for zero
+        int            armAge_[2]   = {0, 0};
+        float          prev_[2]     = {0.0f, 0.0f};            // last pre-VCA sample
+        int            onsetMax_    = 1200;
+        bool           onsetAtZero_ = true, onsetResync_ = false;
         float          atkMs_ = 10.0f, decMs_ = 200.0f, relMs_ = 200.0f;
         float          envAtkInc_ = 0.0f, envDecMul_ = 0.0f, envRelMul_ = 0.0f, envSus_ = 0.5f;
         float          envRampInc_ = 0.0f;
+        bool           reseedOnGate_ = false, reseedPending_ = false;
+        uint32_t       reseeds_ = 0;
 
         // TAME
         TameState tame_ = TAME_OFF;
-        float drive_ = 0.0f;
-        float refPhase_ = 0.0f, refIncStep_ = 0.0f;
+        float drive_ = 0.0f;                     // K, the feedback gain in use
+        float tauSteps_ = 1.0f, histPrev_ = 0.0f;
+        float thetaU_ = 0.0f, thetaRaw_ = 0.0f;
+        int   histHead_ = 0, histFilled_ = 0;
+        float hist_[kHist] = {};
     };
 
 }  // namespace chaos_core

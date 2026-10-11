@@ -22,19 +22,24 @@ namespace chaos_core {
         void init() override { self().initState(s_); }
         int  saveState(float* s) const override { for (int i = 0; i < N; i++) s[i] = s_[i]; return N; }
         void loadState(const float* s) override { for (int i = 0; i < N; i++) s_[i] = s[i]; }
+        float tameState() const override { return s_[(tameVar > 0 && tameVar < N) ? tameVar : 0]; }
         void setParams(float chaos, float rate, float charV) override {
             chaos_ = chaos; dt_ = rate; char_ = charV;
         }
         void stepSample() override {
             float k1[N], k2[N], k3[N], k4[N], t[N];
             const Derived& d = self();
-            d.deriv(s_, tameD0, k1);
+            // TAME's term goes to the first variable's equation through deriv(),
+            // or, where the model asks (tameVar), straight onto another's.
+            const int  v  = (tameVar > 0 && tameVar < N) ? tameVar : 0;
+            const bool on0 = (v == 0);
+            d.deriv(s_, on0 ? tameD0 : 0.0f, k1); if (!on0) k1[v] += tameD0;
             for (int i = 0; i < N; i++) t[i] = s_[i] + 0.5f * dt_ * k1[i];
-            d.deriv(t, tameDH, k2);
+            d.deriv(t, on0 ? tameDH : 0.0f, k2);  if (!on0) k2[v] += tameDH;
             for (int i = 0; i < N; i++) t[i] = s_[i] + 0.5f * dt_ * k2[i];
-            d.deriv(t, tameDH, k3);
+            d.deriv(t, on0 ? tameDH : 0.0f, k3);  if (!on0) k3[v] += tameDH;
             for (int i = 0; i < N; i++) t[i] = s_[i] + dt_ * k3[i];
-            d.deriv(t, tameD1, k4);
+            d.deriv(t, on0 ? tameD1 : 0.0f, k4);  if (!on0) k4[v] += tameD1;
             for (int i = 0; i < N; i++)
                 s_[i] += dt_ / 6.0f * (k1[i] + 2.0f * k2[i] + 2.0f * k3[i] + k4[i]);
             self().wrap();

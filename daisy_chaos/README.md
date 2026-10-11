@@ -6,9 +6,12 @@
 >
 > **In development since 2026-10-09 (1.1.0-dev, unreleased; on David's module).**
 > TAME's SYNC is gone, at David's direction: no hard sync, and models left less
-> tamed where that is their nature. TAME is now the push alone, rising to each
-> model's own ceiling; Lorenz and Chua have none, so TAME leaves them free. B2 has
-> no job, kept for a later one. The Brusselator is tuned to the octave it actually
+> tamed where that is their nature. TAME is now **delayed feedback control**, which
+> settles each model on one of its own periodic orbits; Lorenz, Chua and
+> Lorenz–Lü–Chen have none it can find, so TAME leaves them free (2026-10-10, after
+> a day on the push alone, which was faithful but inaudible). B2 has no job, kept
+> for a later one. Secret runs at 480 MHz, and every step cap was re-measured
+> there. The Brusselator is tuned to the octave it actually
 > sounds in. B1 stays one list of twelve: banks of six on two menu levels were
 > tried the same day and dropped, and more models will come as another *volume* of
 > twelve rather than as banks. This section describes the new build; v1.0.0 is
@@ -52,8 +55,8 @@
 
 A chaotic oscillator for the **Hermetic Modular Alchemy Lab (V2)**. It runs
 continuous strange attractors as audio, with V/Oct, and a **TAME** control that
-pushes the attractor towards the note. The models with a rotation lock to it with
-their chaos intact; the ones that won't be tamed stay free.
+settles each attractor onto one of its own periodic orbits, rough to clean as it
+turns. The ones that won't be tamed stay free.
 
 *Seven for a secret, never to be told.* **Secret** is the release name. It
 succeeds the Teensy 4.1 **Chaos** module in
@@ -67,7 +70,7 @@ firmware is frozen and whose hardware will be repurposed.
 | P1 **TUNE** | 27.5–880 Hz, exponential; plus V/OCT on J3 |
 | P2 **CHAOS** | the bifurcation parameter; plus CV on J5 |
 | P3 **CHAR** | the secondary parameter |
-| P4 **TAME** | a push at the note, from none (0) to the model's ceiling (1); plus CV on J6 |
+| P4 **TAME** | delayed feedback, from none (0) to the model's full gain (1); plus CV on J6 |
 | P5 **AD** | envelope attack + decay |
 | P6 **SR** | envelope sustain + release |
 | B1 | model, twelve in one list (see below) |
@@ -81,7 +84,7 @@ still prints TAME MODE by B2, until B2 has its new job.
 | Jack | Job |
 | --- | --- |
 | J3 | V/OCT in |
-| J4 | GATE in, above +1.2 V. In Gated mode a rising edge opens the envelope and re-seeds the attractor, as on the Teensy. Drone ignores it: a re-seed with the VCA open clicks |
+| J4 | GATE in, above +1.2 V. In Gated mode a rising edge opens the envelope and re-seeds the attractor, as on the Teensy, but only from silence: if the last note is still sounding, the envelope retriggers from where it is and the attractor carries on. Each channel's attack starts at a zero crossing (`docs/SECRET.md`, "Note starts"). Drone ignores it |
 | J5 | CHAOS CV in |
 | J6 | TAME CV in |
 | J7 / J8 | X / Y CV out: the raw attractor, for a scope (Tiliqua `xbeam`) |
@@ -102,20 +105,23 @@ The second six's colours sit in the hue gaps between the first six's. More model
 will come as another volume of twelve, a separate firmware, not as banks: banks of
 six on B1's two levels were built on 2026-10-09 and dropped the same day.
 
-**TAME, model by model.** TAME adds a cosine at the note to the equation, the
-textbook way to drive an oscillator. It rises with the square of the knob, so the
-first half stays near free-running, up to a ceiling set per model from push-only
-measurements (`chaos_core/tools/tametest.cpp`, 2026-10-09):
+**TAME, model by model.** TAME is delayed feedback control (Pyragas, 1992): it
+adds to one equation the difference between a variable now and one note period
+ago. When the system is on one of its own periodic orbits that difference is zero,
+so a clean tone at the top of the knob is a genuine solution of the equations, not
+a looped slice. It rises with the square of the knob, at a gain set per model from
+host measurements (`chaos_core/tools/tametest.cpp`, 2026-10-10):
 
-| Model | Ceiling | What TAME does |
-| --- | --- | --- |
-| Rössler, Coupled Rössler | 7.5% | locks within ~5 / 2 cents, chaos intact |
-| Van der Pol | 7.5% | periodic anyway: exact from mid-knob |
-| Moore–Spiegel | 10% | locks within ~5 cents at the top |
-| Lorenz–Lü–Chen, Hindmarsh–Rose | 7.5% | within a few cents from the scaling alone; the push tightens it a little, and Hindmarsh–Rose's bursts survive |
-| Duffing, Driven pendulum, Forced Brusselator | 7.5% | driven by their own equations: they sing their subharmonics, an octave, a twelfth or two octaves below in their periodic windows |
-| Chaotic Colpitts | 7.5% | settles into its period-doubling patterns |
-| Lorenz, Chua | 0 | never lock, and a push only made them noisier: TAME leaves them free |
+| Model | What TAME does |
+| --- | --- |
+| Rössler, Coupled Rössler | rough to clean, the spiral intact on the scope |
+| Duffing | wild through the first half, then from its subharmonics onto the note |
+| Driven pendulum | rough to mostly clean, through its angle |
+| Moore–Spiegel | rougher around halfway, then clean at the top, through its jerk equation |
+| Chaotic Colpitts | cleaner; the orbit it finds sits about 3 semitones from the free voice |
+| Hindmarsh–Rose | subtle: its bursts grow more regular, through its slow current |
+| Van der Pol, Forced Brusselator | periodic already: nothing to tame |
+| Lorenz, Chua, Lorenz–Lü–Chen | none: the feedback only cleans them by forcing, so TAME leaves them free |
 
 What each one is, and why it was chosen, is in `docs/SECRET.md`, section 3.
 
@@ -180,6 +186,10 @@ option for it, so the link wraps its one `seed.Init()` call and passes boost on
 (`--wrap` in the Makefile, the wrapper in `src/secret.cpp`); the SDK and libDaisy
 are untouched. The boot log line reports the clock. `make clean && make CLOCK400=1`
 builds a 400 MHz firmware, for comparison or if a board ever misbehaves at 480.
+
+**Shifted jacks.** `make clean && make JACKSHIFT=1` builds for a board with a failed
+J3: V/OCT on J5, GATE on J4, CHAOS CV on J7, TAME CV on J8, and no X/Y CV out (watch
+the audio instead). Default builds keep the panel's layout.
 First run 2026-10-09: boots and plays, idle load 11–12% → 9%.
 
 ## Flash
@@ -249,8 +259,8 @@ In order, so a failure points at one thing:
    (Rössler).
 2. **Sound.** J9/J10 into the mixer, TUNE at noon (~155 Hz), TAME at 0: Rössler's
    rough, pitched drone.
-3. **TAME.** Turn it up on Rössler: free, then phase slips, then locked but still
-   gritty. Try each model on B1 against the table above. These are the listening
+3. **TAME.** Turn it up on Rössler: rough, then smoother by halfway, then a clean
+   tone. Try each model on B1 against the table above. These are the listening
    tests from `SECRET.md` section 2.
 4. **V/Oct.** On Van der Pol with TAME at 1 (periodic, so a tuner can read it), feed J3
    from a quantiser (Scales) and check octaves. TUNE trims the offset. If

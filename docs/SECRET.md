@@ -235,6 +235,9 @@ much.
 
 ### TAME without sync (2026-10-09)
 
+*The push described here was replaced the next day by delayed feedback, below:
+faithful, but inaudible on most models.*
+
 A critical review found that SYNC, the per-cycle pull back to a snapshot, was hard
 sync: the pitch came from the reset clock and the output was a looped slice of the
 attractor. It took the most from the models it was used on most. Lorenz and Chua
@@ -275,6 +278,65 @@ zero crossings, and clarity:
 So the module no longer promises "noise to note on every model". It promises
 what the equations do: some lock, the driven ones sing subharmonics, and two stay
 wild.
+
+### TAME as delayed feedback (2026-10-10)
+
+Played on the module, the push felt like nothing: the scaling already puts most
+models within a few cents of the note, and the push only tightened that. The
+faithful way to get an audible chaos-to-tone sweep back is chaos control.
+**Delayed feedback control** (Pyragas, 1992) adds `K (v(t − T) − v(t))` to one
+equation, `T` one period of the note. On a periodic orbit of the equations with
+period `T` the term is zero, so what it settles the voice on is one of the
+system's own unstable orbits: a genuine solution, not a looped slice. Rössler and
+Duffing, its first two demonstrations, are the two it works best on here.
+
+How it was chosen, on the host, per model:
+
+1. Feed the term into X's equation at gains 0.1, 0.3, 1 and 3 (× 2π fNat), and
+   measure clarity and **effort**: the control's mean size against the variable's
+   own rate. High clarity at low effort is an orbit found; high clarity only at
+   effort near or above 100% is a waveform imposed.
+2. Where X failed, feed each other equation in turn.
+
+| Model | Through | Gain | Clarity, TAME 0 → 1 | Effort |
+| --- | --- | --- | --- | --- |
+| Rössler | X | 0.5 | 0.70 → 1.00 | ~3% |
+| Coupled Rössler | X | 1.0 | 0.86 → 1.00 | ~5% |
+| Duffing | X | 1.0 | 0.40 → 0.88, subharmonics onto the note | ~18% |
+| Driven pendulum | θ, unwrapped | 3.0 | 0.54 → 0.91 | 4–13% |
+| Moore–Spiegel | x″, into the jerk equation | 0.1 | 0.85 → 1.00 | 9% |
+| Chaotic Colpitts | X | 0.1 | 0.81 → 0.96; the orbit sits ~3 semitones off the free voice | 8% |
+| Hindmarsh–Rose | z, the slow current | 0.5 | 0.72 → 0.82: bursts regularise | 13% |
+| Van der Pol, Brusselator | X | 0.3 | periodic already | ~0 |
+| Lorenz | — | 0 | clarity 0.97 only at 160–230% effort, through any variable | — |
+| Chua | — | 0 | never past 0.86, and only at 100–270% | — |
+| Lorenz–Lü–Chen | — | 0 | nothing, or 0.9 at 26–120% | — |
+
+So TAME is one method on every model that has it, and the push is gone from the
+code. Hindmarsh–Rose's feedback costs it top range on the Alchemy Lab (its cap
+went from 670k to 510k steps a second to stay under the load governor); whether
+its subtle effect is worth that is an ear decision still open.
+
+**Note starts (2026-10-10).** The envelope now runs per channel, and the voice
+handles the gate itself (`Voice::setReseedOnGate`):
+
+- **A gate re-seeds only from silence** (−60 dB). In v1.0.0 every gate re-seeded,
+  and one that came before the last note had died away -- long gates with a short
+  gap, a long decay -- moved the state under an open VCA: a jump of up to 0.4 of
+  full scale on the host. Now such a gate retriggers the envelope from where it
+  is and the trajectory carries on. A 2 ms VCA choke before the re-seed was tried
+  first and was worse: a VCA cut is a click too.
+- **On a re-seed the DC blocker is centred on the seed,** so the new note's output
+  starts at exactly zero and its attack opens at once. Left on the old trajectory's
+  mean, the first zero crossing came 15–18 ms late.
+- **An overlapping note's attack waits for its channel to cross zero** (L and R
+  separately, 25 ms at most), so a fast attack opens near nothing rather than onto
+  a waveform mid-swing: 2–6 ms typically, 10 ms at worst (Duffing), at 110 Hz.
+
+On the host, with fast attacks, the largest step in a note's first 30 ms falls to
+the waveform's own size on Rössler, Duffing and Van der Pol. Lorenz from silence
+still ticks: its seed sits off the attractor and the trajectory swings onto it
+fast, the percussive transient the Teensy design re-seeds for.
 
 **FREEZE (B3)** covers the case these don't: capture N cycles of the tamed output
 into a buffer and play it as a wavetable. That's Ogham's decouple/drone applied to
