@@ -411,6 +411,12 @@ order is fixed whatever order the filesystem returns them in. Copy them to the r
 card. Each is 7,516 bytes.
 
 Captures you convert yourself (`tools/nam_to_a2nb.py`, above) go on the same card.
+Level them with the rest: `tools/level_captures.py --write` plays each file through the
+real engine and sets its gain so every capture sits at one **A-weighted** level
+(−27.0 dB on the not-amps' test phrase). Plain RMS was tried first and left the bass-heavy
+Ampeg SVT about 5 dB quiet by ear, because it counts bass the ear barely hears.
+`tools/tone3000.py` searches TONE3000 by gear type, lists a tone's files, downloads
+chosen ones, and scans any gear type — cab IRs included — for CC0 / CC-BY licences.
 
 **The card needs a FAT32 partition of 2 GB or less.** Not exFAT (libDaisy builds FatFs
 without it), and not one full-size FAT32 volume on a big card. Found on the first bench

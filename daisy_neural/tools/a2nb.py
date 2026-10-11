@@ -24,7 +24,7 @@ Format (little-endian, 32-byte header + payload):
     4    2     format version (1)
     6    2     reserved (0)
     8    4     weight count (uint32) — must be 1871
-    12   4     output gain (float32), bkshepherd's loudness match
+    12   4     output gain (float32), set by level_captures.py
     16   12    name, ASCII, NUL-padded
     28   4     CRC32 (IEEE 802.3) of the payload only
     32   ...   weight count x float32
@@ -78,3 +78,20 @@ def verify(blob, name, gain, weights):
     # float32 round-trip, so compare at float32 precision
     for a, b in zip(back, weights):
         assert abs(a - b) < 1e-6 * max(1.0, abs(b)), (a, b)
+
+
+def unpack(blob):
+    """Read a file's header. Returns (name, gain, weight_count, crc_ok); raises
+    ValueError for anything the firmware would refuse."""
+    magic, ver, _, count, gain = struct.unpack("<4sHHIf", blob[:16])
+    if magic != MAGIC or ver != VERSION:
+        raise ValueError(f"not an .a2nb v{VERSION} file")
+    name = blob[16:28].split(b"\0")[0].decode("ascii", "replace")
+    (crc,) = struct.unpack("<I", blob[28:32])
+    return name, gain, count, crc == (zlib.crc32(blob[HEADER_SIZE:]) & 0xFFFFFFFF)
+
+
+def with_gain(blob, gain):
+    """The same file with a new output gain. The CRC covers the weights only, so
+    it stays valid."""
+    return blob[:12] + struct.pack("<f", gain) + blob[16:]

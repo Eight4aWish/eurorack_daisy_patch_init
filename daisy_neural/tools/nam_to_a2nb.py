@@ -83,9 +83,10 @@ def main():
     ap.add_argument("--out", default=None, help="output directory (default: alongside)")
     ap.add_argument("--name", help="display name; only valid with a single input")
     ap.add_argument("--gain", type=float, default=1.0,
-                    help="output gain for loudness matching. NAM's own loudness "
-                         "metadata proved unreliable across captures, so this is "
-                         "set by ear (default 1.0)")
+                    help="output gain (default 1.0). Leave it and run level_captures.py "
+                         "afterwards, which sets every file on a card to one "
+                         "A-weighted level; NAM's own loudness metadata proved "
+                         "unreliable across captures")
     args = ap.parse_args()
 
     if args.name and len(args.nam) > 1:
