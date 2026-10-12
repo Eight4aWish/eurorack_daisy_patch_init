@@ -1,10 +1,13 @@
 # daisy_chaos: Secret
 
-> **Released: v1.0.0, 2026-10-02.** Tag `secret-v1.0.0` on `a29bb01`, asset
-> `secret-v1.0.0.bin`; the page is at <https://eight4awish.com/modules/secret/>.
-> The four low-topping models ship as they are, listed as a known limit.
+> **Released: v1.1.0, 2026-10-12.** Tag `secret-v1.1.0`, assets `secret-v1.1.0.bin`
+> and `secret-v1.1.0-NOTICES.txt`; the page is at
+> <https://eight4awish.com/modules/secret/>. Played on David's module before release.
+> The four low-topping models still ship as they are, listed as a known limit.
 >
-> **In development since 2026-10-09 (1.1.0-dev, unreleased; on David's module).**
+> **v1.0.0, 2026-10-02.** Tag `secret-v1.0.0` on `a29bb01`, asset `secret-v1.0.0.bin`.
+>
+> **What changed in 1.1.0 (developed from 2026-10-09).**
 > TAME's SYNC is gone, at David's direction: no hard sync, and models left less
 > tamed where that is their nature. TAME is now **delayed feedback control**, which
 > settles each model on one of its own periodic orbits; Lorenz, Chua and
@@ -14,8 +17,8 @@
 > there. The Brusselator is tuned to the octave it actually
 > sounds in. B1 stays one list of twelve: banks of six on two menu levels were
 > tried the same day and dropped, and more models will come as another *volume* of
-> twelve rather than as banks. This section describes the new build; v1.0.0 is
-> described by the page and the tag.
+> twelve rather than as banks. Notes start at a zero crossing, and a gate re-seeds
+> only from silence.
 >
 > **Bench after release, 2026-10-02, on the 1.0.0 build.** Scope (step 6): both the
 > X/Y CV on J7/J8 and the audio on J9/J10 draw on Tiliqua's `xbeam`. V/Oct (step 4):
@@ -49,7 +52,10 @@
 > is measured on the board with `make BENCH=1`: at its cap with TAME on, a block
 > takes 64–71% of its time, so nothing can overrun. On this chip four models top out
 > inside the playing range, and a note above the top plateaus: Hindmarsh–Rose
-> ~200 Hz, Chua ~410 Hz, Colpitts ~570 Hz, Moore–Spiegel ~730 Hz, at mid settings.
+> ~200 Hz, Chua ~410 Hz, Colpitts ~570 Hz, Moore–Spiegel ~730 Hz, at mid settings
+> and 400 MHz. At 480 MHz (1.1.0) the caps rose and the tops with them, in
+> proportion: Hindmarsh–Rose ~190 Hz (its cap fell, to pay for TAME), Chua ~520,
+> Colpitts ~660, Moore–Spiegel ~880. Scaled from the 400 MHz figures, not re-measured.
 > A bigger integration step would lift them 3–4×, at some change in sound;
 > undecided (`docs/SECRET.md`).
 

@@ -10,7 +10,8 @@ is frozen there and whose hardware will be repurposed. `chaos_core` moved here
 from `eurorack_modules/libs/chaos_core` on 2026-09-30, so this copy is the
 live one.
 
-> **Status: released, v1.0.0 (2026-10-02, tag `secret-v1.0.0`).** It has run on the
+> **Status: released, v1.1.0 (2026-10-12, tag `secret-v1.1.0`)**, with TAME as delayed
+> feedback control (section 2); v1.0.0 (2026-10-02, tag `secret-v1.0.0`). It has run on the
 > Alchemy Lab since 2026-09-30, with twelve models since 2026-10-01. Bench state is
 > kept in [`daisy_chaos/README.md`](../daisy_chaos/README.md).
 > This document began as the plan, written before any of it ran. Follows on from
@@ -591,6 +592,12 @@ of its time. Measured after setting them: 64–71% for all twelve.
 | Forced Brusselator | ~1136 | 225,000 | ~2.9 kHz |
 | Chaotic Colpitts | ~1130 | 225,000 | **~570 Hz** |
 | Hindmarsh–Rose | ~472 | 550,000 | **~200 Hz** (44 Hz at worst) |
+
+**At 480 MHz** (2026-10-09, released in 1.1.0) every cap was re-measured, scaled to
+the same ~65% of a block, and set per model; eleven rose, by 16% (Colpitts) to 47% (Rössler).
+Hindmarsh–Rose's fell, 550k to 510k, to pay for delayed-feedback TAME. The four bold
+tops move with their caps, to about 190 Hz (Hindmarsh–Rose), 520 (Chua), 660
+(Colpitts) and 880 (Moore–Spiegel): scaled from the table, not re-measured.
 
 Above its top a note plateaus. The four in bold top out inside the playing range
 because they take many small steps per cycle. Probed on the host, all four stay
