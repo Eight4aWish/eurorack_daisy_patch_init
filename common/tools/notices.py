@@ -167,11 +167,11 @@ APPS = {
                            "STMicroelectronics or Arm"),
     },
     "wish_patch_init": {
-        "dir": "daisy_beads_patch_init", "title": "Wish patch.Init()",
+        "dir": "daisy_beads_patch_init", "title": "Wish on Daisy patch.Init()",
         "bin": "wish_patch_init.bin",
         "src": "daisy_beads_patch_init/, daisy_beads/src/, common/ and deps/",
         "components": [
-            ("Wish patch.Init()", "David Baghurst", "MIT", own_mit),
+            ("Wish on Daisy patch.Init()", "David Baghurst", "MIT", own_mit),
             BEADS,
             *libdaisy(DAISY / "libDaisy"),
         ],

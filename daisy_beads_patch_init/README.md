@@ -1,4 +1,4 @@
-# daisy_beads_patch_init: Wish patch.Init()
+# daisy_beads_patch_init: Wish on Daisy patch.Init()
 
 > **Released: v1.0.0, 2026-10-12.** Tag `wish_patch_init-v1.0.0`, assets
 > `wish_patch_init-v1.0.0.bin` and `wish_patch_init-v1.0.0-NOTICES.txt`; the page is

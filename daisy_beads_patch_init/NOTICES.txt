@@ -1,13 +1,13 @@
-Wish patch.Init() — licence notices for wish_patch_init.bin
+Wish on Daisy patch.Init() — licence notices for wish_patch_init.bin
 
-wish_patch_init.bin is Wish patch.Init()'s own code compiled together with the libraries
+wish_patch_init.bin is Wish on Daisy patch.Init()'s own code compiled together with the libraries
 below. Each keeps its own licence, and the notices that licence asks to go with a
 binary are reproduced here in full.
 
 Source: https://github.com/Eight4aWish/eurorack_daisy_patch_init, at the release
 tag, in daisy_beads_patch_init/, daisy_beads/src/, common/ and deps/.
 
-  - Wish patch.Init()
+  - Wish on Daisy patch.Init()
       David Baghurst · MIT
   - Mutable Instruments Beads and stmlib
       Emilie Gillet; Fred's Lab · MIT
@@ -25,7 +25,7 @@ Not affiliated with, or endorsed by, Mutable Instruments, Electrosmith, STMicroe
 
 
 ================================================================================
-Wish patch.Init() — David Baghurst — MIT
+Wish on Daisy patch.Init() — David Baghurst — MIT
 
 MIT License
 

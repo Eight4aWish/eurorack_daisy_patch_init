@@ -21,7 +21,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 //
-// Wish patch.Init() -- Wish, the granular texture synthesizer based on Mutable
+// Wish on Daisy patch.Init() -- Wish, the granular texture synthesizer based on Mutable
 // Instruments Beads, on a stock Electrosmith Daisy patch.init().
 //
 // The DSP is Beads' own, compiled from the submodule exactly as daisy_beads/

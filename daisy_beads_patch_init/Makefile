@@ -1,4 +1,4 @@
-# daisy_beads_patch_init — Wish patch.Init(), for a stock Electrosmith Daisy
+# daisy_beads_patch_init — Wish on Daisy patch.Init(), for a stock Electrosmith Daisy
 # patch.init(), based on Mutable Instruments Beads (Emilie Gillet, MIT)
 #
 #   make                build firmware -> build/wish_patch_init.bin
