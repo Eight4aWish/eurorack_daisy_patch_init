@@ -232,18 +232,6 @@ static Pager               pager = Pager(kNumPages, kNumPots)
 static Presets             presets(hw.seed.qspi);
 static daisy::CpuLoadMeter cpu;
 
-// A jack's calibrated voltage. make NOJ3J6=1 is for David's board until its
-// replacement arrives (2026-10-12): J3 sits at +12 V with nothing patched, which
-// pinned every grain five octaves up, and J6 read no gate under Secret. Both
-// then read 0 V: no V/OCT and no TIME CV, everything else as normal.
-static inline float JackVolts(uint8_t jack)
-{
-#ifdef WISH_NOJ3J6
-    if (jack == kJackPitch || jack == kJackTime) return 0.0f;
-#endif
-    return hw.cv_jacks[jack].Volts();
-}
-
 static Processor   processor;
 static Synth       synth;
 static GainControl gain_control;
@@ -445,14 +433,14 @@ static void AudioCallback(daisy::AudioHandle::InputBuffer  in,
     const bool mono      = s_runInput == kInputMono;
 
     // ── Gates: FREEZE (button or J5), SEED (J4, delayed) ──
-    const bool freezeGate = g_freeze.Process(JackVolts(kJackFreeze));
+    const bool freezeGate = g_freeze.Process(hw.cv_jacks[kJackFreeze].Volts());
     const bool frozen     = s_freezeButton || freezeGate;
     s_frozen = frozen;
     bool freeze[kMaxBlockSize];
     for (size_t i = 0; i < size; ++i) freeze[i] = frozen;
 
     const bool wasHigh  = g_seed.high;
-    const bool seedHigh = g_seed.Process(JackVolts(kJackSeed));
+    const bool seedHigh = g_seed.Process(hw.cv_jacks[kJackSeed].Volts());
     TrackExtClock(seedHigh && !wasHigh);
     s_seedDelay[s_seedDelayPos] = seedHigh;
     const bool seedDelayed =
@@ -498,13 +486,13 @@ static void AudioCallback(daisy::AudioHandle::InputBuffer  in,
     // ── Controls ──
     Parameters p;
     p.time.base         = f_time.Process(timeKnob.Norm())
-                          + c_time.Process(JackVolts(kJackTime) * kTimeSizePerVolt, 0.5f);
+                          + c_time.Process(hw.cv_jacks[kJackTime].Volts() * kTimeSizePerVolt, 0.5f);
     p.time.attenuverter = f_timeRand.Process(timeRand.Norm());
     p.time.has_cv       = false;
     p.time.cv           = 0.0f;
 
     p.size.base         = f_size.Process(sizeKnob.Norm())
-                          + c_size.Process(JackVolts(kJackSize) * kTimeSizePerVolt, 0.5f);
+                          + c_size.Process(hw.cv_jacks[kJackSize].Volts() * kTimeSizePerVolt, 0.5f);
     p.size.attenuverter = f_sizeRand.Process(sizeRand.Norm());
     p.size.has_cv       = false;
     p.size.cv           = 0.0f;
@@ -514,7 +502,7 @@ static void AudioCallback(daisy::AudioHandle::InputBuffer  in,
     p.shape.has_cv       = false;
     p.shape.cv           = 0.0f;
 
-    float pitchCv = JackVolts(kJackPitch) * kSemitonesPerVolt;
+    float pitchCv = hw.cv_jacks[kJackPitch].Volts() * kSemitonesPerVolt;
     CONSTRAIN(pitchCv, -60.0f, 60.0f);
     p.pitch.base         = f_pitch.Process(pitchKnob.Norm()) + c_pitch.Process(pitchCv, 1.0f);
     p.pitch.attenuverter = f_pitchRand.Process(pitchRand.Norm());
@@ -524,7 +512,7 @@ static void AudioCallback(daisy::AudioHandle::InputBuffer  in,
     p.monophonic_mode = false;
 
     ModulatedParameter d;
-    float densityCv = JackVolts(kJackDensity) * kDensityPerVolt;
+    float densityCv = hw.cv_jacks[kJackDensity].Volts() * kDensityPerVolt;
     CONSTRAIN(densityCv, -1.0f, 1.0f);
     d.base = f_density.Process(density.Norm());
     d.cv   = c_density.Process(densityCv, 1.0f);
@@ -1017,15 +1005,10 @@ int main()
 
     if (!host.ConfigurationOk() || !debug.ConfigurationOk())
         debug.Error("HostLink setup failed");
-#ifdef WISH_NOJ3J6
-    static const char* const kJacks = ", J3 and J6 off (NOJ3J6)";
-#else
-    static const char* const kJacks = "";
-#endif
-    debug.Info("Wish %s, %lu MHz, CV %s, %s, %s%s", WISH_GIT_HASH,
+    debug.Info("Wish %s, %lu MHz, CV %s, %s, %s", WISH_GIT_HASH,
                (unsigned long)(daisy::System::GetSysClkFreq() / 1000000u),
                hw.IsCalibrated() ? "calibrated" : "UNCALIBRATED (hold B1+B2 at power-on)",
-               kMediaNames[s_runMedia], kInputNames[s_runInput], kJacks);
+               kMediaNames[s_runMedia], kInputNames[s_runInput]);
 
     for (;;) loop.Tick();
 }

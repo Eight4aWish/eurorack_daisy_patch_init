@@ -186,10 +186,6 @@ option for it, so the link wraps its one `seed.Init()` call and passes boost on
 (`--wrap` in the Makefile, the wrapper in `src/secret.cpp`); the SDK and libDaisy
 are untouched. The boot log line reports the clock. `make clean && make CLOCK400=1`
 builds a 400 MHz firmware, for comparison or if a board ever misbehaves at 480.
-
-**Shifted jacks.** `make clean && make JACKSHIFT=1` builds for a board with a failed
-J3: V/OCT on J5, GATE on J4, CHAOS CV on J7, TAME CV on J8, and no X/Y CV out (watch
-the audio instead). Default builds keep the panel's layout.
 First run 2026-10-09: boots and plays, idle load 11–12% → 9%.
 
 ## Flash

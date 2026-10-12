@@ -7,8 +7,6 @@
 > `d8f4739`); this port was built and first played the next day. The first build hung
 > at the heaviest settings, Digital stereo with dense grains and random pitch, which
 > need more than this board has (below); a load governor now thins the grains instead.
-> David's own module runs `make NOJ3J6=1` for now: its J3 sits at +12 V unpatched, a
-> fault of that board, which would pin every grain five octaves up.
 
 A granular texture synthesizer for the **Hermetic Modular Alchemy Lab (V2)**, based on
 the **Beads** texture synthesizer by Émilie Gillet (Mutable Instruments), MIT. Beads
@@ -131,7 +129,6 @@ make program-live    # Wish (or Secret) running: reboot into DFU over USB and fl
 make flash           # module already in DFU: hold B3 at power-on
 make host-test       # Beads' DSP as built here, rendered on the Mac (see below)
 make clean && make BENCH=1   # at power-on, time Beads' worst cases and log them
-make clean && make NOJ3J6=1  # J3 and J6 read as 0 V, for a board with those jacks faulty
 ```
 
 Built like [`daisy_chaos`](../daisy_chaos/) (Secret): the Alchemy SDK from
