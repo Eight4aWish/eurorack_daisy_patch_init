@@ -1,4 +1,5 @@
-# daisy_beads — Wish: Mutable Instruments Beads on the Hermetic Modular Alchemy Lab (V2)
+# daisy_beads — Wish, for the Hermetic Modular Alchemy Lab (V2), based on Mutable
+# Instruments Beads (Emilie Gillet, MIT)
 #
 #   make libdaisy       build the SDK's pinned libDaisy once, after cloning
 #   make                build firmware -> build/wish.bin

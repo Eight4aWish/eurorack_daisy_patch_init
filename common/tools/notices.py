@@ -112,8 +112,21 @@ USB_NOTE = ("STM32 USB Device Library (in libDaisy), STMicroelectronics, SLA0044
 BRAIDS = ("Mutable Instruments Braids and stmlib", "Emilie Gillet", "MIT",
           lambda: header(MUTABLE / "braids" / "macro_oscillator.cc", "THE SOFTWARE."))
 
-BEADS = ("Mutable Instruments Beads and stmlib", "Emilie Gillet", "MIT",
-         lambda: header(MUTABLE / "beads" / "dsp" / "processor.cc", "THE SOFTWARE."))
+def beads_notice():
+    """Beads' MIT notice, with the copyright years of every Mutable file in wish.bin.
+
+    The 52 Beads and stmlib files the build compiles or includes (its .d files, read
+    2026-10-12) are all Emilie Gillet's, MIT, dated 2012 to 2021. One header shadowed
+    in daisy_beads/src/upstream/ copies a struct from Beads' drivers/codec.h, whose
+    holder is Fred's Lab and Mutable Instruments, so that line is here too."""
+    text = header(MUTABLE / "beads" / "dsp" / "processor.cc", "THE SOFTWARE.")
+    permission = text[text.index("Permission is hereby granted"):]
+    return ("Copyright 2012-2021 Emilie Gillet.\n"
+            "Copyright 2018 Fred's Lab and Mutable Instruments (beads/drivers/codec.h:\n"
+            "the Codec::Frame declaration only).\n\n" + permission)
+
+
+BEADS = ("Mutable Instruments Beads and stmlib", "Emilie Gillet; Fred's Lab", "MIT", beads_notice)
 
 APPS = {
     "secret": {

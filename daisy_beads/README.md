@@ -8,11 +8,12 @@
 > on the bench. J3 and J6 are coded as working jacks but can't be tested on David's
 > board until the replacement arrives.
 
-**Mutable Instruments Beads** for the **Hermetic Modular Alchemy Lab (V2)**. Beads is
-the texture synthesizer that followed Clouds: a granular processor with four recording
-qualities, a delay mode, a reverb, and a wavetable synth for when nothing is patched in.
-Wish runs Beads' own DSP, compiled from Mutable's source, behind the Alchemy Lab's six
-knobs, three buttons and LED rings.
+A granular texture synthesizer for the **Hermetic Modular Alchemy Lab (V2)**, based on
+the **Beads** texture synthesizer by Émilie Gillet (Mutable Instruments), MIT. Beads
+followed Clouds: a granular processor with four recording qualities, a delay mode, a
+reverb, and a wavetable synth for when nothing is patched in. Wish runs Beads' own DSP,
+compiled from Mutable's source, behind the Alchemy Lab's six knobs, three buttons and
+LED rings.
 
 The name is from the rhyme: *eight for a wish*.
 
@@ -140,5 +141,18 @@ To go back to Secret: `make -C ../daisy_chaos program-live`.
 - [`NOTICES.txt`](NOTICES.txt): licence notices for `wish.bin`, from
   `python3 common/tools/notices.py wish`
 
-Beads is © Émilie Gillet (Mutable Instruments), MIT. Not affiliated with, or endorsed
-by, Mutable Instruments or Hermetic Modular.
+## Credits
+
+Beads' DSP and the parts of stmlib it uses are © 2012–2021 Émilie Gillet (Mutable
+Instruments), MIT, each file under its own notice. Files here that carry her code, or
+follow it closely, carry her notice too: [`src/pot_laws.h`](src/pot_laws.h),
+[`src/wish.cpp`](src/wish.cpp), [`tools/host_render.cpp`](tools/host_render.cpp) and
+the two in [`src/upstream/`](src/upstream/). The stand-in `codec.h` declares one
+struct as Beads' own `codec.h` does, which is © 2018 Fred's Lab and Mutable
+Instruments, MIT. The notices that must go with `wish.bin` are in
+[`NOTICES.txt`](NOTICES.txt).
+
+Following Mutable's guidelines for derivative works, the firmware has a name of its own
+and does not carry the Mutable Instruments name. "Beads" and "Mutable Instruments" are
+used only to say where it comes from. Not affiliated with, or endorsed by, Mutable
+Instruments or Hermetic Modular.
