@@ -34,6 +34,7 @@
 // delay line runs at the codec's 48 kHz, so delays and durations convert to
 // seconds directly, and the buffer holds 8 s.
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -129,7 +130,7 @@ static std::vector<Scenario> Scenarios()
 
     // 2. One grain, from one trigger, every trigger accepted (DENSITY full).
     s.push_back({"one_grain", "2 one grain", 5.0f,
-                 [](float) { Knobs k; k.density = 1.0f; k.time = 0.15f; k.size = 0.55f; return k; },
+                 [](float) { Knobs k; k.density = 1.0f; k.time = 0.15f; k.size = 0.8f; return k; },
                  {3.0f}});
 
     // 2b. TIME, then SIZE, then SHAPE swept, a grain every half second. SIZE starts
@@ -140,7 +141,11 @@ static std::vector<Scenario> Scenarios()
                      k.density = 1.0f;
                      // One knob moves at a time; the others rest mid-way.
                      k.time  = t < 6.0f ? Ramp(t, 2.0f, 6.0f, 0.02f, 0.4f) : 0.15f;
-                     k.size  = (t >= 6.0f && t < 10.0f) ? Ramp(t, 6.0f, 10.0f, 0.25f, 0.8f) : 0.55f;
+                     // SIZE steps, set just before each trigger: backwards and long,
+                     // shortest at a third, then forwards and growing (Beads' SIZE law).
+                     static const float kSizes[8] = {0.03f, 0.12f, 0.22f, 0.33f, 0.45f, 0.6f, 0.72f, 0.85f};
+                     const int si = std::max(0, std::min(7, static_cast<int>((t - 5.9f) / 0.5f)));
+                     k.size  = (t >= 5.9f && t < 10.0f) ? kSizes[si] : 0.55f;
                      k.shape = t >= 10.0f ? Ramp(t, 10.0f, 14.0f, 0.0f, 1.0f) : 0.5f;
                      return k;
                  },
