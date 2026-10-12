@@ -9,7 +9,8 @@
 > are still to be checked one by one on the bench. J3 and J6 are coded as working jacks
 > but can't be tested on David's board until the replacement arrives. Until then it runs
 > `make NOJ3J6=1`, which reads both as 0 V: its J3 sits at +12 V unpatched, which would
-> pin every grain five octaves up.
+> pin every grain five octaves up. With that build, David's verdict after the first
+> session (2026-10-12): it basically works.
 
 A granular texture synthesizer for the **Hermetic Modular Alchemy Lab (V2)**, based on
 the **Beads** texture synthesizer by Émilie Gillet (Mutable Instruments), MIT. Beads
