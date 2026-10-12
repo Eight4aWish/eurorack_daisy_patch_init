@@ -160,6 +160,21 @@ host-test:
 		-Isrc -Isrc/upstream -I$(MUTABLE_EURORACK) $(HOST_SOURCES) -o build/host/host_render
 	./build/host/host_render build/host
 
+# ── Grain log (tools/grain_log.cpp) ──────────────────────────────────────────
+# Beads' DSP through scripted scenarios, logging every grain it starts, for the
+# granular explainer in the Eight4aWish video. tools/grainlog/ is searched first:
+# its copy of Beads' delay_grain.h adds the logging hook. Host only; the firmware
+# never sees that directory. JSON + WAV per scenario land in build/grainlog/.
+GRAINLOG_SOURCES := tools/grain_log.cpp $(CC_SOURCES)
+
+.PHONY: grain-log
+grain-log:
+	@mkdir -p build/grainlog
+	$(HOST_CXX) -std=c++17 -O2 -DTEST -Wno-vla-cxx-extension -Wno-unused-local-typedef \
+		-Itools/grainlog -Isrc -Isrc/upstream -I$(MUTABLE_EURORACK) $(GRAINLOG_SOURCES) \
+		-o build/grainlog/grain_log
+	./build/grainlog/grain_log build/grainlog
+
 # ── Flashing ─────────────────────────────────────────────────────────────────
 # As daisy_chaos/Makefile, which explains both routes: QSPI at 0x90040000
 # through the Alchemy bootloader's DFU on the front-panel USB-C.

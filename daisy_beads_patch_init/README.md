@@ -34,8 +34,9 @@ Three layers of four knobs. The toggle picks **PLAY** or **TONE**; holding **B7*
 A knob takes a parameter over only once it reaches the parameter's value (catch), so
 changing layer never makes anything jump. DENSITY at noon is no grains; anticlockwise
 regular, clockwise random. PITCH snaps through 0, 1, 3, 4, 7, 12 and 24 semitones. A
-randomiser at noon does nothing; clockwise a smooth random walk, anticlockwise a fresh
-random value per grain.
+randomiser at noon does nothing. Clockwise, every new grain gets the same degree of
+randomness, set by the knob; anticlockwise the degree is itself random, so some grains
+stay put and others land anywhere. In delay mode they become a smooth random wander.
 
 | Button | Job |
 | --- | --- |

@@ -43,7 +43,10 @@
 //   P5 PITCH random    P6 REVERB
 //
 // A randomiser is Beads' attenuverter with nothing patched: centre is none,
-// clockwise a smooth random walk, anticlockwise a fresh random value per grain.
+// clockwise every new grain gets the same degree of randomness, anticlockwise the
+// degree is itself random per grain (some grains stay put, others land anywhere).
+// In delay mode it is a smooth random walk instead, faster clockwise. See
+// RandomizedParameter in Beads' randomized_parameter.h.
 // CV is always added at full depth (attenuate off-module), so the randomisers
 // stay randomisers whether a jack is patched or not, and V/OCT tracks without
 // a knob at full. What is lost is Beads' patched-and-anticlockwise case, CV
@@ -848,19 +851,19 @@ static void Bench()
     static const Case kCases[] = {
         // name                                media mono   synth  dens  size  pitch  rnd   governed
         {"digital mono, dense",                  3, true,  false, 1.0f, 0.9f,  0.0f, 0.5f, false},
-        {"digital mono, dense, pitch walk",      3, true,  false, 1.0f, 0.9f, 24.0f, 1.0f, false},
+        {"digital mono, dense, pitch random",      3, true,  false, 1.0f, 0.9f, 24.0f, 1.0f, false},
         {"digital mono, dense, pitch per grain", 3, true,  false, 1.0f, 0.9f, 24.0f, 0.0f, false},
-        {"digital mono, regular max, walk",      3, true,  false, 0.0f, 0.9f, 24.0f, 1.0f, false},
-        {"digital stereo, dense, pitch walk",    3, false, false, 1.0f, 0.9f, 24.0f, 1.0f, false},
-        {"vintage mono, dense, pitch walk",      2, true,  false, 1.0f, 0.9f, 24.0f, 1.0f, false},
-        {"vintage stereo, dense, pitch walk",    2, false, false, 1.0f, 0.9f, 24.0f, 1.0f, false},
-        {"clean tape mono, dense, pitch walk",   1, true,  false, 1.0f, 0.9f, 24.0f, 1.0f, false},
-        {"clean tape stereo, dense, pitch walk", 1, false, false, 1.0f, 0.9f, 24.0f, 1.0f, false},
-        {"dirty tape mono, dense, pitch walk",   0, true,  false, 1.0f, 0.9f, 24.0f, 1.0f, false},
-        {"dirty tape stereo, dense, pitch walk", 0, false, false, 1.0f, 0.9f, 24.0f, 1.0f, false},
+        {"digital mono, regular max, random",      3, true,  false, 0.0f, 0.9f, 24.0f, 1.0f, false},
+        {"digital stereo, dense, pitch random",    3, false, false, 1.0f, 0.9f, 24.0f, 1.0f, false},
+        {"vintage mono, dense, pitch random",      2, true,  false, 1.0f, 0.9f, 24.0f, 1.0f, false},
+        {"vintage stereo, dense, pitch random",    2, false, false, 1.0f, 0.9f, 24.0f, 1.0f, false},
+        {"clean tape mono, dense, pitch random",   1, true,  false, 1.0f, 0.9f, 24.0f, 1.0f, false},
+        {"clean tape stereo, dense, pitch random", 1, false, false, 1.0f, 0.9f, 24.0f, 1.0f, false},
+        {"dirty tape mono, dense, pitch random",   0, true,  false, 1.0f, 0.9f, 24.0f, 1.0f, false},
+        {"dirty tape stereo, dense, pitch random", 0, false, false, 1.0f, 0.9f, 24.0f, 1.0f, false},
         {"delay mode, feedback 0.9",             3, true,  false, 0.75f, 1.0f, 0.0f, 0.5f, false},
-        {"synth, dense, pitch walk",             3, true,  true,  1.0f, 0.9f, 24.0f, 1.0f, false},
-        {"digital stereo, dense, walk, GOVERNED", 3, false, false, 1.0f, 0.9f, 24.0f, 1.0f, true},
+        {"synth, dense, pitch random",             3, true,  true,  1.0f, 0.9f, 24.0f, 1.0f, false},
+        {"digital stereo, dense, random, GOVERNED", 3, false, false, 1.0f, 0.9f, 24.0f, 1.0f, true},
     };
 
     const float ticksPerSecond = static_cast<float>(daisy::System::GetTickFreq());

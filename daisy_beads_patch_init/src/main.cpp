@@ -41,9 +41,10 @@
 //
 // A knob takes a parameter over only once it reaches the parameter's value
 // (catch), so changing layer never makes anything jump. A randomiser is Beads'
-// attenuverter with nothing patched: noon none, clockwise a smooth random walk,
-// anticlockwise a fresh random value per grain. CV is added at full depth, as
-// on Wish.
+// attenuverter with nothing patched: noon none, clockwise every new grain gets
+// the same degree of randomness, anticlockwise the degree is itself random per
+// grain; in delay mode, a smooth random walk. CV is added at full depth, as on
+// Wish.
 //
 //   B7 tap              FREEZE on/off. GATE IN 2 holds it too. LED lit while frozen.
 //   B7 held 2 s, without turning anything: SETTINGS. KNOB 1 QUALITY (Beads' four

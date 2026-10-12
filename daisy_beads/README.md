@@ -41,7 +41,7 @@ P5 PITCH random                   P6 REVERB
 | **DENSITY** | noon is no grains; clockwise of noon, random grains, denser as it turns; anticlockwise, regular ones. With a clock on J4 it divides or thins the clock instead |
 | **PITCH** | noon is the input's pitch; it snaps through 0, 1, 3, 4, 7, 12 and 24 semitones each way. Add V/OCT on J3 |
 | **DRY/WET** | fully clockwise is grains only |
-| **randomisers** | Beads' attenuverters with nothing patched: noon is none, clockwise a smooth random drift, anticlockwise a fresh random value per grain |
+| **randomisers** | Beads' attenuverters with nothing patched: noon is none. Clockwise, each new grain gets the same degree of randomness, set by the knob; anticlockwise the degree is itself random per grain, so some stay put and others land anywhere. In delay mode, a smooth random wander, faster clockwise (`RandomizedParameter`, `RandomWalkModulation` in Beads' `randomized_parameter.h`) |
 | **FEEDBACK**, **REVERB** | as on Beads |
 | **B1** | FREEZE on/off; J5 high freezes too |
 | **B2** | SEED. While its LED breathes, the internal clock (DENSITY) makes the grains. A tap switches to manual: one grain per tap, held for a stream. Hold B2 for 4 s, or hold B2 and press B1, to return to the clock |
@@ -102,13 +102,13 @@ jacks; there are six, against Beads' eight.
   | Case: DENSITY full, SIZE 0.9 | avg | worst |
   | --- | --- | --- |
   | Digital mono | 73% | 80% |
-  | Digital mono, PITCH random walk at full | 88% | 100% |
-  | Digital stereo, PITCH random walk at full | **104%** | **114%** |
+  | Digital mono, PITCH random at full | 88% | 100% |
+  | Digital stereo, PITCH random at full | **104%** | **114%** |
   | the same, with the governor | 61% | 83% |
-  | Vintage digital stereo, random walk | 74% | 84% |
-  | Clean tape stereo, random walk | 64% | 71% |
-  | Dirty tape stereo, random walk | 59% | 67% |
-  | Synth, random walk | 77% | 83% |
+  | Vintage digital stereo, PITCH random | 74% | 84% |
+  | Clean tape stereo, PITCH random | 64% | 71% |
+  | Dirty tape stereo, PITCH random | 59% | 67% |
+  | Synth, PITCH random | 77% | 83% |
   | Delay mode, feedback 0.9 | 39% | 68% |
 
   Digital costs the most because its grains run at the full 48 kHz; the tape qualities
