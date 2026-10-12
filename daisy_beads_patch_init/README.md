@@ -1,7 +1,10 @@
 # daisy_beads_patch_init: Wish patch.Init()
 
-> **In development (unreleased), 2026-10-12.** Builds clean; not yet run on a
-> patch.init(). The first bench session is the list at the bottom.
+> **In development (unreleased), 2026-10-12.** First bench the same day, on David's
+> patch.init(), flashed over USB: steps 1–5 of the list at the bottom pass — sound, the
+> knobs and their catch, all four qualities including the live switch to 32 kHz, the
+> gates, and V/OCT. The first flash had PLAY and TONE on the wrong toggle positions;
+> fixed in e753495. Steps 6 (load) and 7 (saving) are still to run.
 
 **Wish** — the granular texture synthesizer based on Mutable Instruments **Beads**
 (Émilie Gillet, MIT) — on a **stock** Electrosmith Daisy patch.init(). No screen and
