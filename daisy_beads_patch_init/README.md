@@ -1,10 +1,14 @@
 # daisy_beads_patch_init: Wish patch.Init()
 
-> **In development (unreleased), 2026-10-12.** First bench the same day, on David's
-> patch.init(), flashed over USB: steps 1–5 of the list at the bottom pass — sound, the
-> knobs and their catch, all four qualities including the live switch to 32 kHz, the
-> gates, and V/OCT. The first flash had PLAY and TONE on the wrong toggle positions;
-> fixed in e753495. Steps 6 (load) and 7 (saving) are still to run.
+> **Released: v1.0.0, 2026-10-12.** Tag `wish_patch_init-v1.0.0`, assets
+> `wish_patch_init-v1.0.0.bin` and `wish_patch_init-v1.0.0-NOTICES.txt`; the page is
+> at <https://eight4awish.com/modules/wish-patch-init/>.
+>
+> First bench the same day, on David's patch.init(), flashed over USB: steps 1–5 of the
+> list at the bottom pass — sound, the knobs and their catch, all four qualities
+> including the live switch to 32 kHz, the gates, and V/OCT. The first flash had PLAY
+> and TONE on the wrong toggle positions; fixed in e753495. Steps 6 (load) and 7
+> (saving) were not run before release. Panel: `build123d/panels/daisy_wish_patch_init.py`.
 
 **Wish** — the granular texture synthesizer based on Mutable Instruments **Beads**
 (Émilie Gillet, MIT) — on a **stock** Electrosmith Daisy patch.init(). No screen and
