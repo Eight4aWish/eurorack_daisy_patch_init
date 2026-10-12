@@ -676,6 +676,8 @@ int main()
 {
     hw.Init();
     b7.Init(hw.B7, 1000.0f, Switch::TYPE_MOMENTARY, Switch::POLARITY_INVERTED);
+    // B8 reads "pressed" with the toggle DOWN (Mirth checked it on a stock unit,
+    // 2026-10-03; this app's first flash agreed), so pressed is PLAY.
     toggle.Init(hw.B8, 1000.0f, Switch::TYPE_TOGGLE, Switch::POLARITY_NORMAL);
     hw.StartDac();
     SetLed(0.0f);
@@ -707,7 +709,7 @@ int main()
 
     // The layer under the hand takes the knobs as they are; the others keep
     // their saved values until each knob catches them.
-    const uint8_t startLayer = toggle.Pressed() ? kLayerTone : kLayerPlay;
+    const uint8_t startLayer = toggle.Pressed() ? kLayerPlay : kLayerTone;
     s_layer = startLayer;
     for (uint8_t i = 0; i < kNumKnobs; i++)
         s_param[kLayerParams[startLayer][i]] = Clamp01(hw.GetAdcValue(CV_1 + i));
@@ -748,7 +750,7 @@ int main()
         toggle.Debounce();
 
         const bool    b7Now     = b7.Pressed();
-        const uint8_t baseLayer = toggle.Pressed() ? kLayerTone : kLayerPlay;
+        const uint8_t baseLayer = toggle.Pressed() ? kLayerPlay : kLayerTone;
 
         if (b7Now && !b7Was)
         {

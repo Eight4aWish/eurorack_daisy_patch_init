@@ -57,7 +57,7 @@ joy::VoctCal      g_voct_cal      = {kVoctCenterNorm, kVoctSlope};
 constexpr int kBanks         = 2;
 constexpr int kModelsPerBank = 8;
 const braids::MacroOscillatorShape kModels[kBanks][kModelsPerBank] = {
-    // Bank A (toggle down) — headliners
+    // Bank A (toggle up) — headliners
     {
         braids::MACRO_OSC_SHAPE_CSAW,
         braids::MACRO_OSC_SHAPE_SAW_SYNC,
@@ -68,7 +68,7 @@ const braids::MacroOscillatorShape kModels[kBanks][kModelsPerBank] = {
         braids::MACRO_OSC_SHAPE_DIGITAL_MODULATION,
         braids::MACRO_OSC_SHAPE_TOY,
     },
-    // Bank B (toggle up) — deeper cuts
+    // Bank B (toggle down: B8 reads pressed down, checked on Mirth and Wish) — deeper cuts
     {
         braids::MACRO_OSC_SHAPE_SQUARE_SYNC,
         braids::MACRO_OSC_SHAPE_BUZZ,

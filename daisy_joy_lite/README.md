@@ -15,10 +15,10 @@ everything Plaits does (VA, FM, additive, wavetables, speech, noise, physical,
 drums) and ships the distinctively-Braids sounds instead. Two banks of 8,
 selected by the **toggle**:
 
-**Bank A (toggle down)** — CSAW · Saw-Sync · Ring-Mod · VOSIM · Digi-Filter BP ·
+**Bank A (toggle up)** — CSAW · Saw-Sync · Ring-Mod · VOSIM · Digi-Filter BP ·
 Chaotic-FM · QPSK · TOY
 
-**Bank B (toggle up)** — Square-Sync · Buzz · Saw-Comb · Digi-Filter LP ·
+**Bank B (toggle down)** — Square-Sync · Buzz · Saw-Comb · Digi-Filter LP ·
 Digi-Filter HP · Clocked-Noise · Twin-Peaks · ????
 
 ## Controls
