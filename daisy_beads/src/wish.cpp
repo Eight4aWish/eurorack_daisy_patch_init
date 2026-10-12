@@ -617,7 +617,7 @@ static void Configure(uint8_t media, uint8_t input)
 
 /* ── HostLink: reflashing and diagnostics over the front USB-C ──────────── */
 //   node deps/alchemy-sdk/tools/hostlink-cli/hostlink.mjs -p /dev/cu.usbmodem<serial> watch
-static hostlink::Host        host("wish", "Wish", "0.1.0-dev", WISH_GIT_HASH);
+static hostlink::Host        host("wish", "Wish", "1.0.0", WISH_GIT_HASH);
 static hostlink::Diagnostics debug;
 
 static hostlink::Gauge<float>    g_cpuAvg("cpu.avg", "CPU average");

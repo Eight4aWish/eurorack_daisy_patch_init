@@ -1,16 +1,14 @@
 # daisy_beads: Wish
 
-> **In development (0.1.0-dev, unreleased; on David's module since 2026-10-12).**
+> **Released: v1.0.0, 2026-10-12.** Tag `wish-v1.0.0`, asset `wish-v1.0.0.bin`, with
+> `wish-v1.0.0-NOTICES.txt`.
+>
 > Émilie Gillet published the Beads source on 2026-10-11 (pichenettes/eurorack
-> `d8f4739`); this port was built and first flashed the next day. It boots at 480 MHz
-> and plays. The first session hung it: Digital stereo with dense grains and random
-> pitch needs more than this board has (below), which starved the control loop. A load
-> governor now thins the grains instead. The four qualities, the inputs and the jacks
-> are still to be checked one by one on the bench. J3 and J6 are coded as working jacks
-> but can't be tested on David's board until the replacement arrives. Until then it runs
-> `make NOJ3J6=1`, which reads both as 0 V: its J3 sits at +12 V unpatched, which would
-> pin every grain five octaves up. With that build, David's verdict after the first
-> session (2026-10-12): it basically works.
+> `d8f4739`); this port was built and first played the next day. The first build hung
+> at the heaviest settings, Digital stereo with dense grains and random pitch, which
+> need more than this board has (below); a load governor now thins the grains instead.
+> David's own module runs `make NOJ3J6=1` for now: its J3 sits at +12 V unpatched, a
+> fault of that board, which would pin every grain five octaves up.
 
 A granular texture synthesizer for the **Hermetic Modular Alchemy Lab (V2)**, based on
 the **Beads** texture synthesizer by Émilie Gillet (Mutable Instruments), MIT. Beads

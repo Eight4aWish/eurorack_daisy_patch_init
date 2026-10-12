@@ -17,6 +17,7 @@ Firmwares offered as finished modules are named after the nursery rhyme
 | **Mirth** | [`daisy_neural/`](daisy_neural/) | v1.0.0 | NAM A2-Lite neural amp captures, and twelve not-amps | MIT |
 | **Mirth Lite** | [`daisy_neural/`](daisy_neural/) (`make LITE=1`) | v1.0.0 | as Mirth, for a stock patch.init() | MIT |
 | **Secret** | [`daisy_chaos/`](daisy_chaos/) | v1.0.0 | original (the Teensy Chaos), on the Hermetic Modular Alchemy SDK | MIT |
+| **Wish** | [`daisy_beads/`](daisy_beads/) | v1.0.0 | Mutable Instruments Beads, on the Hermetic Modular Alchemy SDK | MIT |
 
 **Joy** and **Joy Lite** are the same macro-oscillator generation (shared calibration
 and DSP, so they carry the same version): Joy is the full 48-model version with an
@@ -24,7 +25,7 @@ OLED navigator; Joy Lite is screenless — a curated 16 models (the ones Plaits
 doesn't cover) navigated by LED + button + toggle.
 
 These are independent community works for the Electrosmith Daisy Patch Init, and Secret
-for the Hermetic Modular Alchemy Lab. Product names of other makers are used only to
+and Wish for the Hermetic Modular Alchemy Lab. Product names of other makers are used only to
 describe each firmware's origin — **not affiliated with, or endorsed by, Mutable
 Instruments, Electrosmith or Hermetic Modular.**
 
@@ -98,7 +99,7 @@ make DAISY_ROOT=/path/to/daisy
 - `daisy_scanned/` – scanned-synthesis engine source for `daisy_multiosc` (no standalone build)
 - `daisy_neural/` – **Mirth** and **Mirth Lite**, released v1.0.0 2026-10-03: neural audio networks on the patch.init, all aimed at one module — the Dual Pingable LPG from [eurorack_electronics](https://github.com/Eight4aWish/eurorack_electronics), whose vactrol has the slow memory a static curve cannot reproduce. A NAM A2 capture first, then a CV-conditioned GRU so the gate gets a real knob. Release name **Mirth**. The NAM A2 engine runs captures off the microSD card (AMPS) — run on hardware 2026-09-28, 64% CPU, built `BOOT_SRAM` with the Daisy bootloader — plus twelve not-amps, captures bent inside the network with one steer control each and a dry/wet mix (NOT-AMPS). The sets were declared final on 2026-10-02. Bypass doubles as the pass-through firmware the AC/DC coupling bench check needs. The A2 engine is from [bkshepherd/DaisySeedProjects](https://github.com/bkshepherd/DaisySeedProjects) (MIT — see [`daisy_neural/LICENSE-daisyseedprojects.txt`](daisy_neural/LICENSE-daisyseedprojects.txt)). The captures it ships are a CC0/CC BY starter set, credited in [`STARTER_CAPTURES.md`](daisy_neural/STARTER_CAPTURES.md). See its [README](daisy_neural/README.md) and [CLAUDE.md](daisy_neural/CLAUDE.md)
 - `daisy_bytebeat/` – **BYTEBEAT** engine source for `daisy_multiosc` (no standalone build): dual-voice bytebeat with a 100-formula bank in five families and a lo-fi Tone macro, ported from [Ogham](https://github.com/keeos-io/ogham) by Steven Collins (Keeos.io, MIT — see [`daisy_bytebeat/LICENSE-ogham.txt`](daisy_bytebeat/LICENSE-ogham.txt))
-- `daisy_beads/` – **Wish** — in development (0.1.0-dev, unreleased): a granular texture synthesizer for the Hermetic Modular **Alchemy Lab** (V2), based on Mutable Instruments **Beads**, from the source Émilie Gillet published on 2026-10-11. Beads' own DSP behind six knobs on two layers (the attenuverters become randomisers on a held-B3 layer), three buttons and six CV/gate jacks. Built like Secret on the Alchemy SDK, with a Mac render check (`make host-test`). See its [README](daisy_beads/README.md)
+- `daisy_beads/` – **Wish** — **released v1.0.0, 2026-10-12**: a granular texture synthesizer for the Hermetic Modular **Alchemy Lab** (V2), based on Mutable Instruments **Beads**, from the source Émilie Gillet published on 2026-10-11. Beads' own DSP behind six knobs on two layers (the attenuverters become randomisers on a held-B3 layer), three buttons and six CV/gate jacks. Built like Secret on the Alchemy SDK, with a Mac render check (`make host-test`). See its [README](daisy_beads/README.md)
 - `daisy_chaos/` – **Secret** — **released v1.0.0, 2026-10-02**, twelve models: chaotic-attractor oscillator for the Hermetic Modular **Alchemy Lab** (V2), with V/Oct and a TAME control from free chaos to locked pitch. Successor to the Teensy **Chaos** module in `eurorack_modules`. Unlike the other apps it builds against the Alchemy SDK's own pinned libDaisy (`deps/alchemy-sdk`, MIT). See its [README](daisy_chaos/README.md) and [docs/SECRET.md](docs/SECRET.md)
 
 ## Shared code
@@ -150,7 +151,8 @@ Notes:
   those licences ask for their notices to go with a binary as well as with the source.
   [`common/tools/notices.py`](common/tools/notices.py) writes `<app>/NOTICES.txt` from the
   licence files in the sources each build uses. Each release attaches it as
-  `<tag>-NOTICES.txt` (Secret, Joy, Joy Lite and Sorrow since 2026-10-02).
+  `<tag>-NOTICES.txt` (Secret, Joy, Joy Lite and Sorrow since 2026-10-02; Wish from its
+  first release).
 - **LGPL.** `daisy_interval_osc` links Electrosmith's `DaisySP-LGPL`. Because
   full source is published here, LGPL relinking obligations are satisfied. If
   you distribute prebuilt binaries (e.g. attaching `.bin` files to a release),
