@@ -7,7 +7,9 @@
 > pitch needs more than this board has (below), which starved the control loop. A load
 > governor now thins the grains instead. The four qualities, the inputs and the jacks
 > are still to be checked one by one on the bench. J3 and J6 are coded as working jacks
-> but can't be tested on David's board until the replacement arrives.
+> but can't be tested on David's board until the replacement arrives. Until then it runs
+> `make NOJ3J6=1`, which reads both as 0 V: its J3 sits at +12 V unpatched, which would
+> pin every grain five octaves up.
 
 A granular texture synthesizer for the **Hermetic Modular Alchemy Lab (V2)**, based on
 the **Beads** texture synthesizer by Émilie Gillet (Mutable Instruments), MIT. Beads
@@ -130,6 +132,7 @@ make program-live    # Wish (or Secret) running: reboot into DFU over USB and fl
 make flash           # module already in DFU: hold B3 at power-on
 make host-test       # Beads' DSP as built here, rendered on the Mac (see below)
 make clean && make BENCH=1   # at power-on, time Beads' worst cases and log them
+make clean && make NOJ3J6=1  # J3 and J6 read as 0 V, for a board with those jacks faulty
 ```
 
 Built like [`daisy_chaos`](../daisy_chaos/) (Secret): the Alchemy SDK from

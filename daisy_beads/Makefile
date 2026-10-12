@@ -102,6 +102,13 @@ ifeq ($(BENCH),1)
 C_DEFS += -DWISH_BENCH
 endif
 
+# make clean && make NOJ3J6=1: J3 and J6 read as 0 V (no V/OCT, no TIME CV), for
+# David's board until its replacement arrives: its J3 sits at +12 V unpatched,
+# which pins every grain five octaves up. Default builds are unchanged.
+ifeq ($(NOJ3J6),1)
+C_DEFS += -DWISH_NOJ3J6
+endif
+
 # The USB log formats numbers with %f; newlib-nano leaves floats out unless asked.
 LDFLAGS += -u _printf_float
 
