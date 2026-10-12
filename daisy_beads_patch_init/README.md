@@ -18,7 +18,7 @@ It is the same Beads DSP as [`daisy_beads`](../daisy_beads/) (Wish for the Herme
 Modular Alchemy Lab), compiled the same way, with the same pot laws and the same load
 governor. The Patch SM is the same STM32H750 at the same 480 MHz, so what was measured
 there holds here. This app is the panel: four knobs, one button, one toggle and one LED
-in place of Beads' thirteen knobs and four buttons.
+in place of Beads' twelve knobs and four buttons.
 
 ## Controls
 
