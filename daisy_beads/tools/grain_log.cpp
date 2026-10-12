@@ -132,15 +132,16 @@ static std::vector<Scenario> Scenarios()
                  [](float) { Knobs k; k.density = 1.0f; k.time = 0.15f; k.size = 0.55f; return k; },
                  {3.0f}});
 
-    // 2b. TIME, then SIZE, then SHAPE swept, a grain every half second.
+    // 2b. TIME, then SIZE, then SHAPE swept, a grain every half second. SIZE starts
+    //     below a third, where Beads plays grains backwards (delay_granular_player.h).
     s.push_back({"time_size_shape", "2 one grain: TIME, SIZE, SHAPE", 14.0f,
                  [](float t) {
                      Knobs k;
                      k.density = 1.0f;
-                     k.time    = Ramp(t, 2.0f, 6.0f, 0.02f, 0.4f);
-                     k.size    = Ramp(t, 6.0f, 10.0f, 0.25f, 0.8f);
-                     k.shape   = Ramp(t, 10.0f, 14.0f, 0.0f, 1.0f);
-                     if (t >= 6.0f) k.time = 0.15f;
+                     // One knob moves at a time; the others rest mid-way.
+                     k.time  = t < 6.0f ? Ramp(t, 2.0f, 6.0f, 0.02f, 0.4f) : 0.15f;
+                     k.size  = (t >= 6.0f && t < 10.0f) ? Ramp(t, 6.0f, 10.0f, 0.25f, 0.8f) : 0.55f;
+                     k.shape = t >= 10.0f ? Ramp(t, 10.0f, 14.0f, 0.0f, 1.0f) : 0.5f;
                      return k;
                  },
                  Every(2.0f, 14.0f, 0.5f)});
@@ -385,9 +386,11 @@ static void Run(const Scenario& sc, const std::string& dir)
         const LoggedGrain& g = g_grains[i];
         std::fprintf(f,
                      "    {\"t\": %.4f, \"delay\": %.4f, \"duration\": %.4f, \"speed\": %.4f, "
-                     "\"semitones\": %.2f, \"shape\": %.3f, \"gain\": %.3f, \"pan\": %.3f, \"frozen\": %s}%s\n",
+                     "\"semitones\": %.2f, \"reverse\": %s, \"shape\": %.3f, \"gain\": %.3f, \"pan\": %.3f, "
+                     "\"frozen\": %s}%s\n",
                      g.t, g.e.delay / kRate, g.e.duration / kRate, g.e.speed,
-                     12.0f * std::log2(std::max(g.e.speed, 1e-6f)), g.e.shape, g.e.gain, g.e.pan,
+                     12.0f * std::log2(std::max(std::fabs(g.e.speed), 1e-6f)),
+                     g.e.speed < 0.0f ? "true" : "false", g.e.shape, g.e.gain, g.e.pan,
                      g.e.frozen ? "true" : "false", i + 1 < g_grains.size() ? "," : "");
     }
     std::fprintf(f, "  ],\n  \"frames\": [\n");

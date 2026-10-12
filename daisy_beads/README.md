@@ -36,7 +36,7 @@ P5 PITCH random                   P6 REVERB
 | Control | Does |
 | --- | --- |
 | **TIME** | where in the recording grains are read from: fully anticlockwise is the most recent audio, clockwise reaches further back. In delay mode, the delay time |
-| **SIZE** | grain length; fully clockwise is Beads' delay mode |
+| **SIZE** | grain length: shortest (about 8 ms) a third of the way round; clockwise of that grains play forwards and grow to 4 s, anticlockwise they play backwards and grow too (`ComputeGrainDuration` and the `reverse` test in Beads' granular players). Fully clockwise is Beads' delay mode |
 | **SHAPE** | grain envelope |
 | **DENSITY** | noon is no grains; clockwise of noon, random grains, denser as it turns; anticlockwise, regular ones. With a clock on J4 it divides or thins the clock instead |
 | **PITCH** | noon is the input's pitch; it snaps through 0, 1, 3, 4, 7, 12 and 24 semitones each way. Add V/OCT on J3 |
