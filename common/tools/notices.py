@@ -12,6 +12,7 @@ so nothing is retyped. Each release attaches it as <tag>-NOTICES.txt.
 What each binary contains was read off its ELF (arm-none-eabi-nm) on 2026-10-02: every
 one links ST's HAL, CMSIS and ST's USB device library; Sorrow links DaisySP; Mirth links
 FatFs (for its captures); none links CMSIS-DSP. Re-check when a build adds a library.
+Wish (2026-10-12) links FatFs too, through the Alchemy SDK's SD-card mount in board init.
 
     python3 common/tools/notices.py             # every released app
     python3 common/tools/notices.py secret      # one
@@ -111,6 +112,9 @@ USB_NOTE = ("STM32 USB Device Library (in libDaisy), STMicroelectronics, SLA0044
 BRAIDS = ("Mutable Instruments Braids and stmlib", "Emilie Gillet", "MIT",
           lambda: header(MUTABLE / "braids" / "macro_oscillator.cc", "THE SOFTWARE."))
 
+BEADS = ("Mutable Instruments Beads and stmlib", "Emilie Gillet", "MIT",
+         lambda: header(MUTABLE / "beads" / "dsp" / "processor.cc", "THE SOFTWARE."))
+
 APPS = {
     "secret": {
         "dir": "daisy_chaos", "title": "Secret", "bin": "secret.bin",
@@ -121,6 +125,19 @@ APPS = {
             *libdaisy(ALCHEMY / "vendor" / "libDaisy"),
         ],
         "not_affiliated": "Hermetic Modular, Electrosmith, STMicroelectronics or Arm",
+    },
+    "wish": {
+        "dir": "daisy_beads", "title": "Wish", "bin": "wish.bin",
+        "src": "daisy_beads/ and deps/",
+        "components": [
+            ("Wish", "David Baghurst", "MIT", own_mit),
+            BEADS,
+            ("Alchemy SDK", "Hermetic Modular LLC", "MIT", file(ALCHEMY / "LICENSE")),
+            ("FatFs (in libDaisy)", "ChaN", "FatFs licence (BSD-style)", fatfs),
+            *libdaisy(ALCHEMY / "vendor" / "libDaisy"),
+        ],
+        "not_affiliated": ("Mutable Instruments, Hermetic Modular, Electrosmith,\n"
+                           "STMicroelectronics or Arm"),
     },
     "joy": {
         "dir": "daisy_braids_oled", "title": "Joy", "bin": "joy.bin",
