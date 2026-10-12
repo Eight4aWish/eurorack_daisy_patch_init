@@ -3,6 +3,7 @@
 // The data itself is extracted from deps/mutable/eurorack/grids/resources.cc.
 //
 // Original author: Emilie Gillet (Mutable Instruments)
+// Copyright 2012 Emilie Gillet (grids/resources.cc).
 // License: GPL-3.0-or-later — see daisy_grids/LICENSE.
 //
 // SPDX-License-Identifier: GPL-3.0-or-later

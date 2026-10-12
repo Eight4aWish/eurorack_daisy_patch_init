@@ -34,7 +34,9 @@ Sorrow, including its port of Mutable Instruments Grids — David Baghurst; Grid
 
 Sorrow: Copyright (c) 2026 David Baghurst, GPL-3.0-or-later.
 
-Its pattern generator is derived from Grids, whose notice is:
+Its pattern generator is derived from Grids' pattern_generator.cc, and its
+Original drum-map bank from Grids' resources.cc (Copyright 2012 Emilie
+Gillet, under the same licence). The pattern generator's notice is:
 
 Copyright 2011 Emilie Gillet.
 

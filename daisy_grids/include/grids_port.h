@@ -6,6 +6,7 @@ namespace daisy_grids::grids_port {
 
 // Minimal, portable port of Mutable Instruments Grids drum pattern generator.
 // Source reference: deps/mutable/eurorack/grids/pattern_generator.{h,cc}
+// Copyright 2011 Emilie Gillet; port Copyright (c) 2026 David Baghurst.
 // License: GPL-3.0-or-later
 
 // Drum-map banks, in the order the long-press cycles them:

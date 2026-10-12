@@ -6,6 +6,8 @@
 // Emilie Gillet's. The port to portable C++ is by David Baghurst.
 //
 // Original author: Emilie Gillet (Mutable Instruments)
+// Copyright 2011 Emilie Gillet (grids/pattern_generator.cc); Copyright 2012 Emilie
+// Gillet (the drum maps, grids/resources.cc). Port Copyright (c) 2026 David Baghurst.
 // License: GPL-3.0-or-later — see daisy_grids/LICENSE. Because this file is
 // derived from Grids, the whole of daisy_grids (Sorrow) is copyleft and cannot
 // be relicensed; distributing it, source or binary, obliges you to pass on the

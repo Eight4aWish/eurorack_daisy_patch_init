@@ -9,10 +9,14 @@ Apache-2.0 (CMSIS) and, for Sorrow, the GPL itself. This writes <app>/NOTICES.tx
 each released firmware from the licence files and headers in the sources its build uses,
 so nothing is retyped. Each release attaches it as <tag>-NOTICES.txt.
 
-What each binary contains was read off its ELF (arm-none-eabi-nm) on 2026-10-02: every
-one links ST's HAL, CMSIS and ST's USB device library; Sorrow links DaisySP; Mirth links
-FatFs (for its captures); none links CMSIS-DSP. Re-check when a build adds a library.
-Wish (2026-10-12) links FatFs too, through the Alchemy SDK's SD-card mount in board init.
+What each binary contains was read off its ELF (arm-none-eabi-nm) on 2026-10-02 and
+2026-10-12: every one links ST's HAL, CMSIS and ST's USB device library; Sorrow links
+DaisySP; Mirth links FatFs for its captures, and Secret and Wish link it through the
+Alchemy SDK's SD-card mount in its board init; none links CMSIS-DSP. Re-check when a
+build adds a library.
+
+The Mutable copyright years are those of every Mutable file a build compiles or
+includes, read off its .d files (2026-10-12), not one file's header.
 
     python3 common/tools/notices.py             # every released app
     python3 common/tools/notices.py secret      # one
@@ -63,9 +67,9 @@ def libdaisy(base):
 
 
 
-def fatfs():
+def fatfs(libdaisy=DAISY / "libDaisy"):
     """ChaN's FatFs notice, from the header of ff.c (a '/ '-prefixed comment block)."""
-    lines = (DAISY / "libDaisy" / "Middlewares" / "Third_Party" / "FatFs" / "src" / "ff.c").read_text().splitlines()
+    lines = (libdaisy / "Middlewares" / "Third_Party" / "FatFs" / "src" / "ff.c").read_text().splitlines()
     start = next(i for i, l in enumerate(lines) if "Copyright (C)" in l and "ChaN" in l)
     out = []
     for l in lines[start:]:
@@ -109,8 +113,16 @@ USB_NOTE = ("STM32 USB Device Library (in libDaisy), STMicroelectronics, SLA0044
             "Liberty). Its clause 2 asks for no notices with a binary that is a software\n"
             "update for an STMicroelectronics device, which this is. Listed for completeness.")
 
+def mit_years(years, path):
+    """A Mutable MIT notice: the given copyright years, then the permission text from
+    @p path's header (the same text in every Mutable MIT file)."""
+    text = header(path, "THE SOFTWARE.")
+    return f"Copyright {years} Emilie Gillet.\n\n" + text[text.index("Permission is hereby granted"):]
+
+
+# Joy and Joy Lite: the 19 Braids and stmlib files in each build are 2012-2014.
 BRAIDS = ("Mutable Instruments Braids and stmlib", "Emilie Gillet", "MIT",
-          lambda: header(MUTABLE / "braids" / "macro_oscillator.cc", "THE SOFTWARE."))
+          lambda: mit_years("2012-2014", MUTABLE / "braids" / "macro_oscillator.cc"))
 
 def beads_notice():
     """Beads' MIT notice, with the copyright years of every Mutable file in wish.bin.
@@ -119,11 +131,10 @@ def beads_notice():
     2026-10-12) are all Emilie Gillet's, MIT, dated 2012 to 2021. One header shadowed
     in daisy_beads/src/upstream/ copies a struct from Beads' drivers/codec.h, whose
     holder is Fred's Lab and Mutable Instruments, so that line is here too."""
-    text = header(MUTABLE / "beads" / "dsp" / "processor.cc", "THE SOFTWARE.")
-    permission = text[text.index("Permission is hereby granted"):]
-    return ("Copyright 2012-2021 Emilie Gillet.\n"
-            "Copyright 2018 Fred's Lab and Mutable Instruments (beads/drivers/codec.h:\n"
-            "the Codec::Frame declaration only).\n\n" + permission)
+    notice = mit_years("2012-2021", MUTABLE / "beads" / "dsp" / "processor.cc")
+    first, rest = notice.split("\n", 1)
+    return (first + "\nCopyright 2018 Fred's Lab and Mutable Instruments (beads/drivers/codec.h:\n"
+            "the Codec::Frame declaration only).\n" + rest)
 
 
 BEADS = ("Mutable Instruments Beads and stmlib", "Emilie Gillet; Fred's Lab", "MIT", beads_notice)
@@ -135,6 +146,8 @@ APPS = {
         "components": [
             ("Secret and chaos_core", "David Baghurst", "MIT", own_mit),
             ("Alchemy SDK", "Hermetic Modular LLC", "MIT", file(ALCHEMY / "LICENSE")),
+            ("FatFs (in libDaisy)", "ChaN", "FatFs licence (BSD-style)",
+             lambda: fatfs(ALCHEMY / "vendor" / "libDaisy")),
             *libdaisy(ALCHEMY / "vendor" / "libDaisy"),
         ],
         "not_affiliated": "Hermetic Modular, Electrosmith, STMicroelectronics or Arm",
@@ -146,7 +159,8 @@ APPS = {
             ("Wish", "David Baghurst", "MIT", own_mit),
             BEADS,
             ("Alchemy SDK", "Hermetic Modular LLC", "MIT", file(ALCHEMY / "LICENSE")),
-            ("FatFs (in libDaisy)", "ChaN", "FatFs licence (BSD-style)", fatfs),
+            ("FatFs (in libDaisy)", "ChaN", "FatFs licence (BSD-style)",
+             lambda: fatfs(ALCHEMY / "vendor" / "libDaisy")),
             *libdaisy(ALCHEMY / "vendor" / "libDaisy"),
         ],
         "not_affiliated": ("Mutable Instruments, Hermetic Modular, Electrosmith,\n"
@@ -180,7 +194,9 @@ APPS = {
             ("Sorrow, including its port of Mutable Instruments Grids", "David Baghurst; "
              "Grids by Emilie Gillet", "GPL-3.0-or-later",
              lambda: "Sorrow: Copyright (c) 2026 David Baghurst, GPL-3.0-or-later.\n\n"
-             "Its pattern generator is derived from Grids, whose notice is:\n\n"
+             "Its pattern generator is derived from Grids' pattern_generator.cc, and its\n"
+             "Original drum-map bank from Grids' resources.cc (Copyright 2012 Emilie\n"
+             "Gillet, under the same licence). The pattern generator's notice is:\n\n"
              + header(MUTABLE / "grids" / "pattern_generator.cc", "along with this program")
              + "\nThe GNU General Public License, version 3, is reproduced in full at the end of\n"
                "this file.\n"),
