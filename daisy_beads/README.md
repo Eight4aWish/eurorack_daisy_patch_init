@@ -2,11 +2,12 @@
 
 > **In development (0.1.0-dev, unreleased; on David's module since 2026-10-12).**
 > Émilie Gillet published the Beads source on 2026-10-11 (pichenettes/eurorack
-> `d8f4739`); this port was built and first flashed the next day. It boots at 480 MHz,
-> plays, and runs Digital mono at about 40% CPU on average with grains firing, 65% at
-> peak. The four qualities, the inputs and the jacks are still to be checked one by one
-> on the bench. J3 and J6 are coded as working jacks but can't be tested on David's
-> board until the replacement arrives.
+> `d8f4739`); this port was built and first flashed the next day. It boots at 480 MHz
+> and plays. The first session hung it: Digital stereo with dense grains and random
+> pitch needs more than this board has (below), which starved the control loop. A load
+> governor now thins the grains instead. The four qualities, the inputs and the jacks
+> are still to be checked one by one on the bench. J3 and J6 are coded as working jacks
+> but can't be tested on David's board until the replacement arrives.
 
 A granular texture synthesizer for the **Hermetic Modular Alchemy Lab (V2)**, based on
 the **Beads** texture synthesizer by Émilie Gillet (Mutable Instruments), MIT. Beads
@@ -90,8 +91,29 @@ jacks; there are six, against Beads' eight.
   downsampled in software. It's the one line changed in Beads' code: see
   [`src/upstream/beads/dsp/processor.h`](src/upstream/beads/dsp/processor.h).
 - **Memory.** The 768 KB of delay lines are in SDRAM, the 64 KB reverb in on-chip D2
-  RAM. On Beads it was all on-chip. The CPU gauges are how to tell whether that
-  costs anything.
+  RAM. On Beads it was all on-chip.
+- **A load governor.** The heaviest settings need more than this board has. When a
+  block takes more than 80% of its time, the callback pulls DENSITY toward noon, so
+  fewer new grains start, and it lets go once the load is back under 60%. Without
+  that, a block that overruns starves the control loop: LEDs, buttons and USB stop.
+  The Seed's own LED (inside the module) lights while it is thinning, and the `gov`
+  gauge shows by how much. Measured on David's board with `make BENCH=1`, Beads alone,
+  as a share of the block (2026-10-12):
+
+  | Case: DENSITY full, SIZE 0.9 | avg | worst |
+  | --- | --- | --- |
+  | Digital mono | 73% | 80% |
+  | Digital mono, PITCH random walk at full | 88% | 100% |
+  | Digital stereo, PITCH random walk at full | **104%** | **114%** |
+  | the same, with the governor | 61% | 83% |
+  | Vintage digital stereo, random walk | 74% | 84% |
+  | Clean tape stereo, random walk | 64% | 71% |
+  | Dirty tape stereo, random walk | 59% | 67% |
+  | Synth, random walk | 77% | 83% |
+  | Delay mode, feedback 0.9 | 39% | 68% |
+
+  Digital costs the most because its grains run at the full 48 kHz; the tape qualities
+  run them at 24 kHz, vintage digital at 32 kHz.
 - **Left for later:** manual input gain (the AGC only, for now), Beads' saving of a
   frozen buffer across power-off, and calibration of its own (the Alchemy Lab's
   factory CV calibration is used).
@@ -107,6 +129,7 @@ make                 # build/wish.bin
 make program-live    # Wish (or Secret) running: reboot into DFU over USB and flash
 make flash           # module already in DFU: hold B3 at power-on
 make host-test       # Beads' DSP as built here, rendered on the Mac (see below)
+make clean && make BENCH=1   # at power-on, time Beads' worst cases and log them
 ```
 
 Built like [`daisy_chaos`](../daisy_chaos/) (Secret): the Alchemy SDK from

@@ -387,10 +387,45 @@ static inline int32_t ToCodec(float x)
     return static_cast<int32_t>(x * 2147483648.0f);
 }
 
+/* ── Load governor ──────────────────────────────────────────────────────── */
+// Measured with make BENCH=1 on 2026-10-12: Beads alone takes up to ~98% of a
+// block with dense grains and PITCH random at full, before this callback's own
+// work. A block that runs long starves the control loop: LEDs, buttons and USB
+// stop until the grains die away (David's first session hit it). So, as Secret
+// does, the callback times itself and, past 80%, pulls DENSITY toward noon:
+// fewer new grains. It eases off once the load is back under 60%. Grains
+// already playing finish as they are; only their successors thin out.
+static float          s_ticksPerSample = 0.0f;   // timer ticks per sample, set by Configure()
+static volatile float s_govScale       = 1.0f;   // 1 = not throttling
+static volatile float s_peakLoad       = 0.0f;   // worst block since the last heartbeat
+
+static float GovernLoad(float scale, float used)
+{
+    if (used > 0.80f)      scale *= 0.95f;     // halves in ~14 blocks, 3.5 ms
+    else if (used < 0.60f) scale += 0.0005f;   // back to 1 in half a second
+    return scale < 0.0f ? 0.0f : (scale > 1.0f ? 1.0f : scale);
+}
+
+static inline void ThrottleDensity(ModulatedParameter& d, float scale)
+{
+    d.base = 0.5f + (d.base - 0.5f) * scale;
+    d.cv  *= scale;
+}
+
+static void EndBlock(uint32_t t0, size_t size)
+{
+    const float used = static_cast<float>(daisy::System::GetTick() - t0)
+                       / (static_cast<float>(size) * s_ticksPerSample);
+    if (used > s_peakLoad) s_peakLoad = used;
+    s_govScale = GovernLoad(s_govScale, used);
+    cpu.OnBlockEnd();
+}
+
 static void AudioCallback(daisy::AudioHandle::InputBuffer  in,
                           daisy::AudioHandle::OutputBuffer out,
                           size_t                           size)
 {
+    const uint32_t t0 = daisy::System::GetTick();
     cpu.OnBlockStart();
     if (size > kMaxBlockSize) size = kMaxBlockSize;
 
@@ -481,6 +516,7 @@ static void AudioCallback(daisy::AudioHandle::InputBuffer  in,
     CONSTRAIN(densityCv, -1.0f, 1.0f);
     d.base = f_density.Process(density.Norm());
     d.cv   = c_density.Process(densityCv, 1.0f);
+    ThrottleDensity(d, s_govScale);
 
     Processor::MixParameters m;
     m.feedback      = f_feedback.Process(feedback.Norm()) * 1.005f;
@@ -501,7 +537,7 @@ static void AudioCallback(daisy::AudioHandle::InputBuffer  in,
     {
         s_transition = s_transition - 1;
         for (size_t i = 0; i < size; ++i) out[0][i] = out[1][i] = 0.0f;
-        cpu.OnBlockEnd();
+        EndBlock(t0, size);
         return;
     }
 
@@ -528,7 +564,7 @@ static void AudioCallback(daisy::AudioHandle::InputBuffer  in,
         out[1][i] = r;
     }
 
-    cpu.OnBlockEnd();
+    EndBlock(t0, size);
 }
 
 /* ── Codec and processor configuration (control loop only) ──────────────── */
@@ -563,6 +599,7 @@ static void Configure(uint8_t media, uint8_t input)
                                               : daisy::SaiHandle::Config::SampleRate::SAI_48KHZ);
     hw.seed.SetAudioBlockSize(rate / kBlockRate);
     cpu.Init(static_cast<float>(rate), static_cast<int>(rate / kBlockRate));
+    s_ticksPerSample = static_cast<float>(daisy::System::GetTickFreq()) / static_cast<float>(rate);
     hw.StartAudio(AudioCallback);
 }
 
@@ -579,6 +616,7 @@ static hostlink::Gauge<uint32_t> g_input ("input",   "Input (0 mono, 1 stereo, 2
 static hostlink::Gauge<bool>     g_frozen("frozen",  "Frozen");
 static hostlink::Gauge<bool>     g_ext   ("ext",     "SEED clocked externally");
 static hostlink::Gauge<bool>     g_locked("locked",  "SEED latched");
+static hostlink::Gauge<float>    g_gov   ("gov",     "Load governor on DENSITY (1 = not throttling)");
 static hostlink::Gauge<bool>     g_cal   ("cal",     "Board CV calibration loaded");
 
 /* ── 1 ms poll: buttons ─────────────────────────────────────────────────── */
@@ -704,15 +742,27 @@ static void Frame()
     g_frozen.Set(s_frozen);
     g_ext.Set(s_extClock);
     g_locked.Set(s_seedLocked);
+    g_gov.Set(s_govScale);
 
-    // Heartbeat, every 5 s: the load since the last one, and what is running.
+    // The Seed's own LED: lit while the governor is thinning grains.
+    hw.seed.SetLed(s_govScale < 0.999f);
+
+    // Heartbeat, every 5 s: the worst block since the last one, the governor,
+    // and what is running. If the module ever freezes, the beats stop, and the
+    // last one says how loaded the audio was just before.
     static uint32_t lastBeatMs = 0;
     if (now - lastBeatMs >= 5000u)
     {
         lastBeatMs = now;
-        debug.Info("load avg %.0f%% peak %.0f%% | %s, %s, %lu Hz%s%s",
-                   (double)(cpu.GetAvgCpuLoad() * 100.0f),
-                   (double)(cpu.GetMaxCpuLoad() * 100.0f),
+        float peak;
+        {
+            daisy::ScopedIrqBlocker block;
+            peak       = s_peakLoad;
+            s_peakLoad = 0.0f;
+        }
+        debug.Info("load avg %.0f%% peak %.0f%%, gov %.2f | %s, %s, %lu Hz%s%s",
+                   (double)(cpu.GetAvgCpuLoad() * 100.0f), (double)(peak * 100.0f),
+                   (double)s_govScale,
                    kMediaNames[s_runMedia < 4 ? s_runMedia : 3],
                    kInputNames[s_runInput < kNumInputs ? s_runInput : 0],
                    (unsigned long)s_runRate,
@@ -777,6 +827,109 @@ static void Render(uint32_t t_ms)
     put(kButtonB3, LedPanel::ButtonLed::Bottom, {0x40, 0xFF, 0x40}, vu);
 }
 
+#ifdef WISH_BENCH
+/* ── make BENCH=1: Beads' worst cases on this board, before audio starts ── */
+// Beads was written to fit a 400 MHz H743 with its buffers on chip. Here they
+// are in SDRAM, so a grain read is a cache line from SDRAM; at high pitch a
+// grain strides through the buffer and nearly every read misses. Each case runs
+// flat out in the control loop, 1 s to fill the grain pool and 1 s measured,
+// and logs its load as a share of the audio block. Over 100% would starve the
+// control loop: the LEDs, buttons and USB all stop.
+static void Bench()
+{
+    struct Case
+    {
+        const char* name;
+        uint8_t     media;
+        bool        mono, synth;
+        float       density, size, pitch, pitch_rnd;
+        bool        governed;   // run the callback's governor on the measured load
+    };
+    static const Case kCases[] = {
+        // name                                media mono   synth  dens  size  pitch  rnd   governed
+        {"digital mono, dense",                  3, true,  false, 1.0f, 0.9f,  0.0f, 0.5f, false},
+        {"digital mono, dense, pitch walk",      3, true,  false, 1.0f, 0.9f, 24.0f, 1.0f, false},
+        {"digital mono, dense, pitch per grain", 3, true,  false, 1.0f, 0.9f, 24.0f, 0.0f, false},
+        {"digital mono, regular max, walk",      3, true,  false, 0.0f, 0.9f, 24.0f, 1.0f, false},
+        {"digital stereo, dense, pitch walk",    3, false, false, 1.0f, 0.9f, 24.0f, 1.0f, false},
+        {"vintage mono, dense, pitch walk",      2, true,  false, 1.0f, 0.9f, 24.0f, 1.0f, false},
+        {"vintage stereo, dense, pitch walk",    2, false, false, 1.0f, 0.9f, 24.0f, 1.0f, false},
+        {"clean tape mono, dense, pitch walk",   1, true,  false, 1.0f, 0.9f, 24.0f, 1.0f, false},
+        {"clean tape stereo, dense, pitch walk", 1, false, false, 1.0f, 0.9f, 24.0f, 1.0f, false},
+        {"dirty tape mono, dense, pitch walk",   0, true,  false, 1.0f, 0.9f, 24.0f, 1.0f, false},
+        {"dirty tape stereo, dense, pitch walk", 0, false, false, 1.0f, 0.9f, 24.0f, 1.0f, false},
+        {"delay mode, feedback 0.9",             3, true,  false, 0.75f, 1.0f, 0.0f, 0.5f, false},
+        {"synth, dense, pitch walk",             3, true,  true,  1.0f, 0.9f, 24.0f, 1.0f, false},
+        {"digital stereo, dense, walk, GOVERNED", 3, false, false, 1.0f, 0.9f, 24.0f, 1.0f, true},
+    };
+
+    const float ticksPerSecond = static_cast<float>(daisy::System::GetTickFreq());
+    uint8_t*    buffers[3]     = {s_delay[0], s_delay[1], s_delay[2]};
+    uint32_t    noise          = 12345u;
+
+    debug.Info("bench: %lu MHz", (unsigned long)(daisy::System::GetSysClkFreq() / 1000000u));
+    for (const Case& c : kCases)
+    {
+        processor.Init(buffers, s_reverb);
+        synth.Init(s_reverb);
+        if (!c.synth) processor.Configure(Processor::Media(c.media), c.mono);
+        const float  rate  = c.synth ? 48000.0f : processor.sample_rate();
+        const size_t block = static_cast<size_t>(rate) / kBlockRate;
+        const float  budget = static_cast<float>(block) / rate * ticksPerSecond;
+
+        Parameters p;
+        p.time  = {0.1f, 0.0f, 0.0f, false};
+        p.size  = {c.size, 0.0f, 0.0f, false};
+        p.shape = {0.5f, 0.0f, 0.0f, false};
+        p.pitch = {c.pitch, 2.0f * c.pitch_rnd - 1.0f, 0.0f, false};
+        p.monophonic_mode = false;
+        ModulatedParameter d0;
+        d0.base = c.density;
+        d0.cv   = 0.0f;
+        float gov = 1.0f;
+        Processor::MixParameters m;
+        m.feedback      = c.size >= 1.0f ? 0.9f : 0.3f;
+        m.dry_wet       = 1.0f;
+        m.reverb_amount = 0.5f;
+        m.output_gate   = false;
+
+        FloatFrame in[kMaxBlockSize], out[kMaxBlockSize];
+        bool       freeze[kMaxBlockSize] = {};
+        float      sum = 0.0f, worst = 0.0f;
+        constexpr int kBlocks = kBlockRate;   // 1 s
+        for (int b = 0; b < 2 * kBlocks; b++)
+        {
+            for (size_t i = 0; i < block; i++)
+            {
+                noise = noise * 1664525u + 1013904223u;
+                in[i].l = in[i].r = static_cast<float>(static_cast<int32_t>(noise)) * 2.3e-10f;
+            }
+            ModulatedParameter d = d0;
+            ThrottleDensity(d, gov);
+            const uint32_t t0 = daisy::System::GetTick();
+            if (c.synth)
+                synth.Render(beads::SEED_BUTTON_STATE_LOCKED, nullptr, freeze,
+                             Synth::Resolution(c.media), d, p, m, out, block);
+            else
+                processor.Process(beads::SEED_BUTTON_STATE_LOCKED, nullptr, freeze, d, p, m,
+                                  in, out, block);
+            const float load = static_cast<float>(daisy::System::GetTick() - t0) / budget;
+            if (c.governed) gov = GovernLoad(gov, load);
+            if (b >= kBlocks)
+            {
+                sum += load;
+                if (load > worst) worst = load;
+            }
+        }
+        debug.Info("bench %-38s %5.0f Hz  avg %3.0f%%  worst %3.0f%%%s", c.name, (double)rate,
+                   (double)(100.0f * sum / kBlocks), (double)(100.0f * worst),
+                   c.governed ? "  (governor on)" : "");
+    }
+    processor.Init(buffers, s_reverb);
+    synth.Init(s_reverb);
+}
+#endif
+
 /* ── 480 MHz: wrap the SDK's seed.Init() (see the Makefile) ─────────────── */
 #ifdef WISH_BOOST
 extern "C" void __real__ZN5daisy9DaisySeed4InitEb(daisy::DaisySeed* seed, bool boost);
@@ -831,10 +984,14 @@ int main()
     g_cpuMax.Unit("%");
     g_rate.Unit("Hz");
     hostlink::GaugeBase* gauges[] = {&g_cpuAvg, &g_cpuMax, &g_rate,   &g_media, &g_input,
-                                     &g_frozen, &g_ext,    &g_locked, &g_cal};
+                                     &g_frozen, &g_ext,    &g_locked, &g_gov, &g_cal};
     for (hostlink::GaugeBase* g : gauges) debug.Watch(*g);
     g_cal.Set(hw.IsCalibrated());
     host.Extend(debug);
+
+#ifdef WISH_BENCH
+    Bench();   // before audio starts: see Bench()
+#endif
 
     Configure(s_state.media, s_state.input);
 

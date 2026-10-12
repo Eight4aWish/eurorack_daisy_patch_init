@@ -95,6 +95,13 @@ C_DEFS += -DALCHEMY_BOARD_V2
 GIT_HASH := $(shell git -C $(_P_DIR) rev-parse --short HEAD 2>/dev/null || echo unknown)
 C_DEFS += -DWISH_GIT_HASH=\"$(GIT_HASH)\"
 
+# make clean && make BENCH=1: at power-on, before audio starts, run Beads'
+# worst cases flat out and log each one's load over USB (Bench() in
+# src/wish.cpp). For measuring the board; not for playing.
+ifeq ($(BENCH),1)
+C_DEFS += -DWISH_BENCH
+endif
+
 # The USB log formats numbers with %f; newlib-nano leaves floats out unless asked.
 LDFLAGS += -u _printf_float
 
@@ -130,6 +137,9 @@ vpath %.cc $(sort $(dir $(CC_SOURCES)))
 
 $(BUILD_DIR)/$(TARGET).elf: $(CC_OBJECTS)
 
+# Plain -O2, as libDaisy. Beads' own extra flags (-funroll-loops and friends,
+# from stmlib/makefile.inc) were measured with make BENCH=1 on 2026-10-12: 1-2%
+# less load, for 17 KB more code in AXI SRAM. Not worth it.
 $(BUILD_DIR)/%.o: %.cc Makefile | $(BUILD_DIR)
 	$(CXX) -c $(CPPFLAGS) $(CPP_STANDARD) -Wa,-a,-ad,-alms=$(BUILD_DIR)/$(notdir $(<:.cc=.lst)) $< -o $@
 
