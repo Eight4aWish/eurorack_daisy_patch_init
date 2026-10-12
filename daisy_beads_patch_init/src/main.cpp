@@ -207,7 +207,9 @@ struct WishSettings
     bool operator!=(const WishSettings& o) const { return memcmp(this, &o, sizeof *this) != 0; }
 };
 static constexpr uint32_t kSettingsMagic      = 0x57495350u;   // "WISP"
-static constexpr uint32_t kSettingsQspiOffset = 0x7F0000;      // as Joy Lite
+// The 64 KB below Joy and Joy Lite's (0x7F0000), so a unit that runs both keeps
+// Joy's model and V/OCT calibration through a visit from Wish, and the reverse.
+static constexpr uint32_t kSettingsQspiOffset = 0x7E0000;
 static PersistentStorage<WishSettings> storage(hw.qspi);
 
 static bool     s_dirty      = false;
