@@ -80,6 +80,9 @@ static constexpr int    kEnvRate      = 200;      // input envelope, per second 
 
 /* ── Scenarios ─────────────────────────────────────────────────────────── */
 // Knob positions 0..1, as a hand would leave them; Wish's pot laws do the rest.
+// The knob moves are timed to the video's voiceover, so the animation plays them
+// in real time: WishGranular.tsx's BEATS say which take second each scenario
+// second lands on.
 struct Knobs
 {
     float time = 0.1f, size = 0.5f, shape = 0.5f, density = 0.5f, pitch = 0.5f;
@@ -125,7 +128,7 @@ static std::vector<Scenario> Scenarios()
     std::vector<Scenario> s;
 
     // 1. The buffer filling, no grains (DENSITY at noon).
-    s.push_back({"buffer", "1 the buffer", 6.0f,
+    s.push_back({"buffer", "1 the buffer", 16.5f,
                  [](float) { Knobs k; k.density = 0.5f; return k; }, {}});
 
     // 2. One grain, from one trigger, every trigger accepted (DENSITY full).
@@ -133,23 +136,28 @@ static std::vector<Scenario> Scenarios()
                  [](float) { Knobs k; k.density = 1.0f; k.time = 0.15f; k.size = 0.8f; return k; },
                  {3.0f}});
 
-    // 2b. TIME, then SIZE, then SHAPE swept, a grain every half second. SIZE starts
-    //     below a third, where Beads plays grains backwards (delay_granular_player.h).
-    s.push_back({"time_size_shape", "2 one grain: TIME, SIZE, SHAPE", 14.0f,
+    // 2b. TIME, then SIZE, then SHAPE swept. SIZE starts below a third, where
+    //     Beads plays grains backwards (delay_granular_player.h).
+    s.push_back({"time_size_shape", "2 one grain: TIME, SIZE, SHAPE", 16.5f,
                  [](float t) {
                      Knobs k;
                      k.density = 1.0f;
                      // One knob moves at a time; the others rest mid-way.
-                     k.time  = t < 6.0f ? Ramp(t, 2.0f, 6.0f, 0.02f, 0.4f) : 0.15f;
+                     k.time  = t < 3.95f ? Ramp(t, 1.6f, 3.9f, 0.02f, 0.4f) : 0.15f;
                      // SIZE steps, set just before each trigger: backwards and long,
                      // shortest at a third, then forwards and growing (Beads' SIZE law).
                      static const float kSizes[8] = {0.03f, 0.12f, 0.22f, 0.33f, 0.45f, 0.6f, 0.72f, 0.85f};
-                     const int si = std::max(0, std::min(7, static_cast<int>((t - 5.9f) / 0.5f)));
-                     k.size  = (t >= 5.9f && t < 10.0f) ? kSizes[si] : 0.55f;
-                     k.shape = t >= 10.0f ? Ramp(t, 10.0f, 14.0f, 0.0f, 1.0f) : 0.5f;
+                     const int si = std::max(0, std::min(7, static_cast<int>((t - 3.95f) / 0.64f)));
+                     k.size  = (t >= 3.95f && t < 9.14f) ? kSizes[si] : 0.55f;
+                     k.shape = t >= 9.14f ? Ramp(t, 9.3f, 16.0f, 0.0f, 1.0f) : 0.5f;
                      return k;
                  },
-                 Every(2.0f, 14.0f, 0.5f)});
+                 [] {
+                     std::vector<float> v = Every(1.75f, 3.95f, 0.5f);           // TIME
+                     for (int i = 0; i < 8; ++i) v.push_back(4.05f + 0.64f * i);  // one per SIZE step
+                     for (float t : Every(9.25f, 16.5f, 0.5f)) v.push_back(t);    // SHAPE
+                     return v;
+                 }()});
 
     // 3. PITCH through the detune steps: up 1, 3, 4, 7, 12, 24, then down.
     s.push_back({"pitch", "3 pitch", 12.0f,
@@ -157,26 +165,25 @@ static std::vector<Scenario> Scenarios()
                      Knobs k;
                      k.density = 1.0f;
                      k.time = 0.1f; k.size = 0.45f;
-                     const int i = static_cast<int>((t - 2.0f) / 0.8f);
+                     const int i = static_cast<int>((t - 2.0f) / 0.6f);
                      if (t < 2.0f)       k.pitch = 0.5f;
                      else if (i < 7)     k.pitch = PitchKnob(i, +1);
                      else                k.pitch = PitchKnob(i - 7, -1);
                      return k;
                  },
-                 Every(2.2f, 12.0f, 0.4f)});
+                 Every(2.15f, 12.0f, 0.3f)});
 
-    // 4. DENSITY: noon, anticlockwise (regular, faster), back, clockwise
+    // 4. DENSITY: noon, anticlockwise (regular, faster), then clockwise
     //    (random, denser). Internal clock.
-    s.push_back({"density", "4 density", 18.0f,
+    s.push_back({"density", "4 density", 12.0f,
                  [](float t) {
                      Knobs k;
                      k.time = 0.1f; k.size = 0.45f;
-                     if (t < 3.0f)       k.density = 0.5f;
-                     else if (t < 6.0f)  k.density = 0.35f;
-                     else if (t < 9.0f)  k.density = 0.2f;
-                     else if (t < 10.0f) k.density = 0.5f;
-                     else if (t < 14.0f) k.density = 0.7f;
-                     else                k.density = 0.88f;
+                     if (t < 6.0f)       k.density = 0.5f;
+                     else if (t < 8.0f)  k.density = 0.35f;
+                     else if (t < 9.9f)  k.density = 0.2f;
+                     else if (t < 10.9f) k.density = 0.75f;
+                     else                k.density = 0.9f;
                      return k;
                  },
                  {}});
@@ -189,8 +196,8 @@ static std::vector<Scenario> Scenarios()
                      Knobs k;
                      k.density = 0.25f;   // regular, so the scatter is the randomiser's
                      k.time = 0.12f; k.size = 0.4f;
-                     if (t >= 5.0f && t < 10.0f) { k.time_rnd = 0.9f;  k.pitch_rnd = 0.85f; }
-                     if (t >= 10.0f)            { k.time_rnd = 0.1f;  k.pitch_rnd = 0.15f; }
+                     if (t >= 7.08f && t < 10.7f) { k.time_rnd = 0.9f;  k.pitch_rnd = 0.85f; }
+                     if (t >= 10.7f)             { k.time_rnd = 0.1f;  k.pitch_rnd = 0.15f; }
                      return k;
                  },
                  {}});
@@ -207,7 +214,7 @@ static std::vector<Scenario> Scenarios()
 
     // 7. SEED from a sequencer: capture a phrase, freeze, then each trigger plays
     //    one grain at the pitch on V/oct.
-    s.push_back({"seed", "7 seed", 14.0f,
+    s.push_back({"seed", "7 seed", 16.0f,
                  [](float t) {
                      Knobs k;
                      k.density = 1.0f; k.time = 0.25f; k.size = 0.55f;
@@ -219,7 +226,7 @@ static std::vector<Scenario> Scenarios()
                      k.voct = (t >= 4.98f) ? kNotes[((i % 8) + 8) % 8] : 0.0f;
                      return k;
                  },
-                 Every(5.0f, 14.0f, 0.5f)});
+                 Every(5.0f, 16.0f, 0.5f)});
 
     return s;
 }
