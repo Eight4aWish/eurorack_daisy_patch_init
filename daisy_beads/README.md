@@ -3,8 +3,8 @@
 > **Released: v1.0.0, 2026-10-12.** Tag `wish-v1.0.0`, asset `wish-v1.0.0.bin`, with
 > `wish-v1.0.0-NOTICES.txt`.
 >
-> Émilie Gillet published the Beads source on 2026-10-11 (pichenettes/eurorack
-> `d8f4739`); this port was built and first played the next day. The first build hung
+> Émilie Gillet published the Beads source on 2026-10-12 (pichenettes/eurorack
+> `d8f4739`); this port was built and first played the same day. The first build hung
 > at the heaviest settings, Digital stereo with dense grains and random pitch, which
 > need more than this board has (below); a load governor now thins the grains instead.
 
