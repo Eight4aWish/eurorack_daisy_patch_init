@@ -86,8 +86,8 @@ jacks; there are six, against Beads' eight.
   of their own periods, if longer, up to 30 s); then the internal clock takes over
   again, where Beads would wait silently for the next trigger.
 - **Dirty tape at 48 kHz.** Beads runs its codec at 24 kHz for dirty tape. libDaisy
-  can't, so Wish uses Beads' own 48 kHz path, in which the wet signal is
-  downsampled in software. It's the one line changed in Beads' code: see
+  has no 24 kHz setting (the Daisy's PCM3060 codec could run at it), so Wish uses
+  Beads' own 48 kHz path, in which the wet signal is downsampled in software. It's the one line changed in Beads' code: see
   [`src/upstream/beads/dsp/processor.h`](src/upstream/beads/dsp/processor.h).
 - **Memory.** The 768 KB of delay lines are in SDRAM, the 64 KB reverb in on-chip D2
   RAM. On Beads it was all on-chip.
