@@ -30,6 +30,9 @@ network can. Every phase from 2 onward is the same module seen at increasing fid
 which means each phase's measurements are the next phase's training data and each
 phase's failure is the argument for the next.
 
+**A side line runs phases 3 and 4 on a filter first:** the Doepfer A-124 (Wasp), one
+recording session trained two ways. See "The Wasp" below. The LPG stays the main line.
+
 The Befaco Chopping Kinky was the original phase 2–3 subject and has been **dropped from
 the main line** — see the appendix. It is very likely gain plus a memoryless curve, which
 makes it a poor argument for neural modelling: the honest result would be "a lookup table
@@ -150,11 +153,26 @@ narrower vocabulary. Keep to it in code, commits and on the panel.
     before asking a model to match it (phase 0, check 4).
   - White-box reference: Parker & D'Angelo, DAFx-13 — already the analytic basis of the
     build itself.
+- **Doepfer A-124 (Wasp)**, the side line's subject (Doepfer's manual and product page).
+  - A 12 dB/oct multimode filter after the EDP Wasp. It uses CD4069 digital inverters as
+    op-amps, which is where its dirt comes from. The CD4069 is socketed because it
+    occasionally fails.
+  - **Two outputs:** BP, and an LP/HP mix whose **Mix** knob runs LP → notch → HP.
+  - **Inputs:** Audio In through a **Lev** attenuator; **CV 1** with no attenuator,
+    "approximately" 1 V/oct and "not very precise"; **CV 2** through its own attenuator.
+    Frq and Res are panel knobs only.
+  - **It cannot self-oscillate**, unlike most A-100 filters. That suits the networks:
+    feedback near self-oscillation is their known weak spot.
 - **Befaco Instrument Interface** and a guitar, for test input.
 - **Recording chain:** Mac → Focusrite 16i16 → ADAT → **Expert Sleepers ES-10** → modular,
   and back the same way.
   - The ES-10 is DC-coupled in both directions, with **one global jumper for AC/DC**.
     Set it to DC. ADAT carries plain sample values, so DC survives (bench check 1).
+  - **8 in, 8 out** (manual rev 1.0). Outputs reach **±11 V**. Inputs clip at **±12 V**
+    at modular level (101 kΩ), or ±3.5 V at line level, set per input by a jumper. Expect
+    DC offsets on DC-coupled inputs. The volts per full scale in each direction are
+    measured by `wasp_capture.py check` (WASP.md, step 1); record them here once
+    measured.
   - Do **not** use the 16i16's own analog jacks for CV or DC — Focusrite states none of
     its interfaces are DC-coupled.
   - No ES-9 is needed.
@@ -367,6 +385,54 @@ and capture afterwards** — no hurry, phases 0 through 2 come first. Two conseq
 - **Done when:** the model tracks the real gate under slow CV *and* under ping, decay
   tail included, and a static-curve model of the same gate audibly fails to — which is
   the evidence that the network was necessary. Ping is the sharper test of the two.
+
+## The Wasp — phases 3 and 4 on one dataset
+
+A side line, started 2026-10-14. The A-124 is the best capture subject in the rack apart
+from the LPG. It processes audio, its memory is short, its distortion is its character,
+and it is nothing like an amp. Capturing it rehearses phases 3 and 4 on a device with no
+re-range pending. It also gives Mirth not-amps that were never amps, recorded from
+David's own unit and his to license, unlike the TONE3000 captures. No NAM capture of any
+Eurorack module was found (Prior art, above).
+
+**One session, two networks.** Each session is one panel setting. It records the Wasp's
+two outputs at once, so every session yields two datasets.
+- **A2 snapshots.** NAM's standard `input.wav` plays through the Wasp at five cutoff CVs,
+  one A2 capture each.
+- **A GRU.** Trained on those five takes plus about 6 minutes of material with the CV
+  moving, so the cutoff becomes an input.
+- **A held-out take.** Neither network trains on it. It is the reference for judging.
+
+**Two comparisons.**
+1. **A fixed setting:** A2-Lite (1,871 weights) against a GRU-24 (about 1,970
+   parameters), trained on the same take. Any difference comes from the architecture.
+2. **The knob:** between snapshots A2 can only jump, while the GRU should glide.
+
+Judge by the three-way A/B on the held-out take, by listening to each network's
+leftovers (the real Wasp minus the network), and by ESR on the same passage.
+
+**Established while building the rig (2026-10-14):**
+- **NAM's simplified trainer (v0.13.0) takes only its own input file.** It recognises
+  the file by MD5, or by hashing its opening and closing samples, so the file plays
+  unscaled and the **Lev knob sets the drive**.
+- **That trainer always builds A2** (its packed WaveNet config), so the snapshot takes go
+  straight into the `nam` GUI.
+- **`input.wav` (v3.0.0)** is 190 s long, peaks at −0.1 dBFS and averages −22 dBFS RMS:
+  guitar-DI dynamics. Eurorack oscillators run far hotter on average, which is why the
+  sweep takes add oscillator material from 0.5 to 9 V peak.
+- **`nam-full` trains on any paired audio.** That is a later route to an A2 trained on the
+  sweep material, using the same packed config.
+- **The GRU trainer is phase 4's own PyTorch script, not written yet.** It reads
+  `captures/wasp/<session>/gru/`.
+
+**Tooling:** `tools/wasp_capture.py`, bench sheet `WASP.md`. It plays and records in one
+stream, with a loopback cable for latency. Recordings live in `captures/wasp/`, which is
+gitignored. The tool was tested offline against a simulated filter: latency recovered to
+the sample, NAM files exact, and a 100-sample dropout caught. **Not yet run on the
+bench.**
+
+**Done when:** for one setting, both comparisons have been heard on the held-out take,
+for both outputs, and the gaps are written down here.
 
 ## Phase 5 — audio-rate conditioning, then hardware
 

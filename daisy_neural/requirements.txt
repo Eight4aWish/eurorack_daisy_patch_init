@@ -7,3 +7,4 @@ librosa        # established audio descriptors
 scikit-learn   # standardising features, PCA, nearest neighbours
 matplotlib     # the maps
 ribs           # pyribs: quality-diversity search (MAP-Elites)
+sounddevice    # wasp_capture.py record: play and record through the ES-10 in one stream
