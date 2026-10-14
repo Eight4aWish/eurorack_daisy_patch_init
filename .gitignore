@@ -44,3 +44,6 @@ daisy_neural/captures/
 # Python environment for the host analysis tools (see daisy_neural/requirements.txt)
 .venv/
 .venv-clap/
+
+# Editor settings (local to each machine)
+.vscode/
