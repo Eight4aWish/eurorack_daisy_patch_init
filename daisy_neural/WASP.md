@@ -4,29 +4,37 @@ This is the bench sheet. The plan and its reasoning are in [CLAUDE.md](CLAUDE.md
 Wasp". Everything runs through [`tools/wasp_capture.py`](tools/wasp_capture.py), from
 `daisy_neural/`.
 
-One series of recordings feeds three networks, with the real Doepfer A-124 as the
+The subject is the Wasp as **pure low-pass and pure high-pass**: the two end stops of
+the Mix knob on its LP/HP output. The notch between them and the BP output are less
+interesting. One output carries both, so each end stop is **its own series** of
+sessions. The two series feed three kinds of network, with the real Doepfer A-124 as the
 reference for all of them:
 
 | Network | Learns | Trained on |
 |---|---|---|
-| **A2 (NAM)** | One capture per cutoff, at one resonance | The comparison session's snapshot takes |
-| **GRU, cutoff** | The cutoff as a knob, at one resonance | The comparison session |
-| **GRU, cutoff and resonance** | Both, as knobs | Every session except the held-out one |
+| **A2 (NAM's WaveNet)** | One capture per cutoff, at one resonance | The LP comparison session's snapshot takes |
+| **GRU, cutoff** | The cutoff as a knob, at one resonance | The LP comparison session |
+| **GRU, cutoff and resonance**, one for LP and one for HP | Both, as knobs | Every session of its series except the held-out one |
 
 **Only the cutoff is under CV on the A-124.** Res, Lev and Mix are knobs. So the cutoff
 is swept by the ES-10 inside each take, and the resonance is stepped between sessions:
-**one session per Res position**. Lev, Frq and Mix stay where they are for the whole
-series.
+**one session per Res position**. Lev and Frq stay where they are for both series; Mix
+sits at its LP end stop for one series and its HP end stop for the other. The end stops
+are exactly repeatable, which no mark on a dial is.
 
-## The series
+## The two series
 
-| Session | Res | Takes | Time |
-|---|---|---|---|
-| **Comparison** (your favourite Res) | e.g. 6 | `snap1`–`snap5` (NAM's `input.wav` at five cutoff CVs, 3:13 each), `sweep1`–`sweep2`, `test`, `test_snaps` | about 24 min |
-| **The others** | e.g. 0, 2, 4, 8, 10 | `sweep1`–`sweep2`, `test` | about 7 min each |
-| **Held out** | e.g. 5 | `sweep1`–`sweep2`, `test`, never trained on | about 7 min |
+| Series | Session | Res | Takes | Time |
+|---|---|---|---|---|
+| **LP** | **Comparison** (your favourite Res) | e.g. 6 | `snap1`–`snap5` (NAM's `input.wav` at five cutoff CVs, 3:13 each), `sweep1`–`sweep2`, `test`, `test_snaps` | about 24 min |
+| | The others | e.g. 0, 2, 4, 8, 10 | `sweep1`–`sweep2`, `test` | about 7 min each |
+| | Held out | e.g. 5 | `sweep1`–`sweep2`, `test`, never trained on | about 7 min |
+| **HP** | Every Res position, held out included | the same seven | `sweep1`–`sweep2`, `test` | about 7 min each |
 
-That's about an hour of takes, plus resetting the Res knob between sessions.
+That's about 65 minutes of takes for LP and 50 for HP, plus resetting the knobs between
+sessions. The A2 comparison is done once, on LP, the classic Wasp sound. It can be split
+over two days if Lev and Frq aren't touched in between (photograph them), with the
+half-hour warm-up each day.
 
 | Take | What plays | What it is for |
 |---|---|---|
@@ -35,8 +43,8 @@ That's about an hour of takes, plus resetting the Res knob between sessions.
 | `test` (1:00) | A riff no network hears, with CV at six holds across the range, then a slow ramp up and back. **Identical in every session**, so Res positions can be compared | The A/B, and the leftovers |
 | `test_snaps` (0:39, comparison session only) | The same riff, with CV between the snapshots and on them | A2 jumping against the GRU gliding |
 
-Both Wasp outputs are recorded at once, LP/HP mix and BP, so every take gives two
-datasets.
+The BP output is recorded on IN 2 as well, because it costs nothing, but no network is
+planned on it.
 
 ## Patching
 
@@ -113,34 +121,41 @@ Patch OUT 2 to CV 1, then:
 That plays the Mirth test riff once per volt and prints the cue times. Run it again at a
 few Res settings, and choose:
 
-- **Lev, Frq and Mix** for the whole series. Lev is the drive. `input.wav` has to play
-  unscaled, so the knob does the work. Frq has to stay put, because every CV is relative
-  to it.
+- **Lev and Frq** for both series. Lev is the drive. `input.wav` has to play unscaled,
+  so the knob does the work. Frq has to stay put, because every CV is relative to it.
+  Listen at both Mix end stops before settling them, since HP and LP may want different
+  drive and one setting has to serve both.
 - **the sweep range**: the span of CV 1 where the cutoff does something you'd use.
 - **the Res positions**: six across the dial, with more of them where the sound changes
   fastest, plus **one held out** between two of them, to test whether the GRU fills the
-  gap. Doepfer: the Wasp can't self-oscillate, so the top of the dial is safe ground.
-- **the comparison Res**: your favourite. Its session also carries the A2 takes, and
-  needs **five snapshot voltages** inside the range: where you'd actually leave the knob.
+  gap. The same seven for both series. Doepfer: the Wasp can't self-oscillate, so the
+  top of the dial is safe ground.
+- **the comparison Res**: your favourite, on LP. Its session also carries the A2 takes,
+  and needs **five snapshot voltages** inside the range: where you'd actually leave the
+  knob.
 
 Write down what you like and where it turns nasty. Each session makes a `notes.md` for
 that, and it's half a script for the video.
 
 ## 3. Record the series
 
-Once per Res position: set the knob, photograph the panel, then make and record. The
-comparison session first, while the Wasp is at its most settled:
+Mix to its LP end stop. Then, once per Res position: set the knob, photograph the panel,
+make and record. The comparison session first, while the Wasp is at its most settled:
 
 ```
-.venv/bin/python tools/wasp_capture.py make session res6 --res 6 --cv-range=-3,5 \
-    --snapshots=-2,0,1.5,3,4.5 --knobs "Lev 7, Frq noon, Mix LP"
-.venv/bin/python tools/wasp_capture.py record captures/wasp/res6
+.venv/bin/python tools/wasp_capture.py make session lp-res6 --mix lp --res 6 --cv-range=-3,5 \
+    --snapshots=-2,0,1.5,3,4.5 --knobs "Lev 7, Frq noon"
+.venv/bin/python tools/wasp_capture.py record captures/wasp/lp-res6
 
-.venv/bin/python tools/wasp_capture.py make session res0 --res 0 --cv-range=-3,5 --knobs "Lev 7, Frq noon, Mix LP"
-.venv/bin/python tools/wasp_capture.py record captures/wasp/res0
+.venv/bin/python tools/wasp_capture.py make session lp-res0 --mix lp --res 0 --cv-range=-3,5 --knobs "Lev 7, Frq noon"
+.venv/bin/python tools/wasp_capture.py record captures/wasp/lp-res0
 ```
 
-Use the same `--cv-range` for every session, or the `test` takes stop matching. Use the
+Then Mix to its HP end stop, and the same seven Res positions with `--mix hp` and names
+like `hp-res0`, without `--snapshots`.
+
+Use the same `--cv-range` for every session in both series, or the `test` takes stop
+matching. Use the
 `=` with negative lists. `record` runs every take in turn, prints the peaks after each,
 and skips any already recorded. Don't touch the rack while it runs. To redo one take:
 `--only sweep2 --overwrite`.
@@ -157,7 +172,7 @@ Each take should read **OK**. The flags:
 |---|---|---|
 | `DROPOUT` | The latency changed during the take, so samples were lost | Record that take again |
 | `start and end differ` | NAM's own check: the validation passage came out differently at 0:00 and 3:01 | The Wasp drifted. Warm it up longer, then record again |
-| `full scale reached` | A Wasp output clipped the ES-10 input (±12 V) | Turn Lev down, and keep it there for the whole series |
+| `full scale reached` | A Wasp output clipped the ES-10 input (±12 V) | Turn Lev down, and keep it there for both series |
 | `loopback only … clean` | The loopback cable isn't right | Check OUT 3 → IN 3 |
 
 What comes out, in `captures/wasp/<session>/`:
@@ -165,7 +180,8 @@ What comes out, in `captures/wasp/<session>/`:
   length of `input.wav` and aligned to it. Train them in NAM's GUI (`nam`), with
   `input.wav` as the input. Its simplified trainer always builds A2.
 - **`gru/`**: one `.npz` per take, holding `x` (the audio as played), `cv_v` (volts at
-  CV 1), `res` (the dial) and `y_lphp` and `y_bp` (the Wasp). This is the GRUs' data.
+  CV 1), `res` (the dial), `mix` (`lp` or `hp`), and `y_lphp` and `y_bp` (the Wasp's two
+  outputs). This is the GRUs' data.
   Their training script is the next piece of work.
 - **`listen/`**: the real Wasp on the sweeps and the held-out takes, plus the dry
   held-out riff.
@@ -176,9 +192,9 @@ What comes out, in `captures/wasp/<session>/`:
 - **Architecture:** A2 against the cutoff GRU, both trained on the same snapshot take.
 - **The cutoff knob:** `test_snaps`. Between the snapshots A2 can only jump; the GRU
   should glide.
-- **The cost of a second knob:** the cutoff-and-resonance GRU against the cutoff GRU, at
-  the comparison Res.
-- **Filling the gap:** the cutoff-and-resonance GRU at the held-out Res, against the real
-  Wasp.
+- **The cost of a second knob:** the LP cutoff-and-resonance GRU against the cutoff GRU,
+  at the comparison Res.
+- **Filling the gap:** each cutoff-and-resonance GRU, LP and HP, at the held-out Res,
+  against the real Wasp.
 - **The leftovers:** subtract any network's output from the real Wasp's and listen to
   what's left. That's what the network failed to learn.

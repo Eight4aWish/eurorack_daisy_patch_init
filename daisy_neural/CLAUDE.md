@@ -400,20 +400,26 @@ Eurorack module was found (Prior art, above).
 1 V/oct, and CV 2 through an attenuator. Res, Lev and Mix are knobs. A filter wants both
 cutoff and resonance as controls, so **the resonance is stepped between sessions**
 while the ES-10 sweeps the cutoff inside every take. One session per Res position, six
-across the dial plus one held out; Lev, Frq and Mix stay fixed for the series. Each
-session records the Wasp's two outputs at once, so it yields two datasets.
+across the dial plus one held out; Lev and Frq stay fixed throughout.
+
+**Pure low-pass and pure high-pass** (decided 2026-10-17; the notch and BP are less
+interesting). They are the two end stops of the Mix knob on the one LP/HP output, so
+they cannot be recorded together: **each is its own series** of those seven sessions.
+The end stops are exactly repeatable, which no mark on a dial is. BP is recorded on a
+second input anyway, since it costs nothing, but no network is planned on it.
 
 **One series, three networks** (decided 2026-10-17):
 
 | Network | Inputs | Trained on |
 |---|---|---|
-| **A2 snapshots** (NAM's WaveNet) | audio | NAM's standard `input.wav` at five cutoff CVs, in the comparison session only: one capture each |
-| **GRU, cutoff** | audio, cutoff CV | The comparison session: those five takes plus about 6 minutes of material with the CV moving |
-| **GRU, cutoff and resonance** | audio, cutoff CV, Res dial position | Every session except the held-out Res |
+| **A2 snapshots** (NAM's WaveNet) | audio | NAM's standard `input.wav` at five cutoff CVs, in the LP comparison session only: one capture each |
+| **GRU, cutoff** | audio, cutoff CV | The LP comparison session: those five takes plus about 6 minutes of material with the CV moving |
+| **GRU, cutoff and resonance**, one per series (LP, HP) | audio, cutoff CV, Res dial position | Every session of its series except the held-out Res |
 
 The second costs no extra recording: it is a training run on a subset. It is there because
 it is the clean match for A2, the same data at the same setting. The third is the one
-worth playing. A GRU-24 with three inputs is about 2,100 parameters, the same order as
+worth playing, as LP and as HP; one GRU taking the end stop as a further input is a later
+option. The A2 comparison is done once, on LP, the classic Wasp sound. A GRU-24 with three inputs is about 2,100 parameters, the same order as
 A2-Lite's 1,871 weights. NeuralSeed (GRU-8, two or three knobs fed in as inputs, on a
 Daisy Seed) is the precedent.
 
@@ -421,10 +427,10 @@ Daisy Seed) is the precedent.
 1. **Architecture:** A2-Lite against the cutoff GRU, trained on the same take. Any
    difference comes from the architecture.
 2. **The cutoff knob:** between snapshots A2 can only jump, while the GRU should glide.
-3. **The cost of a second knob:** the two-control GRU against the cutoff GRU, at the
+3. **The cost of a second knob:** the LP two-control GRU against the cutoff GRU, at the
    comparison Res.
-4. **Filling the gap in resonance:** the two-control GRU at the held-out Res position,
-   against the real Wasp. Res only ever moves between takes, so this is the open question.
+4. **Filling the gap in resonance:** each two-control GRU, LP and HP, at the held-out Res
+   position, against the real Wasp. Res only ever moves between takes, so this is the open question.
    Mikkonen, Wright & Välimäki (Key papers) is about choosing those positions.
 
 Judge by A/B against the real Wasp, by listening to each network's leftovers (the real
@@ -449,8 +455,8 @@ stepping at all. Keep its resonance below where it self-oscillates.
 - **`nam-full` trains on any paired audio.** That is a later route to an A2 trained on the
   sweep material, using the same packed config.
 - **The GRU trainer is phase 4's own PyTorch script, not written yet.** It reads
-  `captures/wasp/<session>/gru/`, where each take's `.npz` carries `res` alongside the
-  audio and the cutoff CV.
+  `captures/wasp/<session>/gru/`, where each take's `.npz` carries `res` and `mix`
+  alongside the audio and the cutoff CV.
 
 **Tooling:** `tools/wasp_capture.py`, bench sheet `WASP.md`. It plays and records in one
 stream, with a loopback cable for latency. Recordings live in `captures/wasp/`, which is

@@ -5,8 +5,10 @@ wasp_capture.py — record the Doepfer A-124 (Wasp) for three networks: NAM A2 s
 the cutoff and the resonance. The bench sheet is ../WASP.md; read that first.
 
 Only the cutoff is under CV on the A-124, so the resonance is stepped between sessions:
-one session per Res knob position, each sweeping the cutoff. One of them, the comparison
-session, also carries the A2 snapshot takes (--snapshots).
+one session per Res knob position, each sweeping the cutoff. Pure low-pass and pure
+high-pass are the two end stops of the Mix knob on the one LP/HP output, so each is its
+own series of sessions (--mix). One session, the comparison session, also carries the A2
+snapshot takes (--snapshots).
 
 Everything goes through the ES-10, played and recorded in one stream, so every take is
 sample-locked:
@@ -33,10 +35,11 @@ Steps, in order. Files land in captures/wasp/, which git ignores.
     .venv/bin/python tools/wasp_capture.py check captures/wasp/rigcheck.rec.wav --meter-volts 5.0 --save
     .venv/bin/python tools/wasp_capture.py make ladder --from -4 --to 6
     .venv/bin/python tools/wasp_capture.py record captures/wasp/ladder.wav
-    .venv/bin/python tools/wasp_capture.py make session res6 --res 6 --cv-range=-3,5 --snapshots=-2,0,1.5,3,4.5
-    .venv/bin/python tools/wasp_capture.py record captures/wasp/res6
-    .venv/bin/python tools/wasp_capture.py split captures/wasp/res6
-    .venv/bin/python tools/wasp_capture.py make session res0 --res 0 --cv-range=-3,5    # and so on
+    .venv/bin/python tools/wasp_capture.py make session lp-res6 --mix lp --res 6 --cv-range=-3,5 --snapshots=-2,0,1.5,3,4.5
+    .venv/bin/python tools/wasp_capture.py record captures/wasp/lp-res6
+    .venv/bin/python tools/wasp_capture.py split captures/wasp/lp-res6
+    .venv/bin/python tools/wasp_capture.py make session lp-res0 --mix lp --res 0 --cv-range=-3,5   # and so on,
+    .venv/bin/python tools/wasp_capture.py make session hp-res0 --mix hp --res 0 --cv-range=-3,5   # then the HP series
 
 `record` needs sounddevice (.venv/bin/pip install sounddevice); nothing else does.
 """
@@ -95,6 +98,11 @@ RC_LEN = 48.0
 
 LP, BP, LOOP = 0, 1, 2  # recording channels
 AUDIO, CV = 0, 1  # play channels (2 is the loopback, a copy of AUDIO)
+
+# The Mix knob's two end stops: exactly repeatable, unlike any point between them.
+MIX_ENDS = ("lp", "hp")
+MIX_ENDS_TEXT = {"lp": "fully anticlockwise, the LP end stop: pure low-pass",
+                 "hp": "fully clockwise, the HP end stop: pure high-pass"}
 
 
 # --------------------------------------------------------------------------- rig
@@ -418,7 +426,7 @@ def make_session(args):
     #    position, so the series as a whole covers more ground.
     n_sweeps = max(1, math.ceil(args.sweep_minutes / 3.0))
     for i in range(1, n_sweeps + 1):
-        sub = np.random.default_rng([args.seed, round(args.res * 10), i])
+        sub = np.random.default_rng([args.seed, MIX_ENDS.index(args.mix), round(args.res * 10), i])
         secs = args.sweep_minutes * 60 / n_sweeps
         audio = sweep_audio(secs, sub, peaks_fs)
         cv = sweep_cv(len(audio), sub, lo, hi, start=sub.uniform(lo, hi))
@@ -443,17 +451,18 @@ def make_session(args):
     session = {
         "name": args.name, "made": datetime.datetime.now().isoformat(timespec="seconds"),
         "sr": SR, "out_vfs": out_vfs, "in_vfs": load_rig().get("in_vfs"),
-        "res": args.res, "knobs": args.knobs, "snapshots_v": snaps, "cv_range_v": [lo, hi],
+        "mix": args.mix, "res": args.res, "knobs": args.knobs, "snapshots_v": snaps, "cv_range_v": [lo, hi],
         "sweep_peaks_v": peaks_v, "test_peak_v": args.test_peak, "seed": args.seed,
         "nam_input": {"file": INPUT_WAV.name, "md5": md5} if snaps else None,
         "channels": {"play": ["audio -> Wasp AUDIO IN", "CV -> Wasp CV 1", "loopback -> ES-10 IN 3"],
-                     "rec": ["Wasp LP/HP OUT", "Wasp BP OUT", "loopback"]},
+                     "rec": [f"Wasp LP/HP OUT, Mix at {args.mix.upper()}", "Wasp BP OUT", "loopback"]},
         "takes": takes,
     }
     (d / "session.json").write_text(json.dumps(session, indent=2) + "\n")
     notes = d / "notes.md"
     if not notes.exists():
         notes.write_text(NOTES.format(name=args.name, res=args.res, knobs=args.knobs or "(set --knobs)",
+                                      mix=MIX_ENDS_TEXT[args.mix],
                                       snaps=", ".join(f"{v:+.2f}" for v in snaps) or "none in this session",
                                       lo=lo, hi=hi,
                                       out_vfs=out_vfs, in_vfs=session["in_vfs"]))
@@ -463,8 +472,9 @@ def make_session(args):
 
 NOTES = """# Wasp session: {name}
 
+- Mix: {mix}
 - Res: {res:g} on the dial (photograph it)
-- The other knobs, the same for the whole series: {knobs}
+- Lev and Frq, the same for both series: {knobs}
 - Patching: ES-10 OUT 1 -> AUDIO IN, OUT 2 -> CV 1, OUT 3 -> IN 3; LP/HP OUT -> IN 1, BP OUT -> IN 2
 - CV 2: unpatched, knob at 0
 - Snapshots at CV 1 (V): {snaps}
@@ -674,7 +684,8 @@ def split(args):
         cv_v = (play[p:p + n, CV] * out_vfs).astype(np.float32)
         np.savez(d / "gru" / f"{t['name']}.npz", x=x.astype(np.float32), cv_v=cv_v,
                  y_lphp=yl.astype(np.float32), y_bp=yb.astype(np.float32),
-                 res=np.float32(session.get("res", np.nan)), role=t["role"], sr=SR, latency=lag)
+                 res=np.float32(session.get("res", np.nan)), mix=session.get("mix", ""),
+                 role=t["role"], sr=SR, latency=lag)
         if t["role"] in ("sweep", "test"):
             for nm, sig in (("lphp", yl), ("bp", yb)):
                 sf.write(d / "listen" / f"{t['name']}_wasp_{nm}.wav", np.clip(sig, -1, 1), SR, subtype="PCM_24")
@@ -711,12 +722,14 @@ def main():
     p.add_argument("--out-vfs", type=float, help="ES-10 volts per full scale (default: rig.json)")
     p.set_defaults(fn=make_ladder)
     p = mk.add_parser("session", help="all the takes for one Res position")
-    p.add_argument("name", help="a folder name for this session, e.g. res6")
+    p.add_argument("name", help="a folder name for this session, e.g. lp-res6")
+    p.add_argument("--mix", choices=MIX_ENDS, required=True,
+                   help="which end stop the Mix knob is at: lp (pure low-pass) or hp (pure high-pass)")
     p.add_argument("--res", type=float, required=True, help="the Res knob's position on its 0-10 dial")
     p.add_argument("--snapshots", help="the comparison session only: CV for each A2 snapshot, volts. "
                                        "Negative lists need the =: --snapshots=-2,0,1.5,3,4.5")
     p.add_argument("--cv-range", required=True, help="the GRU's sweep range, volts: --cv-range=-3,5")
-    p.add_argument("--knobs", default="", help='the other knobs, as text: "Lev 7, Frq noon, Mix LP"')
+    p.add_argument("--knobs", default="", help='Lev and Frq, as text: "Lev 7, Frq noon"')
     p.add_argument("--sweep-minutes", type=float, default=6.0, help="GRU sweep material (default 6)")
     p.add_argument("--test-peak", type=float, default=5.0, help="held-out riff level, volts peak")
     p.add_argument("--seed", type=int, default=124)
