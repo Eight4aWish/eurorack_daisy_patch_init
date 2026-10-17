@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """
-wasp_capture.py — record the Doepfer A-124 (Wasp) once, and train two kinds of network
-on the result: NAM A2 snapshots (one capture per cutoff setting) and a GRU that takes the
-cutoff CV as an input. The bench sheet is ../WASP.md; read that first.
+wasp_capture.py — record the Doepfer A-124 (Wasp) for three networks: NAM A2 snapshots
+(one capture per cutoff), a GRU that takes the cutoff CV as an input, and a GRU that takes
+the cutoff and the resonance. The bench sheet is ../WASP.md; read that first.
+
+Only the cutoff is under CV on the A-124, so the resonance is stepped between sessions:
+one session per Res knob position, each sweeping the cutoff. One of them, the comparison
+session, also carries the A2 snapshot takes (--snapshots).
 
 Everything goes through the ES-10, played and recorded in one stream, so every take is
 sample-locked:
@@ -29,9 +33,10 @@ Steps, in order. Files land in captures/wasp/, which git ignores.
     .venv/bin/python tools/wasp_capture.py check captures/wasp/rigcheck.rec.wav --meter-volts 5.0 --save
     .venv/bin/python tools/wasp_capture.py make ladder --from -4 --to 6
     .venv/bin/python tools/wasp_capture.py record captures/wasp/ladder.wav
-    .venv/bin/python tools/wasp_capture.py make session lp-res7 --snapshots=-2,0,1.5,3,4.5 --cv-range=-3,5
-    .venv/bin/python tools/wasp_capture.py record captures/wasp/lp-res7
-    .venv/bin/python tools/wasp_capture.py split captures/wasp/lp-res7
+    .venv/bin/python tools/wasp_capture.py make session res6 --res 6 --cv-range=-3,5 --snapshots=-2,0,1.5,3,4.5
+    .venv/bin/python tools/wasp_capture.py record captures/wasp/res6
+    .venv/bin/python tools/wasp_capture.py split captures/wasp/res6
+    .venv/bin/python tools/wasp_capture.py make session res0 --res 0 --cv-range=-3,5    # and so on
 
 `record` needs sounddevice (.venv/bin/pip install sounddevice); nothing else does.
 """
@@ -376,14 +381,13 @@ def make_ladder(args):
 def make_session(args):
     out_vfs = need_out_vfs(args)
     lo, hi = sorted(float(v) for v in args.cv_range.split(","))
-    snaps = sorted(float(v) for v in args.snapshots.split(","))
+    snaps = sorted(float(v) for v in args.snapshots.split(",")) if args.snapshots else []
     to_fs([lo, hi] + snaps, out_vfs, "CV")
     for v in snaps:
         if not lo <= v <= hi:
             print(f"note: snapshot {v:+.2f} V is outside the sweep range {lo:+.2f}..{hi:+.2f} V; "
                   "the GRU will not have trained there")
-    x, md5 = read_nam_input()
-    rng = np.random.default_rng(args.seed)
+    x, md5 = read_nam_input() if snaps else (None, None)
 
     peaks_v = [v for v in (0.5, 1.0, 2.0, 3.5, 5.0, 7.0, 9.0) if v <= FS_MAX * out_vfs]
     peaks_fs = [v / out_vfs for v in peaks_v]
@@ -410,30 +414,38 @@ def make_session(args):
     # 1. A2 snapshots: NAM's own input file, bit for bit, at each cutoff CV.
     for i, v in enumerate(snaps, 1):
         add(f"snap{i}_{v:+.2f}V", "snapshot", x, v, nam=True)
-    # 2. The knob: material for the GRU while the CV moves.
+    # 2. The knob: material for the GRU while the CV moves. Fresh material for every Res
+    #    position, so the series as a whole covers more ground.
     n_sweeps = max(1, math.ceil(args.sweep_minutes / 3.0))
     for i in range(1, n_sweeps + 1):
-        sub = np.random.default_rng([args.seed, i])
+        sub = np.random.default_rng([args.seed, round(args.res * 10), i])
         secs = args.sweep_minutes * 60 / n_sweeps
         audio = sweep_audio(secs, sub, peaks_fs)
         cv = sweep_cv(len(audio), sub, lo, hi, start=sub.uniform(lo, hi))
         add(f"sweep{i}", "sweep", audio, cv)
-    # 3. Held out: never trained on. CV between the snapshots (where A2 can only jump),
-    #    on the snapshots (where A2 is at home), then a slow ramp up and back.
-    mids = [(a + b) / 2 for a, b in zip(snaps, snaps[1:])]
-    cv = np.concatenate([held(mids + snaps, 4.0, ramp_from=mids[0] if mids else snaps[0]),
-                         np.linspace(lo, hi, 16 * SR), np.linspace(hi, lo, 16 * SR)])
-    bars = len(cv) // (4 * SR)
-    audio = phrase(np.random.default_rng(args.seed + 7919), 73.42, bars=bars, peak=test_peak_fs)
-    cv = cv[:len(audio)]
-    add("test", "test", audio, cv)
+    # 3. Held out: never trained on. The same riff and the same CV path in every session
+    #    with the same range, so one Res position can be compared with another: six holds
+    #    across the range, then a slow ramp up and back.
+    def held_out(name, cv):
+        bars = len(cv) // (4 * SR)
+        audio = phrase(np.random.default_rng(args.seed + 7919), 73.42, bars=bars, peak=test_peak_fs)
+        add(name, "test", audio, cv[:len(audio)])
+
+    points = list(np.linspace(lo, hi, 6))
+    held_out("test", np.concatenate([held(points, 4.0, ramp_from=points[0]),
+                                     np.linspace(lo, hi, 16 * SR), np.linspace(hi, lo, 16 * SR)]))
+    # In the comparison session only: CV between the snapshots, where A2 can only jump,
+    # and on them, where A2 is at home.
+    if snaps:
+        mids = [(a + b) / 2 for a, b in zip(snaps, snaps[1:])]
+        held_out("test_snaps", held(mids + snaps, 4.0, ramp_from=(mids or snaps)[0]))
 
     session = {
         "name": args.name, "made": datetime.datetime.now().isoformat(timespec="seconds"),
         "sr": SR, "out_vfs": out_vfs, "in_vfs": load_rig().get("in_vfs"),
-        "knobs": args.knobs, "snapshots_v": snaps, "cv_range_v": [lo, hi],
+        "res": args.res, "knobs": args.knobs, "snapshots_v": snaps, "cv_range_v": [lo, hi],
         "sweep_peaks_v": peaks_v, "test_peak_v": args.test_peak, "seed": args.seed,
-        "nam_input": {"file": INPUT_WAV.name, "md5": md5},
+        "nam_input": {"file": INPUT_WAV.name, "md5": md5} if snaps else None,
         "channels": {"play": ["audio -> Wasp AUDIO IN", "CV -> Wasp CV 1", "loopback -> ES-10 IN 3"],
                      "rec": ["Wasp LP/HP OUT", "Wasp BP OUT", "loopback"]},
         "takes": takes,
@@ -441,8 +453,9 @@ def make_session(args):
     (d / "session.json").write_text(json.dumps(session, indent=2) + "\n")
     notes = d / "notes.md"
     if not notes.exists():
-        notes.write_text(NOTES.format(name=args.name, knobs=args.knobs or "(set --knobs)",
-                                      snaps=", ".join(f"{v:+.2f}" for v in snaps), lo=lo, hi=hi,
+        notes.write_text(NOTES.format(name=args.name, res=args.res, knobs=args.knobs or "(set --knobs)",
+                                      snaps=", ".join(f"{v:+.2f}" for v in snaps) or "none in this session",
+                                      lo=lo, hi=hi,
                                       out_vfs=out_vfs, in_vfs=session["in_vfs"]))
     total = sum(t["seconds"] for t in takes)
     print(f"{len(takes)} takes, {total / 60:.1f} min to record. Notes: {rel(notes)}")
@@ -450,7 +463,8 @@ def make_session(args):
 
 NOTES = """# Wasp session: {name}
 
-- Knobs: {knobs}
+- Res: {res:g} on the dial (photograph it)
+- The other knobs, the same for the whole series: {knobs}
 - Patching: ES-10 OUT 1 -> AUDIO IN, OUT 2 -> CV 1, OUT 3 -> IN 3; LP/HP OUT -> IN 1, BP OUT -> IN 2
 - CV 2: unpatched, knob at 0
 - Snapshots at CV 1 (V): {snaps}
@@ -603,7 +617,7 @@ def split(args):
     """Cut each recorded take into aligned training files:
     nam/    one 24-bit WAV per snapshot and output, the exact length of NAM's input file,
             ready for its trainer alongside input.wav
-    gru/    one .npz per take: x (audio as played), cv_v (volts), y_lphp, y_bp
+    gru/    one .npz per take: x (audio as played), cv_v (volts), res (the dial), y_lphp, y_bp
     listen/ the real Wasp on the sweep and held-out takes, and the held-out dry input
     """
     d = pathlib.Path(args.path)
@@ -660,12 +674,12 @@ def split(args):
         cv_v = (play[p:p + n, CV] * out_vfs).astype(np.float32)
         np.savez(d / "gru" / f"{t['name']}.npz", x=x.astype(np.float32), cv_v=cv_v,
                  y_lphp=yl.astype(np.float32), y_bp=yb.astype(np.float32),
-                 role=t["role"], sr=SR, latency=lag)
+                 res=np.float32(session.get("res", np.nan)), role=t["role"], sr=SR, latency=lag)
         if t["role"] in ("sweep", "test"):
             for nm, sig in (("lphp", yl), ("bp", yb)):
                 sf.write(d / "listen" / f"{t['name']}_wasp_{nm}.wav", np.clip(sig, -1, 1), SR, subtype="PCM_24")
             if t["role"] == "test":
-                sf.write(d / "listen" / "test_dry.wav", x, SR, subtype="PCM_24")
+                sf.write(d / "listen" / f"{t['name']}_dry.wav", x, SR, subtype="PCM_24")
         entry["flags"] = flags
         report.append(entry)
         rep_txt = "".join(f"  rep {nm} {entry[f'replicate_esr_{nm}']:.4f}" for nm in ("lphp", "bp")
@@ -696,11 +710,13 @@ def main():
     p.add_argument("--peak", type=float, default=5.0, help="riff level, volts peak")
     p.add_argument("--out-vfs", type=float, help="ES-10 volts per full scale (default: rig.json)")
     p.set_defaults(fn=make_ladder)
-    p = mk.add_parser("session", help="all the takes for one knob setting")
-    p.add_argument("name", help="a folder name for this setting, e.g. lp-res7")
-    p.add_argument("--snapshots", required=True, help="CV for each A2 snapshot, volts. Negative lists need the =: --snapshots=-2,0,1.5,3,4.5")
+    p = mk.add_parser("session", help="all the takes for one Res position")
+    p.add_argument("name", help="a folder name for this session, e.g. res6")
+    p.add_argument("--res", type=float, required=True, help="the Res knob's position on its 0-10 dial")
+    p.add_argument("--snapshots", help="the comparison session only: CV for each A2 snapshot, volts. "
+                                       "Negative lists need the =: --snapshots=-2,0,1.5,3,4.5")
     p.add_argument("--cv-range", required=True, help="the GRU's sweep range, volts: --cv-range=-3,5")
-    p.add_argument("--knobs", default="", help='the panel, as text: "Lev 7, Frq noon, Res 7, Mix LP"')
+    p.add_argument("--knobs", default="", help='the other knobs, as text: "Lev 7, Frq noon, Mix LP"')
     p.add_argument("--sweep-minutes", type=float, default=6.0, help="GRU sweep material (default 6)")
     p.add_argument("--test-peak", type=float, default=5.0, help="held-out riff level, volts peak")
     p.add_argument("--seed", type=int, default=124)

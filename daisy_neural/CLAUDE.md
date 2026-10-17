@@ -31,7 +31,8 @@ which means each phase's measurements are the next phase's training data and eac
 phase's failure is the argument for the next.
 
 **A side line runs phases 3 and 4 on a filter first:** the Doepfer A-124 (Wasp), one
-recording session trained two ways. See "The Wasp" below. The LPG stays the main line.
+series of recordings trained three ways. See "The Wasp" below. The LPG stays the main
+line.
 
 The Befaco Chopping Kinky was the original phase 2–3 subject and has been **dropped from
 the main line** — see the appendix. It is very likely gain plus a memoryless curve, which
@@ -395,21 +396,46 @@ re-range pending. It also gives Mirth not-amps that were never amps, recorded fr
 David's own unit and his to license, unlike the TONE3000 captures. No NAM capture of any
 Eurorack module was found (Prior art, above).
 
-**One session, two networks.** Each session is one panel setting. It records the Wasp's
-two outputs at once, so every session yields two datasets.
-- **A2 snapshots.** NAM's standard `input.wav` plays through the Wasp at five cutoff CVs,
-  one A2 capture each.
-- **A GRU.** Trained on those five takes plus about 6 minutes of material with the CV
-  moving, so the cutoff becomes an input.
-- **A held-out take.** Neither network trains on it. It is the reference for judging.
+**Only the cutoff is under CV on the A-124** (Doepfer's manual): CV 1 at roughly
+1 V/oct, and CV 2 through an attenuator. Res, Lev and Mix are knobs. A filter wants both
+cutoff and resonance as controls, so **the resonance is stepped between sessions**
+while the ES-10 sweeps the cutoff inside every take. One session per Res position, six
+across the dial plus one held out; Lev, Frq and Mix stay fixed for the series. Each
+session records the Wasp's two outputs at once, so it yields two datasets.
 
-**Two comparisons.**
-1. **A fixed setting:** A2-Lite (1,871 weights) against a GRU-24 (about 1,970
-   parameters), trained on the same take. Any difference comes from the architecture.
-2. **The knob:** between snapshots A2 can only jump, while the GRU should glide.
+**One series, three networks** (decided 2026-10-17):
 
-Judge by the three-way A/B on the held-out take, by listening to each network's
-leftovers (the real Wasp minus the network), and by ESR on the same passage.
+| Network | Inputs | Trained on |
+|---|---|---|
+| **A2 snapshots** (NAM's WaveNet) | audio | NAM's standard `input.wav` at five cutoff CVs, in the comparison session only: one capture each |
+| **GRU, cutoff** | audio, cutoff CV | The comparison session: those five takes plus about 6 minutes of material with the CV moving |
+| **GRU, cutoff and resonance** | audio, cutoff CV, Res dial position | Every session except the held-out Res |
+
+The second costs no extra recording: it is a training run on a subset. It is there because
+it is the clean match for A2, the same data at the same setting. The third is the one
+worth playing. A GRU-24 with three inputs is about 2,100 parameters, the same order as
+A2-Lite's 1,871 weights. NeuralSeed (GRU-8, two or three knobs fed in as inputs, on a
+Daisy Seed) is the precedent.
+
+**Four comparisons, each on held-out takes no network trained on:**
+1. **Architecture:** A2-Lite against the cutoff GRU, trained on the same take. Any
+   difference comes from the architecture.
+2. **The cutoff knob:** between snapshots A2 can only jump, while the GRU should glide.
+3. **The cost of a second knob:** the two-control GRU against the cutoff GRU, at the
+   comparison Res.
+4. **Filling the gap in resonance:** the two-control GRU at the held-out Res position,
+   against the real Wasp. Res only ever moves between takes, so this is the open question.
+   Mikkonen, Wright & Välimäki (Key papers) is about choosing those positions.
+
+Judge by A/B against the real Wasp, by listening to each network's leftovers (the real
+Wasp minus the network), and by ESR on the same passage.
+
+**If comparison 4 fails:** the structure-first route from phase 4, a two-pole
+state-variable filter (Doepfer likens the Wasp to its SEM filter) with cutoff and
+resonance as real coefficients and a small network learning only the CMOS dirt. The same
+recordings train it. And **Swords** (`MODULES.md`) is the rack's filter with both cutoff
+and resonance under CV: analog, after Mutable's Blades, so a two-control GRU there needs no
+stepping at all. Keep its resonance below where it self-oscillates.
 
 **Established while building the rig (2026-10-14):**
 - **NAM's simplified trainer (v0.13.0) takes only its own input file.** It recognises
@@ -423,7 +449,8 @@ leftovers (the real Wasp minus the network), and by ESR on the same passage.
 - **`nam-full` trains on any paired audio.** That is a later route to an A2 trained on the
   sweep material, using the same packed config.
 - **The GRU trainer is phase 4's own PyTorch script, not written yet.** It reads
-  `captures/wasp/<session>/gru/`.
+  `captures/wasp/<session>/gru/`, where each take's `.npz` carries `res` alongside the
+  audio and the cutoff CV.
 
 **Tooling:** `tools/wasp_capture.py`, bench sheet `WASP.md`. It plays and records in one
 stream, with a loopback cable for latency. Recordings live in `captures/wasp/`, which is
@@ -431,8 +458,8 @@ gitignored. The tool was tested offline against a simulated filter: latency reco
 the sample, NAM files exact, and a 100-sample dropout caught. **Not yet run on the
 bench.**
 
-**Done when:** for one setting, both comparisons have been heard on the held-out take,
-for both outputs, and the gaps are written down here.
+**Done when:** all four comparisons have been heard on the held-out takes, for both
+outputs, and the gaps are written down here.
 
 ## Phase 5 — audio-rate conditioning, then hardware
 
