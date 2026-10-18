@@ -237,7 +237,19 @@ Why this order:
 .venv/bin/python tools/wasp_capture.py record captures/wasp/lp-res6-mid
 ```
 
-Then Mix to its HP stop and Frq to its max stop, and the same five steps with `hp-` names,
+Then Mix to its HP stop and Frq to its max stop, and the same five steps with `hp-` names.
+**In HP the Wasp has a memory of a few minutes** (found 2026-10-18): its cutoff shifts a
+little with what it was doing beforehand. The same test take, sample for sample, matched
+itself to −24 to −32 dB whenever a pause came before it, and to −22 dB across two takes
+that both came seconds after the same sweep, but only −15 to −18 dB between the two
+kinds. The first A2 take after a pause creeps during its three minutes and fails NAM's
+check; recorded straight after other takes it passes. So in HP, **don't start the A2
+takes cold**: put a take before snap1 (a test take, or the HP ladder). The best guess,
+not proven, is heat in the circuit that sets the cutoff: it warms with the cutoff
+itself, and with Frq at max, the 0 V the ES-10 sends between takes is the Wasp's
+highest cutoff. LP, where 0 V is the lowest, showed only a trace (its first snapshot at
+0.0074 against 0.0001 for the rest). A test that would settle it: hold CV 1 at 0 V for
+three minutes, then a test take; hold it at −9 V for three minutes, then another. Use
 `--mix hp --cv-range=-10,0 --knobs "Lev 10, Frq max"`. `hp-res6` takes
 `--snapshots=-9,-7,-5,-3,-1`; the other HP sessions take none. Those voltages were
 confirmed with an HP ladder from −10 to 0 V (`make ladder --from -10 --to 0`).
@@ -258,9 +270,15 @@ Each take should read **OK**. The flags:
 | Flag | Meaning | Do |
 |---|---|---|
 | `DROPOUT` | The latency changed during the take, so samples were lost | Record that take again |
-| `start and end differ` | NAM's own check: the validation passage came out differently at 0:00 and 3:01 | The Wasp drifted. Warm it up longer, then record again |
+| `start and end differ` | NAM's own check: the validation passage came out differently at 0:00 and 3:01 | The Wasp drifted: warm it up longer, then record again. **Unless the output is near the hiss:** with only about 16 dB between them, the hiss alone fails the check (`hp-res6` snap5, HP at −1 V: predicted 0.046, measured 0.048). Then nothing moved; train it with NAM's "Ignore and proceed" |
 | `full scale reached` | A Wasp output clipped the ES-10 input (±12 V) | Turn Lev down, and keep it there for both series |
 | `loopback only … clean` | The loopback cable isn't right | Check OUT 3 → IN 3 |
+
+**Disk space.** A full series is large: about 2.7 GB for a session with A2 takes and
+0.6 GB for each of the others once split, so both series come to about 20 GB, more than
+the MacBook Air had free. `record` refuses to start a take it cannot save. `gru/` and
+`listen/` can be deleted at any time and rebuilt with `split`, as long as `play/` and
+`rec/` are kept; `rec/` is the one thing that cannot be rebuilt.
 
 What comes out, in `captures/wasp/<session>/`:
 - **`nam/`** (comparison session): one 24-bit file per snapshot and output, exactly the

@@ -481,8 +481,16 @@ Res 6 with snapshots at +2, +3.5, +5, +6.5 and +8 V (LP) and −9, −7, −5, �
 confirmed by an HP ladder: HP changes over the whole −10 to 0 V range).
 What the tour measured: the Frq knob's travel is worth about 13 V on CV 1; the Wasp's
 outputs clip at about +5.9/−5.1 V (LP/HP) and ±5.5 V (BP); Lev 5 is about 20 dB below
-Lev 10, while the Wasp's hiss stays at about −77 dBFS. **HP series under way:** Mix and Frq at their clockwise stops, in
-the same order as LP (6, evens, 6, odds, 6).
+Lev 10, while the Wasp's hiss stays at about −77 dBFS. **The HP series is recorded too** (Mix and Frq at their clockwise
+stops, the same order). Every take passes; NAM's check fails on HP snap5 (−1 V) only
+because the output there is 16 dB above the hiss, so it trains with NAM's override. HP
+showed a memory of a few minutes: the cutoff shifts slightly with what the Wasp did
+before, the same test take matching itself to −24 to −32 dB after a pause but only −15
+to −18 dB against one recorded straight after a sweep. Best guess: heat in the cutoff
+circuit, which with Frq at max is hottest at the 0 V between takes. Not learnable by
+either network; it sets how closely the real Wasp in HP matches itself, and so the
+floor for judging them. **Next: training, once the dataset has a bigger home (about
+20 GB with every session split).**
 
 **Tooling:** `tools/wasp_capture.py`, bench sheet `WASP.md`. It plays and records in one
 stream, with a loopback cable for latency. Recordings live in `captures/wasp/`, which is
