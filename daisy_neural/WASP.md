@@ -61,10 +61,14 @@ latency at the start and the end of every take, which is how a dropped buffer ge
 
 ## Once, before the first session
 
-1. **ES-10 jumper to DC.** It sits at the top of the board, labelled HPF (manual p. 6).
-   Leave inputs 1–3 at modular level, with no jumpers on the input header.
-2. **Focusrite at 48 kHz.** In Focusrite Control, route three playback channels to ADAT
-   1–3 and ADAT inputs 1–3 to three record channels.
+1. **ES-10 jumper to DC.** Block J6 at the top of the board has two columns, SLOW SD and
+   HPF. The factory jumper lies across the top row, which is ground, so the inputs are
+   AC-coupled. For DC it stands upright on the **HPF** column (manual p. 6, second photo).
+   Leave inputs 1–3 at modular level, with no jumpers on the input header J5.
+2. **Focusrite at 48 kHz.** On the Scarlett 16i16 4th Gen, ADAT 1–8 are **playback 7–14**
+   out and **inputs 11–18** back. Inputs 7–8 are its internal loopback mix, not ADAT.
+   Found 2026-10-18 by playing a quiet burst on each playback channel in turn and
+   watching which input it came back on.
 3. **`captures/wasp/rig.json`.** It appears with the first `make rigcheck`. Fill in
    `device` (part of the name `devices` prints, for example `Scarlett`) and the channel
    numbers from step 2.
@@ -83,28 +87,41 @@ latency at the start and the end of every take, which is how a dropped buffer ge
 
 ## 1. Rig check (5 minutes)
 
-Patch everything above except OUT 2: leave that on a loose cable with the multimeter on
-it, DC volts, tip to sleeve.
+**The meter first.** Unplug the loopback lead from IN 3, leaving it in OUT 3, and put the
+multimeter (DC volts) across its tip and sleeve. Play the meter file and read it:
+
+```
+.venv/bin/python tools/wasp_capture.py make meter
+.venv/bin/python tools/wasp_capture.py record captures/wasp/meter.wav
+```
+
+It holds half of full scale on OUT 2 and OUT 3 for 40 s. The "nothing came back on the
+loopback" warning is expected, since the lead is on the meter. Plug it back into IN 3.
+
+**Then the check**, with the meter's reading:
 
 ```
 .venv/bin/python tools/wasp_capture.py make rigcheck
 .venv/bin/python tools/wasp_capture.py record captures/wasp/rigcheck.wav
+.venv/bin/python tools/wasp_capture.py check captures/wasp/rigcheck.rec.wav --meter-volts 5.48 --save
 ```
 
-Read the meter **between 4 and 19 seconds**, while OUT 2 holds half of full scale. Then:
+It plays a noise burst for the latency, DC holds on OUT 2 and OUT 3, then a 110 Hz saw
+through the Wasp while CV 1 ramps the filter open, so a shut filter (Frq at zero) is not
+mistaken for bad patching. `--save` writes what it measured into `rig.json`, so every
+later file is made in volts.
 
-```
-.venv/bin/python tools/wasp_capture.py check captures/wasp/rigcheck.rec.wav --meter-volts 5.03 --save
-```
-
-Good looks like this:
-- a latency of a few milliseconds, with the burst found far above the floor;
-- **"DC gets through"**;
-- a loopback gain near 1;
-- both Wasp outputs well above −60 dBFS during the saw.
-
-`--save` writes the ES-10's volts per full scale into `rig.json`, so every later file is
-made in volts.
+What it read on 2026-10-18, so you know what good looks like:
+- **latency 12,369 samples (258 ms)**: long, because the recorder asks for large buffers
+  to avoid dropouts. It moves by a few samples each time the stream starts, which is why
+  every take measures its own;
+- **"DC gets through"**, with the loopback gain from the DC holds (0.916) and from the saw
+  (0.9155) agreeing, and the saw's residual below −30 dB;
+- **ES-10: 10.96 V per full scale out, 11.97 V in** (the meter read 5.48 V);
+- **input offsets around +0.02 of full scale** (about 240 mV) on all three inputs, which
+  the split subtracts;
+- **both Wasp outputs 66 dB over their floor** once CV 1 opens the filter. The Wasp's
+  floor at rest is about −77 dBFS, well above the ES-10's own −104.
 
 ## 2. The listening tour
 

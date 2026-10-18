@@ -30,6 +30,8 @@ disagree, samples were dropped and the take is recorded again.
 Steps, in order. Files land in captures/wasp/, which git ignores.
 
     .venv/bin/python tools/wasp_capture.py devices
+    .venv/bin/python tools/wasp_capture.py make meter         # then read a multimeter on OUT 3
+    .venv/bin/python tools/wasp_capture.py record captures/wasp/meter.wav
     .venv/bin/python tools/wasp_capture.py make rigcheck
     .venv/bin/python tools/wasp_capture.py record captures/wasp/rigcheck.wav
     .venv/bin/python tools/wasp_capture.py check captures/wasp/rigcheck.rec.wav --meter-volts 5.0 --save
@@ -81,20 +83,25 @@ FS_MAX = 0.98  # never ask the ES-10 for more than this fraction of full scale
 RAMP = SR // 4
 SETTLE = SR
 BURST = 2048
-GAP = SR // 2
+GAP = SR  # longer than any latency search, so the search never reaches the payload
 POST = SR
 BURST_AT = RAMP + SETTLE
 PAYLOAD_AT = BURST_AT + BURST + GAP
 REST_WINDOW = (RAMP + SETTLE // 2, BURST_AT)  # silent, CV settled
-MAX_LATENCY = SR // 4  # the search range; a real chain is a few ms
+CAUSAL_MARGIN = 2  # training data is cut this many samples late, so no network has to
+# predict the future (NAM's docs advise "a few samples" for the same reason)
+MAX_LATENCY = int(0.9 * SR)  # the search range. Measured 2026-10-18: 12,379 samples
+# (258 ms) round trip, Scarlett 16i16 4th Gen + ES-10 with sounddevice's latency='high'
 
 # The rig check, in seconds.
 RC_QUIET = (0.5, 2.5)
 RC_BURST = 3.0
-RC_POS = (4.0, 19.0)  # +0.5 of full scale on OUT 2 and OUT 3: read the meter here
+RC_POS = (4.0, 19.0)  # +0.5 of full scale on OUT 2 and OUT 3
 RC_NEG = (19.0, 34.0)  # -0.5
-RC_SAW = (36.0, 46.0)  # a 110 Hz saw through the Wasp
+RC_SAW = (36.0, 46.0)  # a 110 Hz saw through the Wasp, while CV 1 ramps the filter open
+RC_SAW_CV = 0.8  # where that ramp ends, in full scale: wide open even with Frq at zero
 RC_LEN = 48.0
+METER_LEN = 40.0  # the meter file: OUT 2 and OUT 3 hold +0.5 of full scale this long
 
 LP, BP, LOOP = 0, 1, 2  # recording channels
 AUDIO, CV = 0, 1  # play channels (2 is the loopback, a copy of AUDIO)
@@ -340,7 +347,14 @@ def make_rigcheck(args):
     out[s(RC_NEG[0]):s(RC_NEG[1]), CV] = -0.5
     saw = oscillate(wavetable("saw", harmonics_for(110)), np.full(s(RC_SAW[1]) - s(RC_SAW[0]), 110.0))
     out[s(RC_SAW[0]):s(RC_SAW[1]), AUDIO] = 0.3 * saw * envelope(len(saw), 0.01, 0.01)
-    out[:, 2] = out[:, AUDIO] + out[:, CV]  # the loopback sees the burst, the DC holds and the saw
+    # Open the filter under the saw, so a shut filter (Frq at zero) is not mistaken for
+    # bad patching.
+    out[s(RC_SAW[0]):s(RC_SAW[1]), CV] = np.linspace(0.0, RC_SAW_CV, len(saw))
+    out[s(RC_SAW[1]):, CV] = np.linspace(RC_SAW_CV, 0.0, n - s(RC_SAW[1]))
+    # The loopback sees the burst, the DC holds and the saw, but not the CV ramp under the
+    # saw: saw and ramp together would pass full scale and clip.
+    out[:, 2] = out[:, AUDIO] + out[:, CV]
+    out[s(RC_SAW[0]):, 2] = out[s(RC_SAW[0]):, AUDIO]
     ROOT.mkdir(parents=True, exist_ok=True)
     path = ROOT / "rigcheck.wav"
     sf.write(path, out, SR, subtype="FLOAT")
@@ -348,10 +362,23 @@ def make_rigcheck(args):
         save_rig(load_rig())
         print(f"wrote {rel(RIG)}: fill in device and the channel numbers")
     print(f"wrote {rel(path)} ({RC_LEN:.0f} s)\n"
-          f"  {RC_POS[0]:.0f}-{RC_POS[1]:.0f} s: OUT 2 holds +0.5 of full scale. Read the meter "
-          f"on OUT 2 here; that number is --meter-volts.\n"
-          f"  {RC_NEG[0]:.0f}-{RC_NEG[1]:.0f} s: -0.5 of full scale.\n"
-          f"  {RC_SAW[0]:.0f}-{RC_SAW[1]:.0f} s: a 110 Hz saw through the Wasp.")
+          f"  {RC_BURST:.0f} s: a noise burst on the loopback, for the latency.\n"
+          f"  {RC_POS[0]:.0f}-{RC_NEG[1]:.0f} s: OUT 2 and OUT 3 hold +0.5, then -0.5 of full scale.\n"
+          f"  {RC_SAW[0]:.0f}-{RC_SAW[1]:.0f} s: a 110 Hz saw through the Wasp while CV 1 ramps it open.")
+
+
+def make_meter(args):
+    """Half of full scale held on OUT 2 and OUT 3, long enough to read a multimeter."""
+    out = np.zeros((int(METER_LEN * SR), 3), np.float32)
+    out[:, CV] = 0.5
+    out[:, 2] = 0.5
+    ROOT.mkdir(parents=True, exist_ok=True)
+    path = ROOT / "meter.wav"
+    sf.write(path, out, SR, subtype="FLOAT")
+    print(f"wrote {rel(path)} ({METER_LEN:.0f} s): OUT 2 and OUT 3 hold +0.5 of full scale.\n"
+          "  Unplug the loopback lead from IN 3, leave it in OUT 3, and read the meter across its\n"
+          "  tip and sleeve (DC volts) while this plays. That reading is --meter-volts. Then plug\n"
+          "  it back into IN 3.")
 
 
 def make_ladder(args):
@@ -557,10 +584,34 @@ def latency(played, recorded, at, length):
     """Lag (samples) of `recorded` behind `played` for the window played[at:at+length]."""
     ref = played[at:at + length]
     seg = recorded[at:at + length + MAX_LATENCY]
+    seg = seg - seg.mean()  # a DC-coupled input's offset would otherwise swamp the floor
     c = signal.correlate(seg, ref, mode="valid", method="fft")
     lag = int(np.argmax(np.abs(c)))
     strength = float(np.abs(c[lag]) / (np.median(np.abs(c)) + 1e-20))
     return lag, strength
+
+
+def band_gain(played, recorded):
+    """Gain, residual and sub-sample delay of `recorded` against `played`, both
+    band-passed to 100 Hz-5 kHz, so neither the CV nor an AC-coupled input's high-pass can
+    bias them. The converters add a fraction of a sample of delay on top of the whole
+    samples `latency` finds; left uncorrected it leaves a residual of -10 to -25 dB on
+    bright material, enough to look like a bad cable. A real fault leaves one near 0 dB."""
+    sos = signal.butter(4, [100, 5000], btype="band", fs=SR, output="sos")
+    a, b = signal.sosfiltfilt(sos, played), signal.sosfiltfilt(sos, recorded)
+    # The fraction: the cross-correlation's peak near lag 0, refined by a parabola.
+    mid = len(a) // 2
+    w = slice(max(0, mid - 10 * SR), mid + 10 * SR)
+    c = signal.correlate(b[w], a[w], mode="full", method="fft")
+    z = len(a[w]) - 1
+    k = z - 4 + int(np.argmax(c[z - 4:z + 5]))
+    y0, y1, y2 = c[k - 1], c[k], c[k + 1]
+    d = (k - z) + 0.5 * (y0 - y2) / (y0 - 2 * y1 + y2 + 1e-30)
+    n2 = 1 << int(np.ceil(np.log2(len(a) + 64)))
+    f = np.fft.rfftfreq(n2)
+    a = np.fft.irfft(np.fft.rfft(a, n2) * np.exp(-2j * np.pi * f * d), n2)[:len(b)]
+    g = float(np.dot(b, a) / (np.dot(a, a) + 1e-20))
+    return g, esr(g * a, b), float(d)
 
 
 def esr(pred, target):
@@ -597,30 +648,47 @@ def check(args):
     neg = loop[s(RC_NEG[0] + 0.5) + lag:s(RC_NEG[1] - 0.5) + lag].mean()
     first = loop[s(RC_POS[0] + 0.5) + lag:s(RC_POS[0] + 1.5) + lag].mean()
     last = loop[s(RC_POS[1] - 1.5) + lag:s(RC_POS[1] - 0.5) + lag].mean()
-    gain = pos - neg  # the holds are +0.5 and -0.5, one full scale apart
     held_ratio = last / first if abs(first) > 1e-6 else 0.0
-    print(f"loopback: +0.5 FS out reads {pos:+.4f}, -0.5 reads {neg:+.4f}: gain {gain:.4f} "
-          f"(in FS per out FS)")
-    if held_ratio < 0.9:
-        print(f"  DC is NOT getting through (the hold sags to {held_ratio:.0%}). Move the ES-10's "
-              "jumper to DC; the CV channel needs it")
+    dc = held_ratio >= 0.9
+    if dc:
+        print(f"DC gets through: the loopback's hold keeps {held_ratio:.1%} of its level over 13 s; "
+              f"+0.5 FS out reads {pos:+.4f}, -0.5 reads {neg:+.4f}")
     else:
-        print(f"  DC gets through: the hold keeps {held_ratio:.1%} of its level over 13 s")
+        print(f"DC is NOT getting through (the hold sags to {held_ratio:.0%}): the ES-10's inputs are "
+              "AC-coupled. Its jumper goes on the HPF pins for DC (manual p. 6)")
+    # The gain from the saw, in the audio band: right whether or not DC gets through.
+    s0, s1 = s(RC_SAW[0] + 0.5), s(RC_SAW[1] - 0.5)
+    pl, _ = sf.read(ROOT / "rigcheck.wav", dtype="float64", always_2d=True)
+    gain, gain_esr, frac = band_gain(pl[s0:s1, 2], r[s0 + lag:s1 + lag, LOOP])
+    print(f"loopback gain {gain:.4f} in FS per out FS, measured on the saw "
+          f"(residual {db(gain_esr):.0f} dB, after a further {frac:+.2f} samples of delay)"
+          + ("" if db(gain_esr) < -30 else "  <- poor: check OUT 3 -> IN 3"))
+    if dc and abs((pos - neg) - gain) > 0.02 * gain:
+        print(f"  note: the DC holds give {pos - neg:.4f}; the two should agree")
+    # The loudest half second of the saw, as CV 1 ramps the filter open, against the
+    # output's own floor (the Wasp is not silent at rest: tens of dB above the ES-10's).
+    half = SR // 2
     for name, ch in (("LP/HP", LP), ("BP", BP)):
-        seg = w(RC_SAW[0] + 0.5, RC_SAW[1] - 0.5)[:, ch] - offset[ch]
-        level = 20 * math.log10(np.sqrt(np.mean(seg ** 2)) + 1e-12)
-        print(f"Wasp {name:5s} during the saw: {level:6.1f} dBFS rms"
-              + ("  <- silent: check the patching" if level < -60 else ""))
+        seg = w(*RC_SAW)[:, ch] - offset[ch]
+        lv = [np.sqrt(np.mean(seg[i:i + half] ** 2)) for i in range(0, len(seg) - half, half // 2)]
+        k = int(np.argmax(lv))
+        level = 20 * math.log10(lv[k] + 1e-12)
+        rise = level - 20 * math.log10(noise[ch] + 1e-12)
+        cv_at = RC_SAW_CV * (k * half / 2 + half / 2) / len(seg)
+        print(f"Wasp {name:5s} during the saw: loudest {level:6.1f} dBFS rms, {rise:4.0f} dB over its "
+              f"floor, with CV at {cv_at:.2f} of full scale"
+              + ("  <- no saw: check OUT 1 -> AUDIO IN and OUT 2 -> CV 1" if rise < 20 else ""))
     if args.meter_volts:
         out_vfs = args.meter_volts / 0.5
         in_vfs = out_vfs / gain
         print(f"ES-10: {out_vfs:.3f} V per full scale out, {in_vfs:.3f} V per full scale in")
         if args.save:
-            rig.update(out_vfs=round(out_vfs, 4), in_vfs=round(in_vfs, 4), latency_samples=lag)
+            rig.update(out_vfs=round(out_vfs, 4), in_vfs=round(in_vfs, 4), latency_samples=lag,
+                       inputs_dc_coupled=bool(dc))
             save_rig(rig)
             print(f"saved to {rel(RIG)}")
     else:
-        print("add --meter-volts (the meter on OUT 2 during the +0.5 hold) for volts per full scale")
+        print("add --meter-volts (the meter reading from the meter file) for volts per full scale")
 
 
 def split(args):
@@ -648,21 +716,23 @@ def split(args):
         offset = rec[a + lag:b + lag].mean(axis=0)
         y = rec - offset
         p, n = t["payload_at"], t["payload_len"]
+        x = play[p:p + n, 0]
+        # The whole-sample lag from the burst, refined on the payload: the converters add a
+        # fraction more. Cut the Wasp's outputs at the true delay rounded down, less a margin.
+        g, loop_esr, frac = band_gain(x, y[p + lag:p + lag + n, LOOP])
+        cut = int(np.floor(lag + frac)) - CAUSAL_MARGIN
         # The same lag must hold at the end, or the stream dropped samples mid-take.
         tail = 5 * SR
         if np.sqrt(np.mean(play[p + n - tail:p + n, 2] ** 2)) > 1e-4:
             end_lag, _ = latency(play[:, 2], rec[:, LOOP], p + n - tail, tail)
         else:
             end_lag = None
-        x = play[p:p + n, 0]
-        loop = y[p + lag:p + lag + n, LOOP]
-        g = float(np.dot(loop, x) / np.dot(x, x))
-        loop_esr = esr(g * x, loop)
-        yl, yb = y[p + lag:p + lag + n, LP], y[p + lag:p + lag + n, BP]
+        yl, yb = y[p + cut:p + cut + n, LP], y[p + cut:p + cut + n, BP]
         clipped = [nm for nm, ch in (("LP/HP", LP), ("BP", BP)) if np.abs(rec[:, ch]).max() >= 0.999]
         entry = {"take": t["name"], "role": t["role"], "latency": lag, "end_latency": end_lag,
                  "burst_strength": round(strength), "offset_fs": offset.round(6).tolist(),
-                 "loop_gain": round(g, 5), "loop_esr_db": round(db(loop_esr), 1), "clipped": clipped}
+                 "loop_gain": round(g, 5), "loop_esr_db": round(db(loop_esr), 1),
+                 "loop_fraction": round(frac, 3), "cut_at": cut, "clipped": clipped}
         flags = []
         if end_lag is not None and end_lag != lag:
             flags.append(f"DROPOUT: lag {lag} at the start, {end_lag} at the end; record again")
@@ -685,7 +755,7 @@ def split(args):
         np.savez(d / "gru" / f"{t['name']}.npz", x=x.astype(np.float32), cv_v=cv_v,
                  y_lphp=yl.astype(np.float32), y_bp=yb.astype(np.float32),
                  res=np.float32(session.get("res", np.nan)), mix=session.get("mix", ""),
-                 role=t["role"], sr=SR, latency=lag)
+                 role=t["role"], sr=SR, latency=lag + frac, cut_at=cut)
         if t["role"] in ("sweep", "test"):
             for nm, sig in (("lphp", yl), ("bp", yb)):
                 sf.write(d / "listen" / f"{t['name']}_wasp_{nm}.wav", np.clip(sig, -1, 1), SR, subtype="PCM_24")
@@ -713,7 +783,8 @@ def main():
     sub.add_parser("devices", help="list audio devices").set_defaults(fn=devices)
 
     mk = sub.add_parser("make", help="write a play file").add_subparsers(dest="what", required=True)
-    mk.add_parser("rigcheck", help="latency, offsets, DC and volts per full scale").set_defaults(fn=make_rigcheck)
+    mk.add_parser("meter", help="hold +0.5 of full scale for the multimeter").set_defaults(fn=make_meter)
+    mk.add_parser("rigcheck", help="latency, offsets, DC, loopback gain, the Wasp answering").set_defaults(fn=make_rigcheck)
     p = mk.add_parser("ladder", help="the test riff once per CV step, for choosing settings by ear")
     p.add_argument("--from", dest="cv_from", type=float, default=-4.0, help="first CV, volts")
     p.add_argument("--to", dest="cv_to", type=float, default=6.0, help="last CV, volts")
@@ -748,7 +819,7 @@ def main():
 
     p = sub.add_parser("check", help="read a recorded rig check")
     p.add_argument("path")
-    p.add_argument("--meter-volts", type=float, help="the meter on OUT 2 during the +0.5 hold")
+    p.add_argument("--meter-volts", type=float, help="the multimeter reading while meter.wav played")
     p.add_argument("--save", action="store_true", help="write the results into rig.json")
     p.set_defaults(fn=check)
 

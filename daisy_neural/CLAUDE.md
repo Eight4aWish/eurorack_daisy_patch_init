@@ -171,9 +171,17 @@ narrower vocabulary. Keep to it in code, commits and on the panel.
     Set it to DC. ADAT carries plain sample values, so DC survives (bench check 1).
   - **8 in, 8 out** (manual rev 1.0). Outputs reach **±11 V**. Inputs clip at **±12 V**
     at modular level (101 kΩ), or ±3.5 V at line level, set per input by a jumper. Expect
-    DC offsets on DC-coupled inputs. The volts per full scale in each direction are
-    measured by `wasp_capture.py check` (WASP.md, step 1); record them here once
-    measured.
+    DC offsets on DC-coupled inputs.
+  - **Measured on the bench, 2026-10-18** (WASP.md, step 1): **10.96 V per full scale
+    out** (a meter read 5.48 V at half scale), **11.97 V per full scale in**, input offsets
+    about +0.02 of full scale (240 mV). The DC jumper had been in its factory AC position
+    until that day: block J6, upright on the HPF column for DC.
+  - Through a Scarlett 16i16 4th Gen at 48 kHz: ADAT 1–8 are playback 7–14 and inputs
+    11–18. The round trip with sounddevice's large buffers is about 12,370 samples
+    (258 ms) and moves by a few samples each time a stream starts, so every take
+    measures its own. The converters add almost exactly one sample on top of what a
+    broadband burst reports; `wasp_capture.py split` measures the fraction and cuts the
+    training data 2 samples late, so no network has to predict the future.
   - Do **not** use the 16i16's own analog jacks for CV or DC — Focusrite states none of
     its interfaces are DC-coupled.
   - No ES-9 is needed.
@@ -607,7 +615,9 @@ reading off Befaco's manual if this is ever picked up.
 ## Settled
 
 - ~~Does the ES-10 → 16i16 chain pass DC?~~ Yes with the ES-10 jumper on DC, via ADAT.
-  Confirm once on the bench (phase 0, check 1).
+  Confirmed on the bench 2026-10-18 (phase 0, check 1): a held level keeps 100% over
+  13 s. With the jumper in its factory position the inputs are AC-coupled, a high-pass
+  near 1.6 Hz.
 - ~~Does Daisy MultiFX use the bootloader and DTCM?~~ Moot: the MultiFX unit is
   repurposed, not merged into. (For the record, MultiFX is `BOOT_NONE`.)
 - ~~Is this unit affected by the shared +5V rail comb seen on the hand-built modules?~~
