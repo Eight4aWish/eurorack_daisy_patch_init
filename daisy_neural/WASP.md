@@ -33,7 +33,8 @@ deciding by ear.
 | Frq | **0** (anticlockwise stop) | **max** (clockwise stop) |
 | Cutoff range on CV 1 | **0 to +10 V** | **−10 to 0 V** |
 | Lev | **10** | **10** |
-| Res positions | **0, 2, 4, 6, 8, 10**; **5** held out | the same |
+| Res positions | **all 11 marks, 0 to 10**; **5** recorded but held out of training | the same |
+| Sweep material | **4 minutes** per position (`--sweep-minutes 4`) | the same |
 | Comparison session | **Res 6**, A2 snapshots at **+2, +3.5, +5, +6.5, +8 V** | none |
 
 Why, from the ladders (recordings in `captures/wasp/tour/`):
@@ -46,6 +47,13 @@ Why, from the ladders (recordings in `captures/wasp/tour/`):
   lopsided, so the clipping adds even harmonics. At Lev 10 with a 5 V riff they reach
   it at high resonance: up to 5% of samples flattened at Res 10. That and the CMOS
   dirt are the "crazy harmonics" at Res 10: the character worth capturing.
+- **Every mark, not every other one** (decided the same day): the GRU only hears
+  resonance at the marks recorded and fills in the rest, and between Res 5 and 10 the
+  Wasp goes from barely touching its ceiling to clipping hard. Four minutes at each of
+  11 marks is about the same time as six at each of seven, spread far more evenly.
+  Res 5 is recorded like any other mark but left out of training, so it sits in a
+  two-mark gap: a harder test than the one-mark gaps the network will play across.
+  Once it has been heard, retrain on all 11 for the network you keep.
 - **Lev is far from linear:** Lev 5 is about 20 dB below Lev 10. The Wasp's hiss
   (about −77 dBFS) does not fall with it, so Lev 5 is clean but 20 dB closer to the
   hiss. Lev 10 keeps the character and the signal; quiet material in the takes still
@@ -55,13 +63,13 @@ Why, from the ladders (recordings in `captures/wasp/tour/`):
 
 | Series | Session | Res | Takes | Time |
 |---|---|---|---|---|
-| **LP** | **Comparison** (your favourite Res) | e.g. 6 | `snap1`–`snap5` (NAM's `input.wav` at five cutoff CVs, 3:13 each), `sweep1`–`sweep2`, `test`, `test_snaps` | about 24 min |
-| | The others | e.g. 0, 2, 4, 8, 10 | `sweep1`–`sweep2`, `test` | about 7 min each |
-| | Held out | e.g. 5 | `sweep1`–`sweep2`, `test`, never trained on | about 7 min |
-| **HP** | Every Res position, held out included | the same seven | `sweep1`–`sweep2`, `test` | about 7 min each |
+| **LP** | **Comparison** | 6 | `snap1`–`snap5` (NAM's `input.wav` at five cutoff CVs, 3:13 each), `sweep1`–`sweep2`, `test`, `test_snaps` | about 22 min |
+| | The others | 0–4, 7–10 | `sweep1`–`sweep2` (2 min each), `test` | about 5 min each |
+| | Held out | 5 | the same, never trained on until it has been heard | about 5 min |
+| **HP** | Every mark, 5 included | 0–10 | `sweep1`–`sweep2`, `test` | about 5 min each |
 
-That's about 65 minutes of takes for LP and 50 for HP, plus resetting the knobs between
-sessions. The A2 comparison is done once, on LP, the classic Wasp sound. It can be split
+That's about 75 minutes of takes for LP and 55 for HP, plus turning the Res knob up a
+mark between sessions. The A2 comparison is done once, on LP, the classic Wasp sound. It can be split
 over two days if Lev and Frq aren't touched in between (photograph them), with the
 half-hour warm-up each day.
 
@@ -172,9 +180,8 @@ few Res settings, and choose:
   Listen at both Mix end stops before settling them, since HP and LP may want different
   drive and one setting has to serve both.
 - **the sweep range**: the span of CV 1 where the cutoff does something you'd use.
-- **the Res positions**: six across the dial, with more of them where the sound changes
-  fastest, plus **one held out** between two of them, to test whether the GRU fills the
-  gap. The same seven for both series. Doepfer: the Wasp can't self-oscillate, so the
+- **the Res positions**: chosen on 2026-10-18 as every mark on the dial, with 5 held out
+  of training (see "Settings chosen on the bench"). Doepfer: the Wasp can't self-oscillate, so the
   top of the dial is safe ground.
 - **the comparison Res**: your favourite, on LP. Its session also carries the A2 takes,
   and needs **five snapshot voltages** inside the range: where you'd actually leave the
@@ -190,10 +197,11 @@ make and record. The comparison session first, while the Wasp is at its most set
 
 ```
 .venv/bin/python tools/wasp_capture.py make session lp-res6 --mix lp --res 6 --cv-range=0,10 \
-    --snapshots=2,3.5,5,6.5,8 --knobs "Lev 10, Frq 0"
+    --snapshots=2,3.5,5,6.5,8 --sweep-minutes 4 --knobs "Lev 10, Frq 0"
 .venv/bin/python tools/wasp_capture.py record captures/wasp/lp-res6
 
-.venv/bin/python tools/wasp_capture.py make session lp-res0 --mix lp --res 0 --cv-range=0,10 --knobs "Lev 10, Frq 0"
+.venv/bin/python tools/wasp_capture.py make session lp-res0 --mix lp --res 0 --cv-range=0,10 \
+    --sweep-minutes 4 --knobs "Lev 10, Frq 0"
 .venv/bin/python tools/wasp_capture.py record captures/wasp/lp-res0
 ```
 
