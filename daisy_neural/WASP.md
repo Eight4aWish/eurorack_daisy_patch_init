@@ -193,11 +193,24 @@ that, and it's half a script for the video.
 ## 3. Record the series
 
 Mix to its LP end stop. Then, once per Res position: set the knob, photograph the panel,
-make and record. **The order: 6, then the other evens (0, 2, 4, 8, 10), then the odds
-(1, 3, 5, 7, 9).** The comparison session comes first, while the Wasp is at its most
-settled. After the evens you already hold every second mark, a usable set if the
-sitting ends early. And interleaving keeps any slow drift from lining up with Res,
-where the GRU would learn it as part of the resonance.
+make and record. **The order is 6, evens, 6, odds, 6, LP first and then HP:**
+
+| | Sessions | What |
+|---|---|---|
+| 1 | `lp-res6` | Res 6 in full; in the LP series it also carries the A2 takes |
+| 2 | `lp-res0`, `lp-res2`, `lp-res4`, `lp-res8`, `lp-res10` | the other evens |
+| 3 | `lp-res6-mid` | Res 6 again, the `test` take only (`--sweep-minutes 0`), 1 min |
+| 4 | `lp-res1`, `lp-res3`, `lp-res5`, `lp-res7`, `lp-res9` | the odds |
+| 5 | `lp-res6-end` | Res 6 a third time, `test` only |
+
+Why this order:
+- **The comparison session comes first,** while the Wasp is at its most settled.
+- **After the evens you already hold every second mark,** a usable set if the sitting ends
+  early.
+- **Interleaving keeps slow drift from lining up with Res,** where the GRU would learn it
+  as part of the resonance.
+- **The three Res 6 test takes measure that drift,** and show whether it happened during
+  the evens or the odds.
 
 ```
 .venv/bin/python tools/wasp_capture.py make session lp-res6 --mix lp --res 6 --cv-range=0,10 \
@@ -207,17 +220,20 @@ where the GRU would learn it as part of the resonance.
 .venv/bin/python tools/wasp_capture.py make session lp-res0 --mix lp --res 0 --cv-range=0,10 \
     --sweep-minutes 4 --knobs "Lev 10, Frq 0"
 .venv/bin/python tools/wasp_capture.py record captures/wasp/lp-res0
+
+.venv/bin/python tools/wasp_capture.py make session lp-res6-mid --mix lp --res 6 --cv-range=0,10 \
+    --sweep-minutes 0 --knobs "Lev 10, Frq 0"
+.venv/bin/python tools/wasp_capture.py record captures/wasp/lp-res6-mid
 ```
 
-Then Mix to its HP stop and Frq to its max stop, and the same seven Res positions with
-`--mix hp --cv-range=-10,0 --knobs "Lev 10, Frq max"`, names like `hp-res0`, and no
-`--snapshots`.
+Then Mix to its HP stop and Frq to its max stop, and the same five steps with `hp-` names,
+`--mix hp --cv-range=-10,0 --knobs "Lev 10, Frq max"`, and no `--snapshots` (HP's first
+Res 6 session is an ordinary one).
 
-Use the same `--cv-range` for every session in both series, or the `test` takes stop
-matching. Use the
-`=` with negative lists. `record` runs every take in turn, prints the peaks after each,
-and skips any already recorded. Don't touch the rack while it runs. To redo one take:
-`--only sweep2 --overwrite`.
+Use the same `--cv-range` for every session within a series, or its `test` takes stop
+matching. Use the `=` with negative lists. `record` runs every take in turn, prints the
+peaks after each, and skips any already recorded. Don't touch the rack while it runs. To
+redo one take: `--only sweep2 --overwrite`.
 
 ## 4. Split and check
 
@@ -245,6 +261,16 @@ What comes out, in `captures/wasp/<session>/`:
 - **`listen/`**: the real Wasp on the sweeps and the held-out takes, plus the dry
   held-out riff.
 - **`report.txt`** and **`split.json`**: the numbers behind the flags.
+
+**The drift check**, once a series' three Res 6 sessions are split:
+
+```
+.venv/bin/python tools/wasp_capture.py drift captures/wasp/lp-res6 captures/wasp/lp-res6-mid captures/wasp/lp-res6-end
+```
+
+It compares each repeat's `test` take with the first: the change in level, and what
+differs once level is matched. Both near nothing (a level change near 0 dB, a
+difference far below −20 dB) mean the Wasp held still.
 
 ## Then: hearing the differences
 
