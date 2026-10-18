@@ -302,6 +302,30 @@ It compares each repeat's `test` take with the first: the change in level, and w
 differs once level is matched. Both near nothing (a level change near 0 dB, a
 difference far below −20 dB) mean the Wasp held still.
 
+## 5. Train the A2 captures
+
+NAM's trainer lives in its own environment, because it brings PyTorch (1.4 GB):
+
+```
+/opt/homebrew/bin/python3.12 -m venv .venv-nam
+.venv-nam/bin/pip install "neural-amp-modeler==0.13.0"
+brew install python-tk@3.12      # NAM imports Tk even to train without its GUI
+```
+
+Then, with the Crucial drive attached (`captures/wasp` is a link to it):
+
+```
+.venv-nam/bin/python tools/train_a2.py --fast-dev-run captures/wasp/lp-res6/nam/snap3_+5.00V_lphp.wav
+.venv-nam/bin/python tools/train_a2.py captures/wasp/lp-res6 captures/wasp/hp-res6 --outputs lphp
+.venv-nam/bin/python tools/train_a2.py --ignore-checks captures/wasp/hp-res6/nam/snap5_-1.00V_lphp.wav
+```
+
+The first is a one-batch test of the whole chain, seconds long. `train_a2.py` does what
+NAM's GUI does (its simplified trainer, which always builds A2, then an export with the
+capture's name and calibration: +20.0 dBu in, +20.8 dBu out from the ES-10's measured
+volts) and writes `<session>/a2/<take>.nam`. It skips captures already trained. NAM's
+checks stay on; `--ignore-checks` is for the take near the hiss.
+
 ## Then: hearing the differences
 
 - **Architecture:** A2 against the cutoff GRU, both trained on the same snapshot take.
