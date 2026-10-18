@@ -125,8 +125,11 @@ Implemented in [`daisy_multiosc/`](../daisy_multiosc/) (the Joy family is not
 part of that image). The app chooser is not a runtime gesture, so it never
 competes with B7:
 
-- **At power-on:** OLED lists the firmwares. A MOD knob scrolls; short-press
-  selects (auto-boots the last-used after a short timeout).
+- **At power-on:** OLED lists the firmwares. The `TUNE` knob scrolls; a B7
+  short press selects. There is no timeout and no last-used memory — the menu
+  waits for the press, and the image is `BOOT_QSPI`, where libDaisy refuses
+  QSPI writes (`QSPIHandle::Impl::CheckProgramMemory`). With one engine
+  registered it boots straight into it.
 - **During an app:** B7 is entirely the app's.
 - Optional later: a final Edit-page item `← Switch firmware` for runtime
   switching, rather than a dedicated gesture.
