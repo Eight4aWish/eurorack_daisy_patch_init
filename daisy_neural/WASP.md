@@ -22,6 +22,35 @@ is swept by the ES-10 inside each take, and the resonance is stepped between ses
 sits at its LP end stop for one series and its HP end stop for the other. The end stops
 are exactly repeatable, which no mark on a dial is.
 
+## Settings chosen on the bench, 2026-10-18
+
+The listening tour is done. These are the settings for recording; nothing more needs
+deciding by ear.
+
+| | LP series | HP series |
+|---|---|---|
+| Mix | fully anticlockwise (LP stop) | fully clockwise (HP stop) |
+| Frq | **0** (anticlockwise stop) | **max** (clockwise stop) |
+| Cutoff range on CV 1 | **0 to +10 V** | **−10 to 0 V** |
+| Lev | **10** | **10** |
+| Res positions | **0, 2, 4, 6, 8, 10**; **5** held out | the same |
+| Comparison session | **Res 6**, A2 snapshots at **+2, +3.5, +5, +6.5, +8 V** | none |
+
+Why, from the ladders (recordings in `captures/wasp/tour/`):
+- **The Frq knob's travel is worth about 13 V on CV 1**, and CV 1 moves the cutoff about
+  an octave per volt in the middle of its range, less near the top. The ES-10 only
+  reaches about ±10.7 V, so neither Frq stop covers the whole range. From the 0 stop,
+  0 to +10 V runs from shut to fully open for LP, and only misses the top, where LP has
+  nothing left to do. From the max stop, −10 to 0 V covers the top, where HP works.
+- **The Wasp's outputs clip** at about **+5.9 / −5.1 V** (LP/HP) and **±5.5 V** (BP),
+  lopsided, so the clipping adds even harmonics. At Lev 10 with a 5 V riff they reach
+  it at high resonance: up to 5% of samples flattened at Res 10. That and the CMOS
+  dirt are the "crazy harmonics" at Res 10: the character worth capturing.
+- **Lev is far from linear:** Lev 5 is about 20 dB below Lev 10. The Wasp's hiss
+  (about −77 dBFS) does not fall with it, so Lev 5 is clean but 20 dB closer to the
+  hiss. Lev 10 keeps the character and the signal; quiet material in the takes still
+  goes in clean.
+
 ## The two series
 
 | Series | Session | Res | Takes | Time |
@@ -160,16 +189,17 @@ Mix to its LP end stop. Then, once per Res position: set the knob, photograph th
 make and record. The comparison session first, while the Wasp is at its most settled:
 
 ```
-.venv/bin/python tools/wasp_capture.py make session lp-res6 --mix lp --res 6 --cv-range=-3,5 \
-    --snapshots=-2,0,1.5,3,4.5 --knobs "Lev 7, Frq noon"
+.venv/bin/python tools/wasp_capture.py make session lp-res6 --mix lp --res 6 --cv-range=0,10 \
+    --snapshots=2,3.5,5,6.5,8 --knobs "Lev 10, Frq 0"
 .venv/bin/python tools/wasp_capture.py record captures/wasp/lp-res6
 
-.venv/bin/python tools/wasp_capture.py make session lp-res0 --mix lp --res 0 --cv-range=-3,5 --knobs "Lev 7, Frq noon"
+.venv/bin/python tools/wasp_capture.py make session lp-res0 --mix lp --res 0 --cv-range=0,10 --knobs "Lev 10, Frq 0"
 .venv/bin/python tools/wasp_capture.py record captures/wasp/lp-res0
 ```
 
-Then Mix to its HP end stop, and the same seven Res positions with `--mix hp` and names
-like `hp-res0`, without `--snapshots`.
+Then Mix to its HP stop and Frq to its max stop, and the same seven Res positions with
+`--mix hp --cv-range=-10,0 --knobs "Lev 10, Frq max"`, names like `hp-res0`, and no
+`--snapshots`.
 
 Use the same `--cv-range` for every session in both series, or the `test` takes stop
 matching. Use the

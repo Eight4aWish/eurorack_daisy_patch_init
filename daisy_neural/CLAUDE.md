@@ -466,6 +466,15 @@ stepping at all. Keep its resonance below where it self-oscillates.
   `captures/wasp/<session>/gru/`, where each take's `.npz` carries `res` and `mix`
   alongside the audio and the cutoff CV.
 
+**Status, 2026-10-18: rig checked and listening tour done; no session recorded yet.**
+The settings are chosen (WASP.md, "Settings chosen on the bench"): Lev 10; LP at Frq 0
+with CV 1 from 0 to +10 V, HP at Frq max with −10 to 0 V; Res 0, 2, 4, 6, 8, 10, with 5
+held out; the comparison session at Res 6 with snapshots at +2, +3.5, +5, +6.5 and +8 V.
+What the tour measured: the Frq knob's travel is worth about 13 V on CV 1; the Wasp's
+outputs clip at about +5.9/−5.1 V (LP/HP) and ±5.5 V (BP); Lev 5 is about 20 dB below
+Lev 10, while the Wasp's hiss stays at about −77 dBFS. **Next: warm up for 30 minutes,
+re-run the 48 s rig check, then record `lp-res6`.**
+
 **Tooling:** `tools/wasp_capture.py`, bench sheet `WASP.md`. It plays and records in one
 stream, with a loopback cable for latency. Recordings live in `captures/wasp/`, which is
 gitignored. The tool was tested offline against a simulated filter: latency recovered to
