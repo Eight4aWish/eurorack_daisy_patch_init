@@ -467,7 +467,13 @@ stepping at all. Keep its resonance below where it self-oscillates.
   `captures/wasp/<session>/gru/`, where each take's `.npz` carries `res` and `mix`
   alongside the audio and the cutoff CV.
 
-**Status, 2026-10-18: rig checked and listening tour done; no session recorded yet.**
+**Status, 2026-10-18: the LP series is recorded; HP is next.** All 11 Res marks at Frq 0,
+with the A2 snapshots in `lp-res6` and the two Res 6 drift repeats: every take passed,
+and NAM's own check passed on all five A2 takes. The drift check found the Wasp still
+over the whole series (level within 0.03 dB, the BP resonance peak on the same
+frequency at every CV hold); the repeats differ from the first by about −28 dB, all of
+it where the Wasp clips hard, from resetting the Res knob by eye, and no more at the end
+than in the middle.
 The settings are chosen (WASP.md, "Settings chosen on the bench"): Lev 10; LP at Frq 0
 with CV 1 from 0 to +10 V, HP at Frq max with −10 to 0 V; every Res mark 0 to 10 with
 4 minutes of sweeps each, 5 recorded but held out of training; the comparison session at
@@ -475,8 +481,8 @@ Res 6 with snapshots at +2, +3.5, +5, +6.5 and +8 V (LP) and −9, −7, −5, �
 to be confirmed by an HP ladder).
 What the tour measured: the Frq knob's travel is worth about 13 V on CV 1; the Wasp's
 outputs clip at about +5.9/−5.1 V (LP/HP) and ±5.5 V (BP); Lev 5 is about 20 dB below
-Lev 10, while the Wasp's hiss stays at about −77 dBFS. **Next: warm up for 30 minutes,
-re-run the 48 s rig check, then record `lp-res6`.**
+Lev 10, while the Wasp's hiss stays at about −77 dBFS. **Next: an HP ladder at Res 6 (−10 to 0 V, Mix and Frq at
+their clockwise stops) to confirm HP's snapshot voltages, then the HP series.**
 
 **Tooling:** `tools/wasp_capture.py`, bench sheet `WASP.md`. It plays and records in one
 stream, with a loopback cable for latency. Recordings live in `captures/wasp/`, which is
