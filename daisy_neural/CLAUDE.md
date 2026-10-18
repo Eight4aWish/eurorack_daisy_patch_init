@@ -420,15 +420,16 @@ second input anyway, since it costs nothing, but no network is planned on it.
 
 | Network | Inputs | Trained on |
 |---|---|---|
-| **A2 snapshots** (NAM's WaveNet) | audio | NAM's standard `input.wav` at five cutoff CVs, in the LP comparison session only: one capture each |
+| **A2 snapshots** (NAM's WaveNet) | audio | NAM's standard `input.wav` at five cutoff CVs, in each series' Res 6 session: one capture each |
 | **GRU, cutoff** | audio, cutoff CV | The LP comparison session: those five takes plus about 6 minutes of material with the CV moving |
 | **GRU, cutoff and resonance**, one per series (LP, HP) | audio, cutoff CV, Res dial position | Every session of its series except the held-out Res |
 
 The second costs no extra recording: it is a training run on a subset. It is there because
 it is the clean match for A2, the same data at the same setting. The third is the one
 worth playing, as LP and as HP; one GRU taking the end stop as a further input is a later
-option. The A2 comparison is done once, on LP, the classic Wasp sound. A GRU-24 with three inputs is about 2,100 parameters, the same order as
-A2-Lite's 1,871 weights. NeuralSeed (GRU-8, two or three knobs fed in as inputs, on a
+option. The A2-against-GRU comparison is made on LP, the classic Wasp sound; HP gets A2
+snapshots too, because A2 is the only kind of capture Mirth plays today. A GRU-24 with
+three inputs is about 2,100 parameters, the same order as A2-Lite's 1,871 weights. NeuralSeed (GRU-8, two or three knobs fed in as inputs, on a
 Daisy Seed) is the precedent.
 
 **Four comparisons, each on held-out takes no network trained on:**
@@ -470,7 +471,8 @@ stepping at all. Keep its resonance below where it self-oscillates.
 The settings are chosen (WASP.md, "Settings chosen on the bench"): Lev 10; LP at Frq 0
 with CV 1 from 0 to +10 V, HP at Frq max with −10 to 0 V; every Res mark 0 to 10 with
 4 minutes of sweeps each, 5 recorded but held out of training; the comparison session at
-Res 6 with snapshots at +2, +3.5, +5, +6.5 and +8 V.
+Res 6 with snapshots at +2, +3.5, +5, +6.5 and +8 V (LP) and −9, −7, −5, −3 and −1 V (HP,
+to be confirmed by an HP ladder).
 What the tour measured: the Frq knob's travel is worth about 13 V on CV 1; the Wasp's
 outputs clip at about +5.9/−5.1 V (LP/HP) and ±5.5 V (BP); Lev 5 is about 20 dB below
 Lev 10, while the Wasp's hiss stays at about −77 dBFS. **Next: warm up for 30 minutes,

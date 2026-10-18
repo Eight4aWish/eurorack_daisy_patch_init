@@ -12,7 +12,7 @@ reference for all of them:
 
 | Network | Learns | Trained on |
 |---|---|---|
-| **A2 (NAM's WaveNet)** | One capture per cutoff, at one resonance | The LP comparison session's snapshot takes |
+| **A2 (NAM's WaveNet)** | One capture per cutoff, at one resonance | The snapshot takes in each series' Res 6 session |
 | **GRU, cutoff** | The cutoff as a knob, at one resonance | The LP comparison session |
 | **GRU, cutoff and resonance**, one for LP and one for HP | Both, as knobs | Every session of its series except the held-out one |
 
@@ -35,7 +35,7 @@ deciding by ear.
 | Lev | **10** | **10** |
 | Res positions | **all 11 marks, 0 to 10**; **5** recorded but held out of training | the same |
 | Sweep material | **4 minutes** per position (`--sweep-minutes 4`) | the same |
-| Comparison session | **Res 6**, A2 snapshots at **+2, +3.5, +5, +6.5, +8 V** | none |
+| A2 snapshots | in `lp-res6`: **+2, +3.5, +5, +6.5, +8 V** | in `hp-res6`: **−9, −7, −5, −3, −1 V**, to be confirmed by an HP ladder before the series |
 
 Why, from the ladders (recordings in `captures/wasp/tour/`):
 - **The Frq knob's travel is worth about 13 V on CV 1**, and CV 1 moves the cutoff about
@@ -54,6 +54,12 @@ Why, from the ladders (recordings in `captures/wasp/tour/`):
   Res 5 is recorded like any other mark but left out of training, so it sits in a
   two-mark gap: a harder test than the one-mark gaps the network will play across.
   Once it has been heard, retrain on all 11 for the network you keep.
+- **A2 snapshots in both series** (decided the same day). The A2-against-GRU comparison
+  only needs LP, but A2 captures are the only kind Mirth plays today: without HP
+  snapshots, Mirth would get a Wasp LP and no Wasp HP until the GRU engine exists. HP's
+  voltages skip 0 V, where the cutoff is up around 8 kHz and an HP capture would be
+  mostly the Wasp's hiss; they come from the LP-mode ladder, so a 50 s HP ladder checks
+  them first.
 - **Lev is far from linear:** Lev 5 is about 20 dB below Lev 10. The Wasp's hiss
   (about −77 dBFS) does not fall with it, so Lev 5 is clean but 20 dB closer to the
   hiss. Lev 10 keeps the character and the signal; quiet material in the takes still
@@ -66,10 +72,12 @@ Why, from the ladders (recordings in `captures/wasp/tour/`):
 | **LP** | **Comparison** | 6 | `snap1`–`snap5` (NAM's `input.wav` at five cutoff CVs, 3:13 each), `sweep1`–`sweep2`, `test`, `test_snaps` | about 22 min |
 | | The others | 0–4, 7–10 | `sweep1`–`sweep2` (2 min each), `test` | about 5 min each |
 | | Held out | 5 | the same, never trained on until it has been heard | about 5 min |
-| **HP** | Every mark, 5 included | 0–10 | `sweep1`–`sweep2`, `test` | about 5 min each |
+| **HP** | `hp-res6` | 6 | the same as `lp-res6`, with HP's snapshot voltages | about 22 min |
+| | The others | 0–4, 7–10, and 5 held out | `sweep1`–`sweep2`, `test` | about 5 min each |
 
-That's about 75 minutes of takes for LP and 55 for HP, plus turning the Res knob up a
-mark between sessions. The A2 comparison is done once, on LP, the classic Wasp sound. It can be split
+That's about 75 minutes of takes for each series, plus turning the Res knob up a mark
+between sessions. The A2-against-GRU comparison is made on LP; HP's snapshots are for
+Mirth's card. It can be split
 over two days if Lev and Frq aren't touched in between (photograph them), with the
 half-hour warm-up each day.
 
@@ -227,8 +235,9 @@ Why this order:
 ```
 
 Then Mix to its HP stop and Frq to its max stop, and the same five steps with `hp-` names,
-`--mix hp --cv-range=-10,0 --knobs "Lev 10, Frq max"`, and no `--snapshots` (HP's first
-Res 6 session is an ordinary one).
+`--mix hp --cv-range=-10,0 --knobs "Lev 10, Frq max"`. `hp-res6` takes
+`--snapshots=-9,-7,-5,-3,-1`; the other HP sessions take none. Before `hp-res6`, run a
+ladder from −10 to 0 V in HP (`make ladder --from -10 --to 0`) to confirm those voltages.
 
 Use the same `--cv-range` for every session within a series, or its `test` takes stop
 matching. Use the `=` with negative lists. `record` runs every take in turn, prints the
