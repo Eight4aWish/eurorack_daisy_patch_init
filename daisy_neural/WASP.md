@@ -193,7 +193,11 @@ that, and it's half a script for the video.
 ## 3. Record the series
 
 Mix to its LP end stop. Then, once per Res position: set the knob, photograph the panel,
-make and record. The comparison session first, while the Wasp is at its most settled:
+make and record. **The order: 6, then the other evens (0, 2, 4, 8, 10), then the odds
+(1, 3, 5, 7, 9).** The comparison session comes first, while the Wasp is at its most
+settled. After the evens you already hold every second mark, a usable set if the
+sitting ends early. And interleaving keeps any slow drift from lining up with Res,
+where the GRU would learn it as part of the resonance.
 
 ```
 .venv/bin/python tools/wasp_capture.py make session lp-res6 --mix lp --res 6 --cv-range=0,10 \
