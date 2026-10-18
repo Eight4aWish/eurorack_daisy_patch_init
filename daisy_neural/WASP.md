@@ -35,7 +35,7 @@ deciding by ear.
 | Lev | **10** | **10** |
 | Res positions | **all 11 marks, 0 to 10**; **5** recorded but held out of training | the same |
 | Sweep material | **4 minutes** per position (`--sweep-minutes 4`) | the same |
-| A2 snapshots | in `lp-res6`: **+2, +3.5, +5, +6.5, +8 V** | in `hp-res6`: **−9, −7, −5, −3, −1 V**, to be confirmed by an HP ladder before the series |
+| A2 snapshots | in `lp-res6`: **+2, +3.5, +5, +6.5, +8 V** | in `hp-res6`: **−9, −7, −5, −3, −1 V**, confirmed by an HP ladder |
 
 Why, from the ladders (recordings in `captures/wasp/tour/`):
 - **The Frq knob's travel is worth about 13 V on CV 1**, and CV 1 moves the cutoff about
@@ -56,10 +56,13 @@ Why, from the ladders (recordings in `captures/wasp/tour/`):
   Once it has been heard, retrain on all 11 for the network you keep.
 - **A2 snapshots in both series** (decided the same day). The A2-against-GRU comparison
   only needs LP, but A2 captures are the only kind Mirth plays today: without HP
-  snapshots, Mirth would get a Wasp LP and no Wasp HP until the GRU engine exists. HP's
-  voltages skip 0 V, where the cutoff is up around 8 kHz and an HP capture would be
-  mostly the Wasp's hiss; they come from the LP-mode ladder, so a 50 s HP ladder checks
-  them first.
+  snapshots, Mirth would get a Wasp LP and no Wasp HP until the GRU engine exists.
+- **The HP ladder** (Res 6, Frq at max, −10 to 0 V) showed HP changing over the whole
+  range: barely filtering at −10 V, loudest at −9 V with the resonance on the riff's
+  notes, then thinner by 2–4 dB a volt, its centroid climbing about 1.5 kHz a volt near
+  the top, to 10.3 kHz at 0 V. Even at 0 V it is 36 dB above the hiss, the thin top of
+  the riff and not noise. The snapshots are evenly spaced across that, from the
+  resonant low end to thin and bright.
 - **Lev is far from linear:** Lev 5 is about 20 dB below Lev 10. The Wasp's hiss
   (about −77 dBFS) does not fall with it, so Lev 5 is clean but 20 dB closer to the
   hiss. Lev 10 keeps the character and the signal; quiet material in the takes still
@@ -236,8 +239,8 @@ Why this order:
 
 Then Mix to its HP stop and Frq to its max stop, and the same five steps with `hp-` names,
 `--mix hp --cv-range=-10,0 --knobs "Lev 10, Frq max"`. `hp-res6` takes
-`--snapshots=-9,-7,-5,-3,-1`; the other HP sessions take none. Before `hp-res6`, run a
-ladder from −10 to 0 V in HP (`make ladder --from -10 --to 0`) to confirm those voltages.
+`--snapshots=-9,-7,-5,-3,-1`; the other HP sessions take none. Those voltages were
+confirmed with an HP ladder from −10 to 0 V (`make ladder --from -10 --to 0`).
 
 Use the same `--cv-range` for every session within a series, or its `test` takes stop
 matching. Use the `=` with negative lists. `record` runs every take in turn, prints the

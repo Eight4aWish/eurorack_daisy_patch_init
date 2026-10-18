@@ -478,11 +478,11 @@ The settings are chosen (WASP.md, "Settings chosen on the bench"): Lev 10; LP at
 with CV 1 from 0 to +10 V, HP at Frq max with −10 to 0 V; every Res mark 0 to 10 with
 4 minutes of sweeps each, 5 recorded but held out of training; the comparison session at
 Res 6 with snapshots at +2, +3.5, +5, +6.5 and +8 V (LP) and −9, −7, −5, −3 and −1 V (HP,
-to be confirmed by an HP ladder).
+confirmed by an HP ladder: HP changes over the whole −10 to 0 V range).
 What the tour measured: the Frq knob's travel is worth about 13 V on CV 1; the Wasp's
 outputs clip at about +5.9/−5.1 V (LP/HP) and ±5.5 V (BP); Lev 5 is about 20 dB below
-Lev 10, while the Wasp's hiss stays at about −77 dBFS. **Next: an HP ladder at Res 6 (−10 to 0 V, Mix and Frq at
-their clockwise stops) to confirm HP's snapshot voltages, then the HP series.**
+Lev 10, while the Wasp's hiss stays at about −77 dBFS. **HP series under way:** Mix and Frq at their clockwise stops, in
+the same order as LP (6, evens, 6, odds, 6).
 
 **Tooling:** `tools/wasp_capture.py`, bench sheet `WASP.md`. It plays and records in one
 stream, with a loopback cable for latency. Recordings live in `captures/wasp/`, which is
