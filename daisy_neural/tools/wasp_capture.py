@@ -451,7 +451,7 @@ def make_session(args):
         add(f"snap{i}_{v:+.2f}V", "snapshot", x, v, nam=True)
     # 2. The knob: material for the GRU while the CV moves. Fresh material for every Res
     #    position, so the series as a whole covers more ground.
-    n_sweeps = max(1, math.ceil(args.sweep_minutes / 3.0))
+    n_sweeps = math.ceil(args.sweep_minutes / 3.0)  # 0 gives a test-only session (a drift check)
     for i in range(1, n_sweeps + 1):
         sub = np.random.default_rng([args.seed, MIX_ENDS.index(args.mix), round(args.res * 10), i])
         secs = args.sweep_minutes * 60 / n_sweeps
@@ -774,6 +774,28 @@ def split(args):
     print(f"\nnam/ goes to NAM's trainer with {INPUT_WAV.name} as the input; gru/ is the GRU's data.")
 
 
+def drift(args):
+    """Compare the held-out `test` take of later sessions with the first's. The take is the
+    same in every session with the same range, so any difference is the Wasp moving. Each
+    recording is cut with its own sub-sample delay, which can differ by a sample between
+    takes, so the comparison fits that fraction too (band_gain) and ignores it."""
+    ref_dir = pathlib.Path(args.paths[0])
+    ref = np.load(ref_dir / "gru" / "test.npz")
+    print(f"against {ref_dir.name}/test:")
+    for path in map(pathlib.Path, args.paths[1:]):
+        z = np.load(path / "gru" / "test.npz")
+        line = f"  {path.name:16s}"
+        for nm in ("y_lphp", "y_bp"):
+            a, b = ref[nm].astype(np.float64), z[nm].astype(np.float64)
+            n = min(len(a), len(b))
+            g, e, frac = band_gain(a[:n], b[:n])
+            line += f"  {nm[2:]:4s} level {20 * math.log10(abs(g) + 1e-12):+5.2f} dB, difference {db(e):6.1f} dB"
+        print(line)
+    print("Level is any change in loudness; difference is what is left once that is matched. "
+          "Both near 0 dB and far below -20 dB (NAM's own threshold for a take's start against "
+          "its end) mean the Wasp held still.")
+
+
 # ------------------------------------------------------------------------ main
 
 def main():
@@ -801,7 +823,8 @@ def main():
                                        "Negative lists need the =: --snapshots=-2,0,1.5,3,4.5")
     p.add_argument("--cv-range", required=True, help="the GRU's sweep range, volts: --cv-range=-3,5")
     p.add_argument("--knobs", default="", help='Lev and Frq, as text: "Lev 7, Frq noon"')
-    p.add_argument("--sweep-minutes", type=float, default=6.0, help="GRU sweep material (default 6)")
+    p.add_argument("--sweep-minutes", type=float, default=6.0,
+                   help="GRU sweep material (default 6); 0 for a test-only session, the drift check")
     p.add_argument("--test-peak", type=float, default=5.0, help="held-out riff level, volts peak")
     p.add_argument("--seed", type=int, default=124)
     p.add_argument("--out-vfs", type=float, help="ES-10 volts per full scale (default: rig.json)")
@@ -822,6 +845,10 @@ def main():
     p.add_argument("--meter-volts", type=float, help="the multimeter reading while meter.wav played")
     p.add_argument("--save", action="store_true", help="write the results into rig.json")
     p.set_defaults(fn=check)
+
+    p = sub.add_parser("drift", help="compare the test takes of a series' repeated sessions")
+    p.add_argument("paths", nargs="+", help="session folders, the first as the reference")
+    p.set_defaults(fn=drift)
 
     p = sub.add_parser("split", help="cut a recorded session into NAM and GRU training files")
     p.add_argument("path", help="the session folder")
