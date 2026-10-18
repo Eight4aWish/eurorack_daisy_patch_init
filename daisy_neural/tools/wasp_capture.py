@@ -52,6 +52,7 @@ import hashlib
 import json
 import math
 import pathlib
+import shutil
 import sys
 
 import numpy as np
@@ -544,6 +545,13 @@ def record(args):
             print(f"{rec.name}: already recorded, skipped (--overwrite to redo it)")
             continue
         data, fs = sf.read(play, dtype="float32", always_2d=True)
+        # A take that plays but cannot be saved is lost (2026-10-18: a full disk). Check
+        # first, with room to spare for the split that follows.
+        need = data.nbytes * len(rec_ch) // data.shape[1] * 3
+        free = shutil.disk_usage(rec.parent if rec.parent.exists() else play.parent).free
+        if free < need:
+            raise SystemExit(f"{play.name}: only {free / 1e9:.1f} GB free, {need / 1e9:.1f} GB wanted "
+                             "for the take and its split; make room first")
         if fs != SR or data.shape[1] != len(play_ch):
             raise SystemExit(f"{play.name}: {fs} Hz, {data.shape[1]} channels; expected {SR} Hz, "
                              f"{len(play_ch)} channels")
