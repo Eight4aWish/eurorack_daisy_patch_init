@@ -734,7 +734,11 @@ def split(args):
                  "loop_gain": round(g, 5), "loop_esr_db": round(db(loop_esr), 1),
                  "loop_fraction": round(frac, 3), "cut_at": cut, "clipped": clipped}
         flags = []
-        if end_lag is not None and end_lag != lag:
+        # The start is timed on a broadband burst and the end on the take's own sound; the
+        # converters' fraction of a sample can round the two one sample apart (seen on every
+        # take, 2026-10-18). A dropped buffer moves the lag by tens or hundreds of samples,
+        # and shows in the loopback residual over the take as well.
+        if end_lag is not None and abs(end_lag - lag) > 2:
             flags.append(f"DROPOUT: lag {lag} at the start, {end_lag} at the end; record again")
         if strength < 20:
             flags.append("weak burst: is the loopback patched?")
