@@ -113,15 +113,16 @@ def chart(rs):
     w, h, left, right, top, bottom = 760, 320, 52, 12, 12, 34
     xmax = max(50, max(p[0] for p in pts) + 5)
     lo = math.floor(math.log10(max(min(p[1] for p in pts), 1e-4)))
-    hi = math.ceil(math.log10(max(p[1] for p in pts)))
+    top = max(p[1] for p in pts)  # the axis ends at the next 1, 2 or 5 above the highest point
+    hi = min(math.log10(m * 10 ** d) for d in range(lo, 4) for m in (1, 2, 5) if m * 10 ** d >= top)
     hi = max(hi, lo + 1)
     X = lambda e: left + (w - left - right) * e / xmax  # noqa: E731
     Y = lambda v: top + (h - top - bottom) * (hi - math.log10(max(v, 10 ** lo))) / (hi - lo)  # noqa: E731
     g = []
-    for d in range(lo, hi + 1):
+    for d in range(lo, math.ceil(hi) + 1):
         for m in (1, 2, 5):
             v = m * 10 ** d
-            if 10 ** lo <= v <= 10 ** hi:
+            if 10 ** lo <= v <= 10 ** hi * 1.0001:
                 y = Y(v)
                 g.append(f'<line x1="{left}" x2="{w - right}" y1="{y:.1f}" y2="{y:.1f}" class="{"grid" if m == 1 else "grid minor"}"/>')
                 g.append(f'<text x="{left - 6}" y="{y + 4:.1f}" class="axis" text-anchor="end">{v:g}</text>')
@@ -227,6 +228,7 @@ table { border-collapse:collapse; width:100%; min-width:640px }
 th, td { padding:7px 10px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; white-space:nowrap }
 th { font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); font-weight:600 }
 tr:last-child td { border-bottom:0 }
+td:last-child { white-space:normal; min-width:170px }
 .num { font-variant-numeric:tabular-nums; font-family:"IBM Plex Mono", ui-monospace, monospace; font-size:13px }
 .dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:7px }
 .bar { display:inline-block; width:60px; height:6px; background:var(--line); border-radius:3px; vertical-align:middle; overflow:hidden }
