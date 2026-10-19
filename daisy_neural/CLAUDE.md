@@ -458,9 +458,14 @@ stepping at all. Keep its resonance below where it self-oscillates.
   unscaled and the **Lev knob sets the drive**.
 - **That trainer always builds A2** (its packed WaveNet config), so the snapshot takes go
   straight into the `nam` GUI.
-- **`input.wav` (v3.0.0)** is 190 s long, peaks at −0.1 dBFS and averages −22 dBFS RMS:
-  guitar-DI dynamics. Eurorack oscillators run far hotter on average, which is why the
-  sweep takes add oscillator material from 0.5 to 9 V peak.
+- **`input.wav` (v3.0.0)** is 190 s long, peaks at −0.1 dBFS and averages −22 dBFS RMS
+  (−21 over its sounding parts). It is played material with about half its energy below
+  200 Hz; to David's ear (2026-10-19) "a guitar riff sped up and then repitched, veering
+  into synth rather than guitar territory". Its validation passage, which opens and
+  closes the file, is short plucked fragments around about 4 s of silence, its sounding
+  parts 9 dB quieter than the training section. A sustained Eurorack oscillator drives
+  the Wasp harder and more steadily, which is why the sweep takes add oscillator
+  material from 0.5 to 9 V peak.
 - **`nam-full` trains on any paired audio.** That is a later route to an A2 trained on the
   sweep material, using the same packed config.
 - **The GRU trainer is phase 4's own PyTorch script, not written yet.** It reads
@@ -498,11 +503,22 @@ scores ESR 0.048 and A2-Full 0.016: NAM's "might sound ok". On a held-out synth 
 the same setting (test_snaps' +5 V hold) both fall away: Lite 0.110, Full 0.18–0.21, and
 Full predicts peaks of 6.5 V past the real Wasp's 5.7 V ceiling. Alignment and level
 were ruled out. The riff is sustained saw, 3 dB hotter on average than NAM's training
-section and 14 dB hotter than its validation passage: NAM's file teaches the Wasp as a
-guitar hears it, not as a Eurorack oscillator drives it. That is the limit of NAM's
-simplified trainer (only its own input file), the reason the sweep takes are full of
-oscillator material, and the first real result of the comparison. Listening files are
-in `lp-res6/a2/listen/`.
+section and about 11 dB hotter than its validation passage's sounding parts: NAM's
+material does not drive the Wasp the way a sustained Eurorack oscillator does. That is
+the limit of NAM's simplified trainer (only its own input file) and the reason the sweep
+takes are full of oscillator material. Listening files are in `lp-res6/a2/listen/`.
+
+**Comparison 1, a pilot (2026-10-19).** Seven recurrent networks (`tools/train_gru.py`,
+ESR loss, one seed each) trained on that same take with NAM's own split. On NAM's
+passage every GRU from 16 units up scored 0.0010–0.0015, against A2-Lite's 0.048. On the
+held-out riff, final checkpoints: GRU-16 0.050, LSTM-24 0.063, GRU-32 0.075, GRU-24
+0.091, LSTM-16 0.099, A2-Lite 0.105, GRU-8 0.255. Those riff scores swing with the
+checkpoint chosen (GRU-24: 0.047 at epoch 83, 0.085 at 108), because selection runs on
+NAM's passage, which is nothing like the riff. **Informal listening: David's family could
+not tell the real Wasp from GRU-16 on the riff**, so ESR overstates what is audible on
+this material. David's verdict on the method as a whole: "badly designed from the
+start". A methodology is to be written and reviewed before anything more is recorded or
+trained.
 
 **Tooling:** `tools/wasp_capture.py`, bench sheet `WASP.md`. It plays and records in one
 stream, with a loopback cable for latency. Recordings live in `captures/wasp/`, which is

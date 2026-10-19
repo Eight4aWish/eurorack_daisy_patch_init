@@ -260,8 +260,9 @@ peaks after each, and skips any already recorded. Don't touch the rack while it 
 redo one take: `--only sweep2 --overwrite`.
 
 **Synth material at fixed cutoffs, for A2 through `nam-full`** (added 2026-10-19). NAM's
-file is guitar material, and the first A2 capture showed it: ESR 0.048 on NAM's passage
-but 0.110 on a held-out synth riff. These takes hold the cutoff at each snapshot voltage
+file does not drive the Wasp the way a sustained synth does (to David's ear it is a
+guitar riff sped up and repitched), and the first A2 capture scored ESR 0.048 on NAM's
+passage but 0.110 on a held-out synth riff. These takes hold the cutoff at each snapshot voltage
 under the same oscillator material as the sweeps:
 
 ```
