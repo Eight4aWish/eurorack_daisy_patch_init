@@ -658,6 +658,20 @@ MRSTFT, ESR kept for selection and reporting; one optimiser step per batch; the 
 update-gate bias started towards keeping its history; and the control-response test in
 the evaluation whatever else changes.
 
+**The second LP recipe, launched 2026-10-19 22:35** (`tools/train_lp_v2.sh`, approved by
+David): MSE on a −18 dBFS-normalised target plus NAM's MRSTFT at 0.0005, one step per
+batch, Adam 0.004 ×0.999 an epoch over a fixed 300 epochs, ESR picks the epoch, clip 10
+with non-finite steps skipped; data, splits and seeds as the first recipe (the baseline).
+GRU-16 and GRU-24 (update gate +1), seeds 1–3, on the Mac mini from the Crucial drive
+(`gru_runs/lp2_gru*`); NAM's WaveNet in A2-Lite's layout with audio, cutoff and Res as
+conditioning and FiLM before each activation (2,566 parameters), seeds 1–3 one after
+another on the laptop's GPU, from a local copy (`~/wasp_lp`, runs `lp2_wn_s*`; copy them
+to the drive afterwards). All four changes go in together, so a win does not say which
+change made it. Each batch ends with `control_response.py`, whose first version averages
+over every Res mark, hold and band and so rates the first GRUs near right (Res movement
+0.9–1.7) although on the module their Res was inaudible: to be sharpened towards the cells
+where the real Wasp changes audibly, and the direction of change, before it is believed.
+
 **Tooling:** `tools/wasp_capture.py`, bench sheet `WASP.md`. It plays and records in one
 stream, with a loopback cable for latency. Recordings live in `captures/wasp/`, which is
 gitignored. Tested offline against a simulated filter first, then used for both series
