@@ -301,7 +301,15 @@ def mrstft(pred, target):
     (FFT 512, 1024 and 2048; spectral convergence plus log magnitude), on (B, L)."""
     global _MRSTFT
     if _MRSTFT is None:
-        from nam._dependencies.auraloss.freq import MultiResolutionSTFTLoss
+        # NAM's own vendored copy, loaded without importing nam itself: nam's package
+        # start-up imports its GUI and so needs Tk, which the Mac mini's Python lacks. The
+        # copy imports only torch, numpy, scipy and matplotlib.
+        import importlib.util
+        import sys
+        deps = pathlib.Path(importlib.util.find_spec("nam").submodule_search_locations[0]) / "_dependencies"
+        if str(deps) not in sys.path:
+            sys.path.insert(0, str(deps))
+        from auraloss.freq import MultiResolutionSTFTLoss
         _MRSTFT = MultiResolutionSTFTLoss()
     return _MRSTFT(pred[:, None, :], target[:, None, :])
 
