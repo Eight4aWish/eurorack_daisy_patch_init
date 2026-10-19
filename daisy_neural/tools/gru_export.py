@@ -26,13 +26,18 @@ from train_gru import SCALE  # noqa: E402
 
 def export(run, name, gain=1.0):
     cfg = json.loads((run / "config.json").read_text())
-    if cfg.get("cell", "gru") != "gru" or cfg.get("layers", 1) != 1:
+    if cfg.get("arch", "rnn") != "rnn" or cfg.get("cell", "gru") != "gru" or cfg.get("layers", 1) != 1:
         raise ValueError(f"{run.name}: only a one-layer GRU runs on the Daisy")
     inputs = cfg["inputs"].split(",")
     sd = torch.load(run / "best.pt", map_location="cpu")
     w = [sd["rnn.weight_ih_l0"], sd["rnn.weight_hh_l0"], sd["rnn.bias_ih_l0"], sd["rnn.bias_hh_l0"],
          sd["dense.weight"].reshape(-1), sd["dense.bias"].reshape(-1)]
     flat = torch.cat([t.reshape(-1) for t in w]).tolist()
+    # A run trained on a normalised target (--target-dbfs) plays at the Wasp's own level
+    # once its output is divided by that scale, which the file's gain carries.
+    norm = run / "norm.json"
+    if norm.exists():
+        gain = gain / json.loads(norm.read_text())["target_scale"]
     return grnb.pack(name, gain, cfg["hidden"], inputs, [SCALE[k] for k in inputs], flat)
 
 

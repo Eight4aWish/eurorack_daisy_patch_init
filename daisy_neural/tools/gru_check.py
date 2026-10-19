@@ -59,7 +59,10 @@ def main():
                 subprocess.run([str(HERE / build), str(tmp / "net.grnb"), str(tmp / "in.f32"), str(tmp / "out.f32")],
                                check=True, capture_output=True)
                 outs[build] = np.fromfile(tmp / "out.f32", dtype="<f4")
-            _, keep = T.evaluate(model, [(take, 0, take.n, T.SETTLE, False)], inputs, cfg["output"], "cpu", keep=True)
+            norm = run / "norm.json"
+            scale = json.loads(norm.read_text())["target_scale"] if norm.exists() else 1.0
+            _, keep = T.evaluate(model, [(take, 0, take.n, T.SETTLE, False)], inputs, cfg["output"], "cpu",
+                                 keep=True, out_scale=scale)
             py, wasp = keep[0], take.target(0, take.n, cfg["output"])
             line = f"{take.label:24s}"
             for build in ("gru_host_exact", "gru_host"):

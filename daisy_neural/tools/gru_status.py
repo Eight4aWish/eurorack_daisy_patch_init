@@ -27,7 +27,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 HERE = pathlib.Path(__file__).resolve().parent
 RUNS = HERE.parent / "captures" / "wasp" / "gru_runs"
-EPOCH = re.compile(r"^epoch\s+(\d+)\s+train ESR ([\d.]+)\s+valid ESR ([\d.]+)\s+lr (\S+)\s+"
+EPOCH = re.compile(r"^epoch\s+(\d+)\s+train (?:ESR|MSE) ([\d.e+-]+)\s+valid ESR ([\d.]+)\s+lr (\S+)\s+"
                    r"(?:grad (\S+) \(max (\S+), (\d+)% clipped\)\s+)?([\d.]+) min")
 COLOURS = {"cutoff + Res, GRU-16": "var(--c1)", "cutoff + Res, GRU-24": "var(--c2)",
            "cutoff, GRU-16": "var(--c3)", "cutoff, GRU-24": "var(--c4)"}
@@ -65,7 +65,7 @@ def per_res(run, step):
 def read_run(run, processes):
     log = (run / "log.txt").read_text(errors="replace")
     cfg = json.loads((run / "config.json").read_text()) if (run / "config.json").exists() else {}
-    # (epoch, train ESR, valid ESR, lr, minutes, gradient median, gradient max, % clipped)
+    # (epoch, train loss, valid ESR, lr, minutes, gradient median, gradient max, % clipped)
     epochs = [(int(m[1]), float(m[2]), float(m[3]), float(m[4]), float(m[8]),
                *((float(m[5]), float(m[6]), int(m[7])) if m[5] else (None, None, None)))
               for m in map(EPOCH.match, log.splitlines()) if m]

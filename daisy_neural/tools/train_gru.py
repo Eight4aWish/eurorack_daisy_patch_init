@@ -58,6 +58,16 @@ anything else. `--judge` files are scored at the end and never used for selectio
 `file.npz@a:b` keeps seconds a to b of the take. Whole takes and spans start from rest,
 and their first 0.1 s is not scored.
 
+The revised recipe (2026-10-19, after NAM's trainer was reviewed; CLAUDE.md, "NAM's trainer,
+reviewed"): --loss mse trains on MSE of a target normalised to --target-dbfs (NAM: -18)
+plus --mrstft-weight times auraloss's multi-resolution STFT (NAM's own copy: FFT 512, 1024,
+2048; spectral convergence + log magnitude), one optimiser step per batch (--step batch),
+an exponential learning-rate decay over a fixed number of epochs (--schedule exp, no early
+stopping), and the GRU's update gate started towards keeping its history (--z-bias). ESR
+still picks the best epoch and is what is reported. --arch wavenet trains NAM's own WaveNet
+in A2-Lite's layout with the inputs (audio, cutoff, Res) as its conditioning at every layer
+and FiLM before each activation (--film), on the GPU if --device mps.
+
 Runs land in captures/wasp/gru_runs/<name>/, with TensorBoard logs:
 
     .venv-nam/bin/tensorboard --logdir captures/wasp/gru_runs
@@ -173,7 +183,10 @@ def session_material(args, train, valid, test):
                 continue
             npz = f.parent / "gru" / f"{t['name']}.npz"
             if not npz.exists():
-                missing.append(f"{f.parent.name}/{t['name']}")
+                # A session made but not yet recorded (the repeatability takes) is not
+                # missing data; one recorded but not split is.
+                if (f.parent / "rec" / f"{t['name']}.wav").exists():
+                    missing.append(f"{f.parent.name}/{t['name']}")
                 continue
             take = Take(npz)
             if out or role == "test":
@@ -219,15 +232,56 @@ def describe(train, valid, test):
 # ------------------------------------------------------------------------ model
 
 class RNNModel(nn.Module):
-    def __init__(self, n_inputs, hidden, cell="gru", layers=1):
+    def __init__(self, n_inputs, hidden, cell="gru", layers=1, z_bias=0.0):
         super().__init__()
         rnn = {"gru": nn.GRU, "lstm": nn.LSTM}[cell]
         self.rnn = rnn(n_inputs, hidden, num_layers=layers, batch_first=True)
         self.dense = nn.Linear(hidden, 1)
+        if z_bias and cell == "gru":
+            # PyTorch's GRU gates are (r, z, n); h' = (1 - z) n + z h, so a positive z bias
+            # starts every unit keeping its history: the GRU's version of NAM's LSTM
+            # forget-gate bias ("up the remembering").
+            with torch.no_grad():
+                for layer in range(layers):
+                    for b in (getattr(self.rnn, f"bias_ih_l{layer}"), getattr(self.rnn, f"bias_hh_l{layer}")):
+                        b[hidden:2 * hidden] += z_bias
 
     def forward(self, x, h=None):
         z, h = self.rnn(x, h)
         return self.dense(z).squeeze(-1), h
+
+
+def a2_lite_config(n_inputs, film):
+    """NAM's A2-Lite layout (its PackedWaveNet's 3-channel submodel), taking n_inputs
+    channels as both its input and the condition every layer mixes in. film names the FiLM
+    point to switch on in every layer (NAM 0.13's names, e.g. activation_pre), or ""."""
+    import copy
+    import nam.train
+    base = json.loads((pathlib.Path(nam.train.__file__).parent / "_resources" / "config_model_packed.json").read_text())
+    cfg = copy.deepcopy([s for s in base["net"]["config"]["submodels"] if s["name"] == "channels_3"][0]["config"])
+    for lc in cfg["layers_configs"]:
+        lc["input_size"] = n_inputs
+        lc["condition_size"] = n_inputs
+        if film:
+            lc["film_params"] = {f"{film}_film": {"active": True}}
+    return cfg
+
+
+class WaveNetModel(nn.Module):
+    """NAM's own WaveNet (nam.models.wavenet._wavenet), fed (B, L, inputs) like the RNN and
+    returning (B, L - receptive_field + 1): no state, each output reads the receptive field
+    of input before it."""
+
+    def __init__(self, n_inputs, film="activation_pre"):
+        super().__init__()
+        from nam.models.wavenet._wavenet import WaveNet as Core
+        self.config = a2_lite_config(n_inputs, film)
+        import copy
+        self.net = Core.init_from_config(copy.deepcopy(self.config))
+        self.receptive_field = self.net.receptive_field
+
+    def forward(self, x, h=None):
+        return self.net(x.transpose(1, 2))[:, 0, :], None
 
 
 def detach(h):
@@ -239,12 +293,38 @@ def esr(pred, target):
     return torch.mean((pred - target) ** 2) / (torch.mean(target ** 2) + 1e-10)
 
 
+_MRSTFT = None
+
+
+def mrstft(pred, target):
+    """NAM's multi-resolution STFT loss: its vendored auraloss with the defaults it uses
+    (FFT 512, 1024 and 2048; spectral convergence plus log magnitude), on (B, L)."""
+    global _MRSTFT
+    if _MRSTFT is None:
+        from nam._dependencies.auraloss.freq import MultiResolutionSTFTLoss
+        _MRSTFT = MultiResolutionSTFTLoss()
+    return _MRSTFT(pred[:, None, :], target[:, None, :])
+
+
+def train_loss(args, pred, target):
+    """The training loss: plain ESR (the first recipe), or MSE plus the spectral term."""
+    if args.loss == "esr":
+        return esr(pred, target)
+    loss = torch.mean((pred - target) ** 2)
+    if args.mrstft_weight:
+        loss = loss + args.mrstft_weight * mrstft(pred, target)
+    return loss
+
+
 @torch.no_grad()
-def evaluate(model, items, inputs, out, device, keep=False, chunk=SR):
+def evaluate(model, items, inputs, out, device, keep=False, chunk=SR, out_scale=1.0):
     """Each item (take, a, b, unscored, ...) run from rest with the state carried across
     chunks, as on a module. Items of the same length run as one batch. Returns each item's
-    (error energy, signal energy) over its scored samples, and its output if keep."""
+    (error energy, signal energy) over its scored samples, and its output if keep. A model
+    trained on a normalised target has its output divided by out_scale first, so scores
+    and outputs are at the real Wasp's level."""
     model.eval()
+    rf = getattr(model, "receptive_field", 1)
     sums, outputs, groups = [None] * len(items), [None] * len(items), {}
     for i, (_, a, b, u, *_) in enumerate(items):
         groups.setdefault((b - a, u), []).append(i)
@@ -252,10 +332,22 @@ def evaluate(model, items, inputs, out, device, keep=False, chunk=SR):
         err, sig, h, parts = np.zeros(len(idx)), np.zeros(len(idx)), None, []
         for c in range(0, length, chunk):
             d = min(chunk, length - c)
-            x = np.stack([items[i][0].features(items[i][1] + c, items[i][1] + c + d, inputs) for i in idx])
             y = np.stack([items[i][0].target(items[i][1] + c, items[i][1] + c + d, out) for i in idx])
+            if rf > 1:
+                # A WaveNet has no state: give each chunk the receptive field of input
+                # before it, zeros before the item's start (rest).
+                xs = []
+                for i in idx:
+                    t, a0 = items[i][0], items[i][1]
+                    lo = a0 + c - (rf - 1)
+                    pre = max(0, a0 - lo)
+                    f = t.features(lo + pre, a0 + c + d, inputs)
+                    xs.append(np.concatenate([np.zeros((pre, f.shape[1]), np.float32), f]) if pre else f)
+                x = np.stack(xs)
+            else:
+                x = np.stack([items[i][0].features(items[i][1] + c, items[i][1] + c + d, inputs) for i in idx])
             pred, h = model(torch.from_numpy(x).to(device), h)
-            pred = pred.cpu().numpy()
+            pred = pred.cpu().numpy() / out_scale
             if keep:
                 parts.append(pred)
             lo = max(0, unscored - c)
@@ -285,17 +377,27 @@ def by_res(items, sums, only=None):
 
 # ---------------------------------------------------------------------- training
 
-def segments(train, inputs, out, seg, rng, n):
-    """n random segments, seg samples long, from the training spans (weighted by length)."""
-    room = np.array([b - a - seg for _, a, b in train], dtype=np.float64)
+def segments(train, inputs, out, seg, rng, n, context=0):
+    """n random segments, seg samples long, from the training spans (weighted by length).
+    context extra samples of input come before each (a WaveNet's receptive field), from
+    inside the same span; the target covers the seg samples only."""
+    room = np.array([b - a - seg - context for _, a, b in train], dtype=np.float64)
     pick = rng.choice(len(train), size=n, p=room / room.sum())
     xs, ys = [], []
     for i in pick:
         t, a, b = train[i]
-        s = int(rng.integers(a, b - seg))
-        xs.append(t.features(s, s + seg, inputs))
+        s = int(rng.integers(a + context, b - seg))
+        xs.append(t.features(s - context, s + seg, inputs))
         ys.append(t.target(s, s + seg, out))
     return torch.from_numpy(np.stack(xs)), torch.from_numpy(np.stack(ys))
+
+
+def target_scale(train, out, dbfs):
+    """The factor that brings the training targets' RMS to dbfs (NAM normalises its output
+    to -18 dBFS before training)."""
+    e = sum(float(np.sum(t.target(a, b, out).astype(np.float64) ** 2)) for t, a, b in train)
+    n = sum(b - a for _, a, b in train)
+    return float(10 ** (dbfs / 20) / np.sqrt(e / n))
 
 
 def main():
@@ -317,6 +419,20 @@ def main():
     ap.add_argument("--valid", action="append", default=[], help="validation .npz (spec), for selection")
     ap.add_argument("--judge", action="append", default=[], help="held-out .npz (spec), scored at the end only")
     ap.add_argument("--listen", action="store_true", help="write the chosen epoch's output on every test take")
+    ap.add_argument("--arch", default="rnn", choices=("rnn", "wavenet"),
+                    help="rnn (GRU or LSTM, --cell), or NAM's WaveNet in A2-Lite's layout")
+    ap.add_argument("--film", default="activation_pre",
+                    help="wavenet: the FiLM point in every layer (NAM 0.13's names), or none")
+    ap.add_argument("--loss", default="esr", choices=("esr", "mse"),
+                    help="esr (the first recipe) or mse, with --mrstft-weight and --target-dbfs")
+    ap.add_argument("--mrstft-weight", type=float, default=0.0, help="NAM's A2 uses 0.0005")
+    ap.add_argument("--target-dbfs", type=float, default=None,
+                    help="normalise the training target's RMS to this (NAM: -18); undone for scores")
+    ap.add_argument("--step", default="chunk", choices=("chunk", "batch"),
+                    help="optimiser step per backprop chunk (the first recipe) or per batch (NAM)")
+    ap.add_argument("--schedule", default="plateau", choices=("plateau", "exp"))
+    ap.add_argument("--gamma", type=float, default=0.999, help="exp schedule: lr factor per epoch")
+    ap.add_argument("--z-bias", type=float, default=0.0, help="GRU update-gate bias at the start")
     ap.add_argument("--cell", default="gru", choices=("gru", "lstm"))
     ap.add_argument("--hidden", type=int, default=24)
     ap.add_argument("--layers", type=int, default=1)
@@ -329,7 +445,8 @@ def main():
     ap.add_argument("--epochs", type=int, default=300)
     ap.add_argument("--lr", type=float, default=5e-3)
     ap.add_argument("--clip", type=float, default=0, help="largest gradient norm per step (0: no limit)")
-    ap.add_argument("--patience", type=int, default=30, help="epochs without improvement before stopping")
+    ap.add_argument("--patience", type=int, default=30,
+                    help="epochs without improvement before stopping (0: run every epoch)")
     ap.add_argument("--device", default="cpu", help="cpu or mps")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
@@ -339,7 +456,10 @@ def main():
         session_material(args, train, valid, test)
     file_material(args, train, valid, test)
     seg = int(args.seg * SR)
-    train = [t for t in train if t[2] - t[1] > seg]
+    context = 0
+    if args.arch == "wavenet":
+        context = WaveNetModel(len(args.inputs.split(",")), "").receptive_field - 1
+    train = [t for t in train if t[2] - t[1] > seg + context]
     split = describe(train, valid, test)
     print(f"{len(train)} training spans, {split['seconds']['train']:.0f} s; {len(valid)} validation "
           f"blocks, {split['seconds']['valid']:.0f} s; {len(test)} test takes, {split['seconds']['test']:.0f} s")
@@ -366,41 +486,75 @@ def main():
     (run / "config.json").write_text(json.dumps(vars(args), indent=2) + "\n")
     (run / "split.json").write_text(json.dumps(split, indent=1) + "\n")
     writer = SummaryWriter(str(run))
-    model = RNNModel(len(inputs), args.hidden, args.cell, args.layers).to(device)
+    if args.arch == "wavenet":
+        model = WaveNetModel(len(inputs), "" if args.film == "none" else args.film).to(device)
+        (run / "wavenet_config.json").write_text(json.dumps(model.config, indent=1) + "\n")
+        what = f"WaveNet (A2-Lite layout, FiLM {args.film})"
+    else:
+        model = RNNModel(len(inputs), args.hidden, args.cell, args.layers, args.z_bias).to(device)
+        what = f"{args.cell.upper()}-{args.hidden} x{args.layers}"
     n_params = sum(p.numel() for p in model.parameters())
-    print(f"{args.name}: {args.cell.upper()}-{args.hidden} x{args.layers}, inputs {inputs}, {n_params} parameters, "
-          f"seed {args.seed}, on {device}", flush=True)
+    scale = target_scale(train, args.output, args.target_dbfs) if args.target_dbfs is not None else 1.0
+    (run / "norm.json").write_text(json.dumps({"target_scale": scale}) + "\n")
+    print(f"{args.name}: {what}, inputs {inputs}, {n_params} parameters, seed {args.seed}, on {device}, "
+          f"loss {args.loss}" + (f" + {args.mrstft_weight} MRSTFT" if args.loss == "mse" and args.mrstft_weight else "")
+          + f", target x{scale:.3f}, step per {args.step}", flush=True)
     opt = torch.optim.Adam(model.parameters(), lr=args.lr)
-    sched = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, factor=0.5, patience=10)
+    if args.schedule == "exp":
+        sched = torch.optim.lr_scheduler.ExponentialLR(opt, gamma=args.gamma)
+    else:
+        sched = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, factor=0.5, patience=10)
+
+    def step(loss):
+        """Backward, clip (and log the gradient's size), step: unless the gradient is not a
+        finite number, when the step is skipped rather than written into the weights (an
+        infinite gradient turned a run's weights to NaN, 2026-10-19)."""
+        opt.zero_grad()
+        loss.backward()
+        norm = float(torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip or float("inf")))
+        if np.isfinite(norm):
+            opt.step()
+        return norm
     best, best_epoch, t0, norms = float("inf"), -1, time.monotonic(), []
     for epoch in range(args.epochs):
         model.train()
         losses = []
         for _ in range(args.steps_per_epoch):
-            x, y = segments(train, inputs, args.output, seg, rng, args.batch)
-            x, y = x.to(device), y.to(device)
+            x, y = segments(train, inputs, args.output, seg, rng, args.batch, context)
+            x, y = x.to(device), (y * scale).to(device)
+            if args.arch == "wavenet":
+                pred, _ = model(x)
+                loss = train_loss(args, pred, y)
+                norms.append(step(loss))
+                losses.append(loss.item())
+                continue
             with torch.no_grad():  # warm the state up on the first samples; no loss there
                 _, h = model(x[:, :args.warmup])
+            preds = []
             for a in range(args.warmup, seg, args.tbptt):
                 b = min(a + args.tbptt, seg)
                 pred, h = model(x[:, a:b], h)
-                loss = esr(pred, y[:, a:b])
-                opt.zero_grad()
-                loss.backward()
-                # The gradient's size before any clipping. Without a limit, one huge
-                # gradient can throw a GRU out of a good minimum (seen 2026-10-19).
-                norm = float(torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip or float("inf")))
-                opt.step()
-                h = detach(h)
+                if args.step == "chunk":
+                    loss = train_loss(args, pred, y[:, a:b])
+                    norms.append(step(loss))
+                    losses.append(loss.item())
+                else:
+                    preds.append(pred)
+                h = detach(h)  # truncated backpropagation: the history goes on, its gradient stops
+            if args.step == "batch":  # one loss over the whole segment, one step (NAM's way)
+                loss = train_loss(args, torch.cat(preds, 1), y[:, args.warmup:])
+                norms.append(step(loss))
                 losses.append(loss.item())
-                norms.append(norm)
-        sums, _ = evaluate(model, valid, inputs, args.output, device)
+        sums, _ = evaluate(model, valid, inputs, args.output, device, out_scale=scale)
         v = pooled(sums)
-        sched.step(v)
+        if args.schedule == "exp":
+            sched.step()
+        else:
+            sched.step(v)
         lr = opt.param_groups[0]["lr"]
         epoch_norms = np.array(norms[-len(losses):])
         clipped = float(np.mean(epoch_norms > args.clip)) if args.clip else 0.0
-        writer.add_scalar("train/ESR", float(np.mean(losses)), epoch)
+        writer.add_scalar("train/loss", float(np.mean(losses)), epoch)
         writer.add_scalar("valid/ESR", v, epoch)
         for r, e in by_res(valid, sums).items():
             writer.add_scalar(f"valid_res/{r}", e, epoch)
@@ -414,22 +568,22 @@ def main():
             best, best_epoch, mark = v, epoch, "  *"
             torch.save(model.state_dict(), run / "best.pt")
         minutes = (time.monotonic() - t0) / 60
-        print(f"epoch {epoch:4d}  train ESR {np.mean(losses):.4f}  valid ESR {v:.4f}  lr {lr:.1e}  "
+        print(f"epoch {epoch:4d}  train {args.loss.upper()} {np.mean(losses):.4g}  valid ESR {v:.4f}  lr {lr:.1e}  "
               f"grad {np.median(epoch_norms):.3g} (max {epoch_norms.max():.3g}, {100 * clipped:.0f}% clipped)  "
               f"{minutes:5.1f} min{mark}", flush=True)
-        if epoch - best_epoch >= args.patience:
+        if args.patience and epoch - best_epoch >= args.patience:
             print(f"no improvement for {args.patience} epochs: stopping")
             break
 
     model.load_state_dict(torch.load(run / "best.pt"))
-    vsums, _ = evaluate(model, valid, inputs, args.output, device)
-    tsums, outs = evaluate(model, test, inputs, args.output, device, keep=args.listen)
+    vsums, _ = evaluate(model, valid, inputs, args.output, device, out_scale=scale)
+    tsums, outs = evaluate(model, test, inputs, args.output, device, keep=args.listen, out_scale=scale)
     result = {
         "best_epoch": best_epoch, "valid": pooled(vsums), "valid_by_res": by_res(valid, vsums),
         "test": {item[0].label: pooled([s]) for item, s in zip(test, tsums)},
         "test_take_by_res": by_res(test, tsums, only="test"),
         "held_out": pooled([s for item, s in zip(test, tsums) if item[4]]) if any(i[4] for i in test) else None,
-        "parameters": n_params, "minutes": round((time.monotonic() - t0) / 60, 1),
+        "parameters": n_params, "target_scale": scale, "minutes": round((time.monotonic() - t0) / 60, 1),
     }
     if args.listen:
         (run / "listen").mkdir(exist_ok=True)
