@@ -113,8 +113,8 @@ def chart(rs):
     w, h, left, right, top, bottom = 760, 320, 52, 12, 20, 34
     xmax = max(50, max(p[0] for p in pts) + 5)
     lo = math.floor(math.log10(max(min(p[1] for p in pts), 1e-4)))
-    top = max(p[1] for p in pts)  # the axis ends at the next 1, 2 or 5 above the highest point
-    hi = min(math.log10(m * 10 ** d) for d in range(lo, 4) for m in (1, 2, 5) if m * 10 ** d >= top)
+    peak = max(p[1] for p in pts)  # the axis ends at the next 1, 2 or 5 above the highest point
+    hi = min(math.log10(m * 10 ** d) for d in range(lo, 4) for m in (1, 2, 5) if m * 10 ** d >= peak)
     hi = max(hi, lo + 1)
     X = lambda e: left + (w - left - right) * e / xmax  # noqa: E731
     Y = lambda v: top + (h - top - bottom) * (hi - math.log10(max(v, 10 ** lo))) / (hi - lo)  # noqa: E731
