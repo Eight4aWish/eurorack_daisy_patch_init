@@ -7,19 +7,25 @@
  * trained at Res 6. No card is needed. The engine is nam/gru_runtime.h, checked against
  * PyTorch on the desktop by tools/gru_check.py.
  *
- * Controls, agreed with David 2026-10-19, for this build only
- *   CV_1 (+ CV_5 jack)   input trim into the network, -20..+20 dB, unity at noon (as Mirth)
- *   CV_2 (+ CV_6 jack)   MIX, dry (0) to wet (1) (as Mirth)
- *   CV_3 (+ CV_7 jack)   Res, 0..10 on the Wasp's dial (the cutoff-only network ignores it)
- *   CV_4 knob            cutoff offset, 0..10 V, like the Wasp's Frq knob
- *   CV_8 jack            cutoff CV in volts, like the Wasp's CV 1 (the jack reads +-5 V)
- *   B7                   next network
- *   CV_OUT_2 LED         lit while the cutoff + Res network plays
+ * Controls: Mirth's FILTERS layout, as David set it 2026-10-19 (knobs 1-4 = patch, mix,
+ * cutoff, resonance; AMPS and NOT-AMPS are patch, mix, drive, steer)
+ *   CV_1 (+ CV_5 jack)   which network: the lower half of the knob the first, the upper
+ *                        the second
+ *   CV_2 (+ CV_6 jack)   MIX, dry (0) to wet (1)
+ *   CV_3 (+ CV_7 jack)   cutoff: the knob 0..10 V, like the Wasp's Frq; the jack adds its
+ *                        volts, like the Wasp's CV 1 (the jack reads +-5 V)
+ *   CV_4 (+ CV_8 jack)   Res, 0..10 on the Wasp's dial (the cutoff-only network ignores it)
+ *   B7                   bypass on/off, to A/B the network against the dry input
+ *   CV_OUT_2 LED         lit when the network is in circuit, dark when bypassed
+ *
+ * There is no drive knob in FILTERS: the input goes to the network as it arrives. The
+ * networks learned the Wasp with 11 V as full scale (the ES-10); the patch.init's own
+ * input full scale is not yet measured, so volts do not yet map to volts.
  *
  * The cutoff is clamped to 0..10 V and Res to 0..10: the ranges the networks were
  * trained on. The cutoff is read once a block and ramped across it; Res is smoothed
- * over about 20 ms. Audio: IN_L -> trim -> network -> wet; IN_L -> dry; dry/wet mix ->
- * DC block -> OUT_L and OUT_R, as in Mirth.
+ * over about 20 ms. Audio: IN_L -> network -> wet; IN_L -> dry; dry/wet mix -> DC block
+ * -> OUT_L and OUT_R, as in Mirth.
  */
 
 #include "daisy_patch_sm.h"
@@ -53,13 +59,14 @@ static bool                    g_ok[gru_nets::kCount];
 static float                   g_gain[gru_nets::kCount];
 static char                    g_name[gru_nets::kCount][gru::kGrnbNameLen];
 
-static volatile int g_net  = 0;  // the network playing
-static volatile int g_want = 0;  // the one B7 asked for
-static float        g_fade = 1.f;
+static volatile int  g_net    = 0;  // the network playing
+static volatile bool g_bypass = false;
+static float         g_fade   = 1.f;
 static constexpr float kFadeStep = 0.1f;  // per 48-sample block: 10 ms to silence and back
 
 // For the display. Single writer (the callback), single reader (the main loop).
-static volatile float g_in_peak = 0.f, g_cut = 0.f, g_res = 6.f, g_trim_db = 0.f, g_mix = 0.f;
+static volatile float g_in_peak = 0.f, g_cut = 0.f, g_res = 6.f, g_mix = 0.f;
+static volatile int   g_want = 0;
 
 static constexpr float kLedVolts = 2.0f;
 
@@ -77,15 +84,27 @@ void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, s
     patch.ProcessAllControls();
     nav_btn.Debounce();
     if(nav_btn.RisingEdge())
-        g_want = (g_want + 1) % gru_nets::kCount;
+    {
+        g_bypass = !g_bypass;
+        patch.WriteCvOut(CV_OUT_2, g_bypass ? 0.f : kLedVolts);
+    }
 
-    // Pot + CV jack summed and clamped, the house behaviour (see Mirth's main.cpp).
-    const float trim_k = fclamp(patch.GetAdcValue(CV_1) + patch.GetAdcValue(CV_5), 0.f, 1.f);
+    // Pot + CV jack summed and clamped, the house behaviour (see Mirth's main.cpp). The
+    // knobs read 0..1 across their travel; the jacks read -1..1 for -5..+5 V.
+    const float sel    = fclamp(patch.GetAdcValue(CV_1) + patch.GetAdcValue(CV_5), 0.f, 1.f);
     const float mix    = fclamp(patch.GetAdcValue(CV_2) + patch.GetAdcValue(CV_6), 0.f, 1.f);
-    const float trim   = powf(10.f, trim_k * 2.f - 1.f);
-    const float res_to = 10.f * fclamp(patch.GetAdcValue(CV_3) + patch.GetAdcValue(CV_7), 0.f, 1.f);
-    // The knob reads 0..1 across its travel; the jack reads -1..1 for -5..+5 V.
-    const float cut_to = fclamp(10.f * patch.GetAdcValue(CV_4) + 5.f * patch.GetAdcValue(CV_8), 0.f, 10.f);
+    const float cut_to = fclamp(10.f * patch.GetAdcValue(CV_3) + 5.f * patch.GetAdcValue(CV_7), 0.f, 10.f);
+    const float res_to = 10.f * fclamp(patch.GetAdcValue(CV_4) + patch.GetAdcValue(CV_8), 0.f, 1.f);
+
+    // Which network: the knob in equal parts, with a quarter-step of hysteresis so a knob
+    // sitting on a boundary does not flip back and forth.
+    const int   n    = gru_nets::kCount;
+    const float span = 1.f / (float)n;
+    int         idx  = (int)(sel * (float)n);
+    if(idx >= n)
+        idx = n - 1;
+    if(idx != g_want && fabsf(sel - ((float)g_want + 0.5f) * span) > span * 0.75f)
+        g_want = idx;
 
     static float res = 6.f, cut = 0.f;
     res += 0.05f * (res_to - res);
@@ -105,28 +124,33 @@ void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, s
     else if(g_fade < 1.f)
         g_fade = fminf(1.f, g_fade + kFadeStep);
 
-    const int       ni  = g_net;
-    const gru::Net& net = g_nets[ni];
-    const bool      ok  = g_ok[ni];
+    const int       ni   = g_net;
+    const gru::Net& net  = g_nets[ni];
+    const bool      run  = g_ok[ni] && !g_bypass;
     const float     gain = g_gain[ni];
 
     static float dcb_x1 = 0.f, dcb_y1 = 0.f;
     constexpr float kDcR = 0.99738f;  // ~20 Hz one-pole, exp(-2*pi*20/48000)
-    const float     wetg = mix * g_fade, dryg = 1.f - mix;
-    float           peak = 0.f;
-    float           raw[gru::kMaxInputs];
+    // Bypass is the dry side alone, as in Mirth, so an A/B compares the network with its input.
+    const float wetg = g_bypass ? 0.f : mix * g_fade, dryg = g_bypass ? 1.f : 1.f - mix;
+    float       peak = 0.f;
+    float       raw[gru::kMaxInputs];
     for(size_t i = 0; i < size; i++)
     {
         const float x = in[0][i];
         peak          = fmaxf(peak, fabsf(x));
         const float c = cut + (cut_to - cut) * (float)(i + 1) / (float)size;
-        for(int k = 0; k < net.inputs; k++)
-            raw[k] = net.kind[k] == gru::kAudio ? x * trim : net.kind[k] == gru::kCv ? c : res;
-        float wet = ok ? gru::Step(net, g_state, raw) * gain : 0.f;
-        if(!std::isfinite(wet))
+        float       wet = 0.f;
+        if(run)
         {
-            wet = 0.f;
-            g_state.Reset();
+            for(int k = 0; k < net.inputs; k++)
+                raw[k] = net.kind[k] == gru::kAudio ? x : net.kind[k] == gru::kCv ? c : res;
+            wet = gru::Step(net, g_state, raw) * gain;
+            if(!std::isfinite(wet))
+            {
+                wet = 0.f;
+                g_state.Reset();
+            }
         }
         const float s = wet * wetg + x * dryg;
         float       y = s - dcb_x1 + kDcR * dcb_y1;
@@ -148,7 +172,6 @@ void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, s
     g_in_peak = peak;
     g_cut     = cut;
     g_res     = res;
-    g_trim_db = 20.f * (trim_k * 2.f - 1.f);
     g_mix     = mix;
     cpu_meter.OnBlockEnd();
 }
@@ -158,7 +181,8 @@ static void UpdateDisplay()
     char line[32];
     display.Clear();
     const int ni = g_net;
-    display.DrawString(0, 0, g_ok[ni] ? g_name[ni] : "NET BAD", !g_ok[ni]);
+    // The name, inverted while bypassed, as in Mirth.
+    display.DrawString(0, 0, g_ok[ni] ? g_name[ni] : "NET BAD", g_bypass || !g_ok[ni]);
     const float   peak = fclamp(g_in_peak, 0.f, 1.f);
     const uint8_t w    = (uint8_t)(peak * 62.f + 0.5f);
     display.DrawRect(0, 9, 64, 7, true);
@@ -168,14 +192,14 @@ static void UpdateDisplay()
     const int cpu_max = (int)(cpu_meter.GetMaxCpuLoad() * 100.f + 0.5f);
     snprintf(line, sizeof(line), "CPU %2d(%2d)", cpu_avg > 99 ? 99 : cpu_avg, cpu_max > 99 ? 99 : cpu_max);
     display.DrawString(0, 18, line, false);
-    // Ten characters a line: "F5.0V R6.0" is the cutoff in volts and the Res dial.
+    // The knob lines sit as the knobs do on the panel: 1 and 2 on the top row (which
+    // network, mix), 3 and 4 on the bottom (cutoff volts, Res). Ten characters a line.
+    snprintf(line, sizeof(line), "N%d M%.2f", ni + 1, (double)g_mix);
+    display.DrawString(0, 26, line, false);
     if(HasRes(ni))
         snprintf(line, sizeof(line), "F%.1fV R%.1f", (double)g_cut, (double)g_res);
     else
         snprintf(line, sizeof(line), "F%.1fV R6*", (double)g_cut);  // trained at Res 6 only
-    display.DrawString(0, 26, line, false);
-    const int t = (int)lroundf(g_trim_db);
-    snprintf(line, sizeof(line), "T%+d M%.2f", t > 20 ? 20 : (t < -20 ? -20 : t), (double)g_mix);
     display.DrawString(0, 34, line, false);
     display.Update();
 }
@@ -199,24 +223,19 @@ int main(void)
     display.Init(patch.A2, patch.A3);
     display.Clear();
     display.DrawStringCentered(4, "GRU TEST", false);
-    display.DrawStringCentered(18, g_name[0], false);
+    display.DrawStringCentered(18, "FILTERS", false);
     display.DrawStringCentered(32, "WASP LP", false);
     display.Update();
     System::Delay(1000);
 
+    patch.WriteCvOut(CV_OUT_2, kLedVolts);
     patch.StartAdc();
     patch.StartAudio(AudioCallback);
 
     uint32_t next_frame = 0;
-    int      led_net    = -1;
     while(1)
     {
         const uint32_t now = System::GetNow();
-        if(g_net != led_net)
-        {
-            led_net = g_net;
-            patch.WriteCvOut(CV_OUT_2, HasRes(led_net) ? kLedVolts : 0.f);
-        }
         if(now >= next_frame)
         {
             next_frame = now + 50;  // 20 fps; the soft I2C write is slow

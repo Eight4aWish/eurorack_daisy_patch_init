@@ -20,10 +20,11 @@
  * weights, so the firmware passes plain volts and dial positions.
  *
  * Activations: GRU_EXACT_ACTIVATIONS uses std::tanh, for the desktop check. Otherwise
- * tanh is a 4,097-point table over [-8, 8] with linear interpolation (error about 1e-5,
- * far below anything audible), and sigmoid(x) = 0.5 + 0.5 tanh(x / 2) shares it.
+ * tanh is a 2,049-point table over [-8, 8] (8 KB) with linear interpolation, error about
+ * 6e-6, far below anything audible; sigmoid(x) = 0.5 + 0.5 tanh(x / 2) shares it.
  *
- * Sizes are read from the file, up to kMaxHidden units and kMaxInputs inputs. The hidden
+ * Sizes are read from the file, up to kMaxHidden units (GRU_MAX_HIDDEN, 32 unless the
+ * build says otherwise; Mirth sets 24 to save DTCMRAM) and kMaxInputs inputs. The hidden
  * size must be a multiple of 4: the inner loops are unrolled by four.
  */
 
@@ -38,7 +39,10 @@
 namespace gru
 {
 
-inline constexpr int kMaxHidden = 32;
+#ifndef GRU_MAX_HIDDEN
+#define GRU_MAX_HIDDEN 32
+#endif
+inline constexpr int kMaxHidden = GRU_MAX_HIDDEN;
 inline constexpr int kMaxInputs = 4;
 
 // Input kinds, as stored in the file. The firmware fills each from its own source.
@@ -70,32 +74,33 @@ inline constexpr int WeightCount(int hidden, int inputs)
     return 3 * hidden * inputs + 3 * hidden * hidden + 6 * hidden + hidden + 1;
 }
 
-// Copy a payload (file order) into a Net. False if the sizes are out of range.
-inline bool Load(Net& n, int hidden, int inputs, const float* w)
+// Copy a payload (file order, little-endian float32, any alignment) into a Net. False if
+// the sizes are out of range.
+inline bool Load(Net& n, int hidden, int inputs, const void* payload)
 {
     if(hidden <= 0 || hidden > kMaxHidden || (hidden % 4) != 0 || inputs <= 0 || inputs > kMaxInputs)
         return false;
-    n.hidden = hidden;
-    n.inputs = inputs;
-    const int g = 3 * hidden;
-    std::memcpy(n.wih, w, sizeof(float) * g * inputs);
-    w += g * inputs;
-    std::memcpy(n.whh, w, sizeof(float) * g * hidden);
-    w += g * hidden;
-    std::memcpy(n.bih, w, sizeof(float) * g);
-    w += g;
-    std::memcpy(n.bhh, w, sizeof(float) * g);
-    w += g;
-    std::memcpy(n.wd, w, sizeof(float) * hidden);
-    w += hidden;
-    n.bd = *w;
+    n.hidden          = hidden;
+    n.inputs          = inputs;
+    const int      g  = 3 * hidden;
+    const uint8_t* p  = static_cast<const uint8_t*>(payload);
+    auto           cp = [&p](float* dst, int count) {
+        std::memcpy(dst, p, sizeof(float) * count);
+        p += sizeof(float) * count;
+    };
+    cp(n.wih, g * inputs);
+    cp(n.whh, g * hidden);
+    cp(n.bih, g);
+    cp(n.bhh, g);
+    cp(n.wd, hidden);
+    cp(&n.bd, 1);
     return true;
 }
 
 #ifdef GRU_EXACT_ACTIVATIONS
 inline float Tanh(float x) noexcept { return std::tanh(x); }
 #else
-inline constexpr int   kTanhN     = 4096;
+inline constexpr int   kTanhN     = 2048;
 inline constexpr float kTanhRange = 8.f;
 GRU_HOT_DATA inline float tanhTab[kTanhN + 1];
 inline const bool tanhTabReady = [] {
@@ -167,9 +172,7 @@ inline bool Parse(const uint8_t* buf, size_t len, Net& n, float& gain, char* nam
     const size_t payload = sizeof(float) * (size_t)WeightCount(hidden, inputs);
     if(len != (size_t)kGrnbHeader + payload || Crc32(buf + kGrnbHeader, payload) != u32(28))
         return false;
-    static float w[WeightCount(kMaxHidden, kMaxInputs)];
-    std::memcpy(w, buf + kGrnbHeader, payload);
-    if(!Load(n, hidden, inputs, w))
+    if(!Load(n, hidden, inputs, buf + kGrnbHeader))
         return false;
     for(int k = 0; k < kMaxInputs; k++)
     {

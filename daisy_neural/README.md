@@ -47,25 +47,34 @@ samples late; the dry side is delayed by the same amount while one plays.
 
 ## Controls
 
-| Control | Function |
-|---|---|
-| **CV_1** (+ CV_5 jack) | Input trim into the engine, −20…+20 dB, unity at noon |
-| **CV_2** (+ CV_6 jack) | **MIX**, dry (0) to wet (1). Replaced output level, 2026-10-02 |
-| **CV_3** (+ CV_7 jack) | Slot within the current bank |
-| **CV_4** (+ CV_8 jack) | **STEER** — the not-amp's one control. Does nothing in AMPS, on purpose |
-| **B7** short press | Bypass on/off |
-| **B7** held 1.5 s | Change bank, AMPS ↔ NOT-AMPS |
-| **CV_OUT_2** LED | Lit when the engine is in circuit, dark when bypassed |
+**In development (after v1.0.0): a FILTERS bank, and the knobs rearranged** (David,
+2026-10-19). The v1.0.0 release still has the old layout: knob 1 trim, 2 mix, 3 slot,
+4 steer, and two banks. Each knob is summed with the CV jack under it.
 
-The trim exists so the signal can be set to the level the capture was trained at, which is
-why the peak meter reads the input *before* the trim rather than after. Free for later:
-Gate In 1 and 2, Gate Out, CV_OUT_1.
+| Control | AMPS and NOT-AMPS | FILTERS |
+|---|---|---|
+| **CV_1** (+ CV_5 jack) | **PATCH**: which capture or not-amp | **PATCH**: which filter |
+| **CV_2** (+ CV_6 jack) | **MIX**, dry (0) to wet (1) | **MIX** |
+| **CV_3** (+ CV_7 jack) | **DRIVE** into the engine, −20…+20 dB, unity at noon | **CUTOFF**: the knob 0–10 V, the jack adds its volts, like the Wasp's CV 1 |
+| **CV_4** (+ CV_8 jack) | **STEER**, the not-amp's one control; nothing in AMPS, on purpose | **RESONANCE**, 0–10 on the Wasp's dial |
+| **B7** short press | bypass on/off | bypass on/off |
+| **B7** held 1.5 s | next bank: AMPS → NOT-AMPS → FILTERS (skipped on a card with none) | |
+| **CV_OUT_2** LED | lit when the engine is in circuit, dark when bypassed | |
+
+DRIVE sets the level into the capture, and for most captures it changes the sound far
+more than the volume: measured with the real engine on the twelve starter captures
+(2026-10-19), only the SVT bass amp behaves like a volume control; for seven of them the
+output level hardly moves while the character changes. The peak meter reads the input
+*before* the drive. FILTERS has no drive: the input goes into the network as it arrives.
+Free for later: Gate In 1 and 2, Gate Out, CV_OUT_1.
 
 ### Mirth Lite — a stock patch.init, no screen
 
 `make LITE=1` → `build_lite/mirth_lite.bin`. Same source (`MIRTH_LITE`), same engine,
 captures, not-amps and knobs; no OLED code at all. The B8 toggle is still fitted on a
-stock unit, so it takes the bank, which frees B7's long hold:
+stock unit, so it takes the bank, which frees B7's long hold. **FILTERS cannot be reached
+on Lite yet**: the toggle has two positions, and how Lite should reach a third bank is
+still to be decided.
 
 | Control | Mirth Lite |
 |---|---|
@@ -86,19 +95,14 @@ as described here, with the toggle up for AMPS.
 | name | the capture or not-amp, drawn inverted while bypassed |
 | meter | the input peak, before the trim |
 | `CPU 64(99)` | average CPU load, with the peak in brackets (no `%`: the panel holds ten characters) |
-| `T+0.5M+0.8` | the raw reads of knobs 1 and 2 — trim and mix, the panel's top row |
-| `AMP2` or `NT03 S0.42` | knobs 3 and 4 — which capture, or which not-amp and where its steer sits; the bottom row |
+| `AMP2 M80` | knobs 1 and 2, the panel's top row: which patch (`AMP2`, `NT03`, `FLT1`) and the mix in percent |
+| `D+6 S0.42` | knobs 3 and 4, the bottom row: the drive in dB and, on a not-amp, its steer; on a filter `F5.0 R6.5`, the cutoff in volts and the Res dial (`R6*` for a network trained at one Res only) |
 
 The lines run on without a gap, and the two knob lines sit as the knobs do on the panel.
-With no card readable, the `AMP` line shows the reason instead — `mount`, `no captures`, `bad crc` — so a card problem
-reads as a card problem rather than a dead engine.
-
-The `T`/`M` line exists because the pot scaling is **not confirmed**. libDaisy inits
-CV_1–CV_8 alike as bipolar while the pots are wired 0–5 V, so what a knob actually spans
-is unknown until it is seen. The summing here is exactly what `daisy_multifx_oled` does
-and is known to work on this unit, so it stays — but **if there is no sound, read that
-line before suspecting anything else.** `M` at 0.0 with the knob turned up is the whole
-explanation, and the fix is four lines in `main.cpp`, not in the engine.
+With no card readable, the patch line shows the reason instead — `mount`, `no captures`,
+`bad crc` — so a card problem reads as a card problem rather than a dead engine. The v1.0.0
+screen showed the raw reads of knobs 1 and 2 there, while the pot scaling was unconfirmed;
+the knobs read 0 to 1 across their travel on the bench, so the raw line has gone.
 
 ## Hardware
 
@@ -411,6 +415,11 @@ order is fixed whatever order the filesystem returns them in. Copy them to the r
 card. Each is 7,516 bytes.
 
 Captures you convert yourself (`tools/nam_to_a2nb.py`, above) go on the same card.
+
+**Filters** (FILTERS bank, in development) are `.grnb` files on the same card: GRU networks
+from `tools/train_gru.py`, written by `tools/gru_export.py` (format in `tools/grnb.py`,
+engine in `nam/gru_runtime.h`, checked against PyTorch by `tools/gru_check.py`). Up to 16,
+in filename order, GRU-24 at most. The first are the Doepfer A-124 Wasp's (`CLAUDE.md`).
 Level them with the rest: `tools/level_captures.py --write` plays each file through the
 real engine and sets its gain so every capture sits at one **A-weighted** level
 (−27.0 dB on the not-amps' test phrase). Plain RMS was tried first and left the bass-heavy

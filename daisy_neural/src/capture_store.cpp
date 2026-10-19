@@ -30,8 +30,9 @@ FIL DSY_SDRAM_BSS            s_file;
 
 // Whole-sector reads bypass FIL's buffer and DMA straight into the caller's
 // destination, and the engine's weight buffer is in DTCMRAM. So weights come
-// through here first. 8 KB covers A2-Lite's 7,484 bytes.
-constexpr size_t kBounceBytes = 8192;
+// through here first. 8 KB covers A2-Lite's 7,484 bytes; a .grnb is read whole, header
+// and all, and a GRU-24 with three inputs is 8,516 bytes, so 16 KB.
+constexpr size_t kBounceBytes = 16384;
 alignas(32) uint8_t DSY_SDRAM_BSS s_bounce[kBounceBytes];
 
 // Status text with FatFS's own result code appended, e.g. "mount 1". The stage
@@ -51,6 +52,8 @@ const char* FailHex(const char* stage, uint32_t bits)
 
 Entry       s_entries[kMaxFiles];
 int         s_count  = 0;
+FilterEntry s_filters[kMaxFilters];
+int         s_nfilters = 0;
 bool        s_ready  = false;
 const char* s_status = "not started";
 
@@ -71,17 +74,45 @@ uint32_t Rd32(const uint8_t* p) { return (uint32_t)p[0] | ((uint32_t)p[1] << 8)
                                        | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24); }
 uint16_t Rd16(const uint8_t* p) { return (uint16_t)((uint16_t)p[0] | ((uint16_t)p[1] << 8)); }
 
-bool EndsWithA2nb(const char* name)
+bool EndsWith(const char* name, const char* ext)  // ext lower case, with its dot
 {
-    const size_t n = strlen(name);
-    if(n < 5)
+    const size_t n = strlen(name), k = strlen(ext);
+    if(n < k)
         return false;
-    const char* e = name + n - 5;
-    return (e[0] == '.')
-           && (e[1] == 'a' || e[1] == 'A')
-           && (e[2] == '2')
-           && (e[3] == 'n' || e[3] == 'N')
-           && (e[4] == 'b' || e[4] == 'B');
+    for(size_t i = 0; i < k; i++)
+    {
+        char c = name[n - k + i];
+        if(c >= 'A' && c <= 'Z')
+            c = (char)(c - 'A' + 'a');
+        if(c != ext[i])
+            return false;
+    }
+    return true;
+}
+bool EndsWithA2nb(const char* name) { return EndsWith(name, ".a2nb"); }
+
+/** A .grnb header: magic, version, plausible sizes. The CRC is checked at load. */
+bool ReadFilterHeader(const char* path, FilterEntry& entry)
+{
+    if(f_open(&s_file, path, FA_READ) != FR_OK)
+        return false;
+    uint8_t    hdr[kGrnbHeaderBytes];
+    UINT       got = 0;
+    const bool ok  = (f_read(&s_file, hdr, sizeof(hdr), &got) == FR_OK) && (got == sizeof(hdr));
+    f_close(&s_file);
+    if(!ok || Rd32(hdr + 0) != kGrnbMagic || Rd16(hdr + 4) != 1)
+        return false;
+    entry.hidden = Rd16(hdr + 8);
+    entry.inputs = Rd16(hdr + 10);
+    if(entry.hidden <= 0 || entry.hidden > 64 || entry.inputs <= 0 || entry.inputs > 4)
+        return false;
+    uint32_t gain_bits = Rd32(hdr + 12);
+    memcpy(&entry.gain, &gain_bits, sizeof(float));
+    memset(entry.name, 0, sizeof(entry.name));
+    memcpy(entry.name, hdr + 16, kNameLen);
+    entry.name[kNameLen] = '\0';
+    snprintf(entry.path, kPathLen, "%s", path);
+    return true;
 }
 
 /** Read and validate a header. Fills entry on success. */
@@ -139,8 +170,9 @@ int Find(const char* name)
 
 bool Init()
 {
-    s_count = 0;
-    s_ready = false;
+    s_count    = 0;
+    s_nfilters = 0;
+    s_ready    = false;
 
     SdmmcHandler::Config cfg;
     cfg.Defaults();
@@ -219,21 +251,31 @@ bool Init()
         return false;
     }
 
-    while(s_count < kMaxFiles)
+    while(true)
     {
         if(f_readdir(&dir, &info) != FR_OK || info.fname[0] == 0)
             break;
         if(info.fattrib & AM_DIR)
             continue;
-        if(!EndsWithA2nb(info.fname))
+        const bool a2 = EndsWithA2nb(info.fname), gr = EndsWith(info.fname, ".grnb");
+        if(!(a2 && s_count < kMaxFiles) && !(gr && s_nfilters < kMaxFilters))
             continue;
 
         char path[kPathLen];
         snprintf(path, sizeof(path), "%s%s", s_fsi.GetSDPath(), info.fname);
 
-        Entry e;
-        if(ReadHeader(path, e))
-            s_entries[s_count++] = e;
+        if(a2)
+        {
+            Entry e;
+            if(ReadHeader(path, e))
+                s_entries[s_count++] = e;
+        }
+        else
+        {
+            FilterEntry fe;
+            if(ReadFilterHeader(path, fe))
+                s_filters[s_nfilters++] = fe;
+        }
     }
     f_closedir(&dir);
 
@@ -252,9 +294,67 @@ bool Init()
         s_entries[j + 1] = key;
     }
 
+    for(int i = 1; i < s_nfilters; i++)  // the same, for the filters
+    {
+        FilterEntry key = s_filters[i];
+        int         j   = i - 1;
+        while(j >= 0 && strcmp(s_filters[j].path, key.path) > 0)
+        {
+            s_filters[j + 1] = s_filters[j];
+            j--;
+        }
+        s_filters[j + 1] = key;
+    }
+
     s_ready  = s_count > 0;
     s_status = s_ready ? "ok" : "no captures";
     return s_ready;
+}
+
+int FilterCount() { return s_nfilters; }
+
+const FilterEntry* GetFilter(int index)
+{
+    return (index >= 0 && index < s_nfilters) ? &s_filters[index] : nullptr;
+}
+
+int FindFilter(const char* name)
+{
+    for(int i = 0; name && i < s_nfilters; i++)
+        if(strcmp(s_filters[i].name, name) == 0)
+            return i;
+    return -1;
+}
+
+bool LoadFilterFile(int index, const uint8_t** data, size_t* bytes)
+{
+    const FilterEntry* e = GetFilter(index);
+    if(!e || !data || !bytes)
+        return false;
+    if(f_open(&s_file, e->path, FA_READ) != FR_OK)
+    {
+        s_status = "open fail";
+        return false;
+    }
+    const FSIZE_t size = f_size(&s_file);
+    if(size < kGrnbHeaderBytes || size > kBounceBytes)
+    {
+        f_close(&s_file);
+        s_status = "too big";
+        return false;
+    }
+    UINT          got = 0;
+    const FRESULT rr  = f_read(&s_file, s_bounce, (UINT)size, &got);
+    f_close(&s_file);
+    if(rr != FR_OK || got != size)
+    {
+        s_status = Fail("read", (int)rr);
+        return false;
+    }
+    *data    = s_bounce;
+    *bytes   = (size_t)size;
+    s_status = "ok";
+    return true;
 }
 
 bool Load(int index, float* dst, size_t dst_capacity)

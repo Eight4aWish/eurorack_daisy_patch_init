@@ -1,9 +1,10 @@
 /**
- * capture_store — .a2nb captures from the microSD card.
+ * capture_store — .a2nb captures and .grnb filters from the microSD card.
  *
  * Scans the card root for *.a2nb, reads each 32-byte header for its name and
  * output gain, and loads weights on demand. Format is written by
- * tools/nam_to_a2nb.py (format in tools/a2nb.py); see the README.
+ * tools/nam_to_a2nb.py (format in tools/a2nb.py); see the README. The same scan
+ * finds *.grnb, the GRU filters of the FILTERS bank (tools/gru_export.py).
  *
  * Nothing here is real-time safe. Loading reads a file and the caller then runs
  * the engine's prewarm(), so it belongs in the main loop with audio muted,
@@ -55,5 +56,30 @@ bool Load(int index, float* dst, size_t dst_capacity);
 /** Where Init() or the last Load() got to — for the display, so a card problem
  *  reads as a card problem rather than a dead engine. */
 const char* Status();
+
+// ---------------------------------------------------------------------------
+// FILTERS: GRU networks, .grnb files (tools/grnb.py; the engine is nam/gru_runtime.h)
+// ---------------------------------------------------------------------------
+constexpr uint32_t kGrnbMagic       = 0x424E5247;  // 'GRNB' little-endian
+constexpr size_t   kGrnbHeaderBytes = 64;
+constexpr int      kMaxFilters      = 16;
+
+struct FilterEntry
+{
+    char  name[kNameLen + 1];
+    char  path[kPathLen];
+    float gain;
+    int   hidden;
+    int   inputs;
+};
+
+int                FilterCount();
+const FilterEntry* GetFilter(int index);
+int                FindFilter(const char* name);
+
+/** Read one .grnb whole into an internal buffer and point data at it, for gru::Parse()
+ *  to check (magic, sizes, CRC32) and copy into a network. The buffer is reused by the
+ *  next load. Main loop only, with the network silent. */
+bool LoadFilterFile(int index, const uint8_t** data, size_t* bytes);
 
 } // namespace captures
