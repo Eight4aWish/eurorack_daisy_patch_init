@@ -221,7 +221,26 @@ up to 239 samples, head kernel 16. **The embedded engines run the 3-channel size
 often quoted is for a generic 600MHz M7, not the Daisy.
 
 **Prior art.** No neural firmware for patch.init / Patch SM / Daisy Patch / Versio was
-found, and no NAM or ToneX capture of any Eurorack module. Open ground.
+found, and no NAM or ToneX capture of any Eurorack module (searched 2026-09-24).
+
+**Parametric (knob-conditioned) captures are not new** (found 2026-10-19, from NAM's own
+history; a broader search is still owed before anything public says "first"):
+- **NAM 0.5–0.7.4 (2022–23) shipped them**: `nam/models/parametric/` with CatLSTM and
+  CatWaveNet (knob values concatenated with the audio at every sample: our approach), a
+  hypernetwork (HyperConvNet), and a ParametricDataset giving each recording its fixed
+  knob settings. **0.8.0 removed them** (PR #367, merged 2024-01-14, resolving #334): not
+  dropped as an idea, moved downstream, to be registered through NAM's model and dataset
+  hooks. NAM 0.13.0 cannot train one as shipped (its dataset is mono only), but its A2
+  WaveNet now has FiLM layers that take a conditioning input.
+- **Live again: issue #694, "Conditional NAM"** (opened 2026-08-19). One contributor plans
+  to test A2's FiLM primitives against downstream ConcatWaveNet and HyperWaveNet, judged on
+  settings never trained. Another (michalwarda) reports three weeks and ~500 experiments on
+  a parametric A2: about 100 recordings at different positions for a five-knob amp, a
+  "global weighted ESR" around 0.01, and that architecture and training data cannot be
+  tuned apart. Steven Atkinson is open to re-adding low-level primitives, not opinions.
+- All of it is guitar amps with knobs **held fixed per recording**. What is still ours,
+  as far as found: a Eurorack module, a control swept **at audio rate within a take**
+  (the cutoff CV), and the result running on the module (the Daisy).
 
 ## Phase 0 — bench checks (one evening)
 
