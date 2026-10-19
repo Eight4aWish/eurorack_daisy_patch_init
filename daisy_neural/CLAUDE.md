@@ -601,6 +601,20 @@ DRIVE; the patch.init's input full scale, so the filters can map volts to volts.
 files for the Wasp: `captures/wasp_mirth/f1_WASP_LP.grnb` (cutoff + Res) and
 `f2_WASP_LP_R6.grnb` (cutoff only). Not yet run on hardware.
 
+**On the module (2026-10-19): the cutoff plays, Res does not.** Mirth with the GRU-16
+cutoff + Res network: 61% CPU, the cutoff "works perfectly", but turning Res does nothing
+audible (the screen's R follows the pot). GRU-24 at 99%: too slow in the first engine. Not
+the firmware and not a cut-down model: the card file through the C++ engine matches
+PyTorch, and moving only the Res input changes the output by ESR 0.3–0.8. But measured
+as band levels during the test riff's cutoff holds, the networks' Res response is weak or
+wrong: at 6 V, real Res 6→10 is +8 to +18 dB across the spectrum, GRU-16 −2 to −4 dB;
+at 2 V the real Wasp does not change with Res at all, GRU-24 moves its highs by ±5 to
+±16 dB. ESR counts phase that the ear ignores, and ESR-trained networks can keep ESR low
+with an averaged Wasp; nothing in the evaluation checked that the control does what the
+real control does. Proposed: a control-response test (band levels per Res and cutoff hold
+against the real Wasp) in the evaluation, and a spectral term in the loss. Until then the
+cutoff-only networks, faithful at their one Res, are the playable ones.
+
 **Tooling:** `tools/wasp_capture.py`, bench sheet `WASP.md`. It plays and records in one
 stream, with a loopback cable for latency. Recordings live in `captures/wasp/`, which is
 gitignored. Tested offline against a simulated filter first, then used for both series
