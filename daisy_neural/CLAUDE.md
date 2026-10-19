@@ -421,7 +421,7 @@ second input anyway, since it costs nothing, but no network is planned on it.
 | Network | Inputs | Trained on |
 |---|---|---|
 | **A2 snapshots** (NAM's WaveNet) | audio | NAM's standard `input.wav` at five cutoff CVs, in each series' Res 6 session: one capture each |
-| **GRU, cutoff** | audio, cutoff CV | The LP comparison session: those five takes plus about 6 minutes of material with the CV moving |
+| **GRU, cutoff** | audio, cutoff CV | The LP comparison session: those five takes plus its 4 minutes of sweeps |
 | **GRU, cutoff and resonance**, one per series (LP, HP) | audio, cutoff CV, Res dial position | Every session of its series except the held-out Res |
 
 The second costs no extra recording: it is a training run on a subset. It is there because
@@ -468,7 +468,7 @@ stepping at all. Keep its resonance below where it self-oscillates.
   material from 0.5 to 9 V peak.
 - **`nam-full` trains on any paired audio.** That is a later route to an A2 trained on the
   sweep material, using the same packed config.
-- **The GRU trainer is phase 4's own PyTorch script, not written yet.** It reads
+- **The GRU trainer is phase 4's own PyTorch script, `tools/train_gru.py`.** It reads
   `captures/wasp/<session>/gru/`, where each take's `.npz` carries `res` and `mix`
   alongside the audio and the cutoff CV.
 
@@ -517,14 +517,33 @@ checkpoint chosen (GRU-24: 0.047 at epoch 83, 0.085 at 108), because selection r
 NAM's passage, which is nothing like the riff. **Informal listening: David's family could
 not tell the real Wasp from GRU-16 on the riff**, so ESR overstates what is audible on
 this material. David's verdict on the method as a whole: "badly designed from the
-start". A methodology is to be written and reviewed before anything more is recorded or
-trained.
+start". The fixed-cutoff sessions (`lp-res6-fixed`, `hp-res6-fixed`, made for a
+like-for-like A2 comparison on synth material) are shelved: A2 has no cutoff input, and
+the playable GRU is the goal.
+
+**The playable GRUs, LP first (designed with David, 2026-10-19).** The split is fixed by
+the recordings, before any training (`train_gru.py --series`):
+
+| Network | Inputs | Trained on | Validated on (picks the epoch) | Tested on (scored once) |
+|---|---|---|---|---|
+| **Cutoff and Res**, GRU-16 and GRU-24, 3 seeds each | audio, cutoff CV, Res dial | the sweeps at the ten trained marks | three blocks per sweep take | every `test` take, `test_snaps`, and all of Res 5 |
+| **Cutoff only**, GRU-16 and GRU-24, 2 seeds each | audio, cutoff CV | Res 6: its sweeps and the five NAM-file takes | three blocks per sweep take | Res 6's `test` takes and `test_snaps` |
+
+- **Validation blocks:** at the beginning, middle and end of every sweep take, so a Wasp
+  that lags or drifts over a take is validated across it (David's point: not the last
+  20%). Each is 1 s of unscored run-in, then 8 s scored; no training segment touches
+  one. About 31 minutes train, 8 validate.
+- **Res 5 is the only held-out setting:** never trained or validated on, tested whole.
+- **The same procedure for every run:** Wright et al.'s recipe and ESR loss as in the
+  pilot, selection on pooled validation ESR, seeds varying the start and the segments.
+- Ten runs side by side, one thread each, on the Mac mini (Apple M4, 16 GB), with the
+  Crucial drive attached there: `tools/train_lp_playable.sh`. Takes are memory-mapped,
+  so the ten share one copy of the data in memory.
 
 **Tooling:** `tools/wasp_capture.py`, bench sheet `WASP.md`. It plays and records in one
 stream, with a loopback cable for latency. Recordings live in `captures/wasp/`, which is
-gitignored. The tool was tested offline against a simulated filter: latency recovered to
-the sample, NAM files exact, and a 100-sample dropout caught. **Not yet run on the
-bench.**
+gitignored. Tested offline against a simulated filter first, then used for both series
+on the bench (2026-10-18).
 
 **Done when:** all four comparisons have been heard on the held-out takes, for both
 outputs, and the gaps are written down here.

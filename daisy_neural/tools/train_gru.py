@@ -12,13 +12,38 @@ inputs alongside it, then one dense layer to the output sample.
     --inputs audio,cv         the cutoff as a knob (CV 1 volts)
     --inputs audio,cv,res     cutoff and resonance (the Res dial)
 
-Training is Wright et al.'s recipe: half-second segments drawn from the training takes,
+Training is Wright et al.'s recipe: half-second segments drawn from the training material,
 the hidden state warmed up before any loss counts, truncated backpropagation every 2048
 samples, Adam, the learning rate cut when validation stops improving, and early stopping.
-The loss is ESR, the same score NAM reports, so the two compare directly.
+The loss is ESR, the same score NAM reports, so the two compare directly. Validation and
+test scores are pooled: the error energy over all scored samples divided by the signal's.
 
-Comparison 1, the like-for-like test against the first A2 capture (same take, NAM's own
-train/validation split, the held-out riff as the judge):
+Sessions, for the playable networks. `--series lp` takes every session of that series in
+captures/wasp, and the split is fixed by the recordings, not by chance:
+  - training: the sweep takes, less the validation blocks (and, with --snapshots, the
+    NAM-file takes as well);
+  - validation, which picks the epoch: three blocks in every sweep take, at its beginning,
+    middle and end, so a Wasp that drifts over a take is validated across it. Each block
+    is 1 s of run-in, unscored while the state settles, then 8 s scored. No training
+    segment touches a block or its run-in;
+  - test, scored once with the chosen epoch: every `test` and `test_snaps` take of the
+    series (the riff never trained on, with the cutoff held and ramped), and whole
+    sessions at the --holdout-res marks, which are never trained or validated on.
+
+    # the playable network: cutoff and Res, every mark but Res 5
+    .venv-nam/bin/python tools/train_gru.py --name lp_cr_gru16_s1 --series lp \\
+        --holdout-res 5 --inputs audio,cv,res --hidden 16 --seed 1 --threads 1
+    # cutoff only, at Res 6, the NAM-file takes trained on as well
+    .venv-nam/bin/python tools/train_gru.py --name lp6_c_gru16_s1 --series lp --res 6 \\
+        --snapshots --inputs audio,cv --hidden 16 --seed 1 --threads 1
+
+Takes are read through a memory-mapped copy, <take>.npy beside each .npz, so parallel runs
+share one copy in memory instead of holding 1.4 GB each. `--prepare` builds them, prints
+the split and exits: run it once before launching several runs, so they don't all build
+at once. Each run writes its split to split.json, before training starts.
+
+Files, for comparison 1 (the like-for-like test against the first A2 capture: same take,
+NAM's own train/validation split, the held-out riff as the judge):
 
     .venv-nam/bin/python tools/train_gru.py --name lp6_+5V_gru24 --inputs audio \\
         --nam-split captures/wasp/lp-res6/gru/snap3_+5.00V.npz \\
@@ -27,59 +52,165 @@ train/validation split, the held-out riff as the judge):
 `--nam-split` trains on 10 s to the last 9 s of a NAM-file take and validates on its
 closing 9 s, exactly as NAM's trainer does. `--train` and `--valid` take .npz files for
 anything else. `--judge` files are scored at the end and never used for selection;
-`file.npz@a:b` keeps seconds a to b of the take. Runs land in
-captures/wasp/gru_runs/<name>/, with TensorBoard logs:
+`file.npz@a:b` keeps seconds a to b of the take. Whole takes and spans start from rest,
+and their first 0.1 s is not scored.
+
+Runs land in captures/wasp/gru_runs/<name>/, with TensorBoard logs:
 
     .venv-nam/bin/tensorboard --logdir captures/wasp/gru_runs
 """
 
 import argparse
 import json
+import os
 import pathlib
 import time
 
 import numpy as np
+import soundfile as sf
 import torch
 from torch import nn
 from torch.utils.tensorboard import SummaryWriter
 
 HERE = pathlib.Path(__file__).resolve().parent
-RUNS = HERE.parent / "captures" / "wasp" / "gru_runs"
+CAPTURES = HERE.parent / "captures" / "wasp"
 SR = 48000
 NAM_TRAIN_START = 480_000  # NAM's v3 split: train from 10 s ...
 NAM_VALIDATE = 432_000     # ... to the last 9 s, which validate
+SETTLE = SR // 10          # unscored at the start of a whole take, the state settling from rest
+COLUMNS = ("x", "cv_v", "y_lphp", "y_bp")
+TARGET = {"lphp": 2, "bp": 3}
+SCALE = {"audio": 1.0, "cv": 0.1, "res": 0.1}  # inputs to about ±1: CV in tens of volts, Res in tens
 
 
 # ------------------------------------------------------------------------- data
 
-def load(spec, out):
-    """A take as (inputs dict, target). spec is file.npz or file.npz@a:b (seconds)."""
-    path, _, span = spec.partition("@")
-    z = np.load(path)
-    sl = slice(None)
+def cached(npz, z):
+    """The take as one float32 array, columns COLUMNS, memory-mapped from <take>.npy.
+    Built on first use, or when the .npz is newer; written whole and renamed into place,
+    so a run never maps a half-written copy."""
+    npy = npz.with_suffix(".npy")
+    if not npy.exists() or npy.stat().st_mtime < npz.stat().st_mtime:
+        a = np.stack([z[c] for c in COLUMNS], axis=1).astype(np.float32)
+        tmp = npy.with_name(f"{npy.name}.{os.getpid()}.tmp")
+        with open(tmp, "wb") as f:
+            np.save(f, a)
+        os.replace(tmp, npy)
+    return np.load(npy, mmap_mode="r")
+
+
+class Take:
+    """One take from wasp_capture.py's split: the audio as played, CV 1 in volts, both
+    outputs, and the session's Res mark."""
+
+    def __init__(self, npz):
+        self.path = pathlib.Path(npz)
+        self.session = self.path.parent.parent.name
+        self.name = self.path.stem
+        z = np.load(self.path)
+        self.res = float(z["res"])
+        self.role = str(z["role"])
+        self.data = cached(self.path, z)
+        self.n = len(self.data)
+        self.label = f"{self.session}/{self.name}"
+
+    def features(self, a, b, inputs):
+        d = self.data[a:b]
+        cols = {"audio": lambda: d[:, 0], "cv": lambda: d[:, 1],
+                "res": lambda: np.full(b - a, self.res, np.float32)}
+        return np.stack([cols[k]() * SCALE[k] for k in inputs], axis=-1).astype(np.float32)
+
+    def target(self, a, b, out):
+        return np.array(self.data[a:b, TARGET[out]], dtype=np.float32)
+
+
+def spec(s):
+    """file.npz or file.npz@a:b (seconds) as (take, first sample, end sample)."""
+    path, _, span = s.partition("@")
+    t = Take(path)
+    a, b = 0, t.n
     if span:
-        a, b = (float(v) for v in span.split(":"))
-        sl = slice(int(a * SR), int(b * SR))
-    x = z["x"][sl].astype(np.float32)
-    feats = {"audio": x,
-             "cv": z["cv_v"][sl].astype(np.float32),
-             "res": np.full(len(x), float(z["res"]), np.float32)}
-    return feats, z[f"y_{out}"][sl].astype(np.float32)
+        a, b = (int(float(v) * SR) for v in span.split(":"))
+    return t, a, min(b, t.n)
 
 
-def nam_split(spec, out):
-    feats, y = load(spec, out)
-    n = len(y)
-    train = ({k: v[NAM_TRAIN_START:n - NAM_VALIDATE] for k, v in feats.items()}, y[NAM_TRAIN_START:n - NAM_VALIDATE])
-    valid = ({k: v[n - NAM_VALIDATE:] for k, v in feats.items()}, y[n - NAM_VALIDATE:])
-    return train, valid
+def carve(n, k, block):
+    """k blocks of `block` samples spread over n, the first at the start and the last at
+    the end, and the gaps between them."""
+    starts = [round(i * (n - block) / (k - 1)) for i in range(k)] if k > 1 else [n - block]
+    blocks, gaps, prev = [(a, a + block) for a in starts], [], 0
+    for a, b in blocks:
+        if a > prev:
+            gaps.append((prev, a))
+        prev = b
+    if prev < n:
+        gaps.append((prev, n))
+    return blocks, gaps
 
 
-def stack(feats, inputs):
-    """The network's input features, scaled to about ±1: audio as is, CV in tens of
-    volts, the Res dial in tens."""
-    scale = {"audio": 1.0, "cv": 0.1, "res": 0.1}
-    return np.stack([feats[k] * scale[k] for k in inputs], axis=-1)
+def marks(text):
+    return {float(v) for v in text.split(",")} if text else set()
+
+
+def session_material(args, train, valid, test):
+    """The split from a series' sessions (see the docstring). Items are (take, a, b) to
+    train on, and (take, a, b, unscored, held_out) to score."""
+    keep, held = marks(args.res), marks(args.holdout_res)
+    block, run_in = int((args.run_in + args.val_seconds) * SR), int(args.run_in * SR)
+    missing = []
+    for f in sorted(pathlib.Path(args.captures).glob("*/session.json")):
+        s = json.loads(f.read_text())
+        res = s.get("res")
+        if s.get("mix") != args.series or res is None or (keep and res not in keep | held):
+            continue
+        out = res in held
+        for t in s["takes"]:
+            role = t["role"]
+            if role not in ("sweep", "test") and not (role == "snapshot" and args.snapshots):
+                continue
+            npz = f.parent / "gru" / f"{t['name']}.npz"
+            if not npz.exists():
+                missing.append(f"{f.parent.name}/{t['name']}")
+                continue
+            take = Take(npz)
+            if out or role == "test":
+                test.append((take, 0, take.n, SETTLE, out))
+            elif role == "sweep":
+                blocks, gaps = carve(take.n, args.val_blocks, block)
+                valid += [(take, a, b, run_in, False) for a, b in blocks]
+                train += [(take, a, b) for a, b in gaps]
+            else:
+                train.append((take, 0, take.n))
+    if missing:
+        raise SystemExit("no GRU file for " + ", ".join(missing)
+                         + ": run wasp_capture.py split on those sessions first")
+    if not train:
+        raise SystemExit(f"no {args.series} sessions to train on in {args.captures}")
+    leak = {t.label for t, *_ in train + valid if t.res in held}
+    assert not leak, f"held-out takes in training or validation: {leak}"
+
+
+def file_material(args, train, valid, test):
+    for s in args.nam_split:
+        t, a, b = spec(s)
+        train.append((t, a + NAM_TRAIN_START, b - NAM_VALIDATE))
+        valid.append((t, b - NAM_VALIDATE, b, SETTLE, False))
+    for s in args.train:
+        train.append(spec(s))
+    valid += [(*spec(s), SETTLE, False) for s in args.valid]
+    test += [(*spec(s), SETTLE, False) for s in args.judge]
+
+
+def describe(train, valid, test):
+    sec = lambda items: sum(b - a for _, a, b, *_ in items) / SR  # noqa: E731
+    return {
+        "train": [{"take": t.label, "res": t.res, "from_s": a / SR, "to_s": b / SR} for t, a, b in train],
+        "valid": [{"take": t.label, "res": t.res, "from_s": a / SR, "to_s": b / SR, "unscored_s": u / SR}
+                  for t, a, b, u, _ in valid],
+        "test": [{"take": t.label, "res": t.res, "from_s": a / SR, "to_s": b / SR, "unscored_s": u / SR,
+                  "held_out": h} for t, a, b, u, h in test],
+        "seconds": {"train": round(sec(train), 1), "valid": round(sec(valid), 1), "test": round(sec(test), 1)},
+    }
 
 
 # ------------------------------------------------------------------------ model
@@ -106,51 +237,83 @@ def esr(pred, target):
 
 
 @torch.no_grad()
-def run_full(model, feats_x, device, chunk=SR * 10):
-    """The whole passage through the network, state carried across chunks, as on a module."""
+def evaluate(model, items, inputs, out, device, keep=False, chunk=SR):
+    """Each item (take, a, b, unscored, ...) run from rest with the state carried across
+    chunks, as on a module. Items of the same length run as one batch. Returns each item's
+    (error energy, signal energy) over its scored samples, and its output if keep."""
     model.eval()
-    x = torch.from_numpy(feats_x)[None].to(device)
-    out, h = [], None
-    for i in range(0, x.shape[1], chunk):
-        y, h = model(x[:, i:i + chunk], h)
-        out.append(y)
-    return torch.cat(out, 1)[0].cpu()
+    sums, outputs, groups = [None] * len(items), [None] * len(items), {}
+    for i, (_, a, b, u, *_) in enumerate(items):
+        groups.setdefault((b - a, u), []).append(i)
+    for (length, unscored), idx in groups.items():
+        err, sig, h, parts = np.zeros(len(idx)), np.zeros(len(idx)), None, []
+        for c in range(0, length, chunk):
+            d = min(chunk, length - c)
+            x = np.stack([items[i][0].features(items[i][1] + c, items[i][1] + c + d, inputs) for i in idx])
+            y = np.stack([items[i][0].target(items[i][1] + c, items[i][1] + c + d, out) for i in idx])
+            pred, h = model(torch.from_numpy(x).to(device), h)
+            pred = pred.cpu().numpy()
+            if keep:
+                parts.append(pred)
+            lo = max(0, unscored - c)
+            if lo < d:
+                err += ((pred[:, lo:] - y[:, lo:]).astype(np.float64) ** 2).sum(1)
+                sig += (y[:, lo:].astype(np.float64) ** 2).sum(1)
+        for j, i in enumerate(idx):
+            sums[i] = (err[j], sig[j])
+            if keep:
+                outputs[i] = np.concatenate([p[j] for p in parts])
+    return sums, outputs
 
 
-def score(model, passages, inputs, device):
-    """ESR on each passage, the first 0.1 s left out while the state settles."""
+def pooled(sums):
+    e, s = map(sum, zip(*sums)) if sums else (0.0, 0.0)
+    return float(e / (s + 1e-10))
+
+
+def by_res(items, sums, only=None):
+    """Pooled ESR per Res mark, over the items whose take is named `only` if given."""
     res = {}
-    for name, (feats, y) in passages.items():
-        pred = run_full(model, stack(feats, inputs), device)
-        k = SR // 10
-        res[name] = float(esr(pred[k:], torch.from_numpy(y)[k:]))
-    return res
+    for item, s in zip(items, sums):
+        if only is None or item[0].name == only:
+            res.setdefault(item[0].res, []).append(s)
+    return {f"{r:g}": pooled(v) for r, v in sorted(res.items())}
 
 
 # ---------------------------------------------------------------------- training
 
-def segments(sets, inputs, seg, rng, n):
-    """n random segments, seg samples long, from the training takes (weighted by length)."""
-    lengths = np.array([len(y) - seg for _, y in sets], dtype=np.float64)
-    pick = rng.choice(len(sets), size=n, p=lengths / lengths.sum())
+def segments(train, inputs, out, seg, rng, n):
+    """n random segments, seg samples long, from the training spans (weighted by length)."""
+    room = np.array([b - a - seg for _, a, b in train], dtype=np.float64)
+    pick = rng.choice(len(train), size=n, p=room / room.sum())
     xs, ys = [], []
     for i in pick:
-        feats, y = sets[i]
-        a = int(rng.integers(0, len(y) - seg))
-        xs.append(stack({k: v[a:a + seg] for k, v in feats.items()}, inputs))
-        ys.append(y[a:a + seg])
+        t, a, b = train[i]
+        s = int(rng.integers(a, b - seg))
+        xs.append(t.features(s, s + seg, inputs))
+        ys.append(t.target(s, s + seg, out))
     return torch.from_numpy(np.stack(xs)), torch.from_numpy(np.stack(ys))
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--name", required=True, help="run name, a folder under captures/wasp/gru_runs")
+    ap.add_argument("--name", help="run name, a folder under captures/wasp/gru_runs")
     ap.add_argument("--inputs", default="audio", help="audio[,cv][,res]")
     ap.add_argument("--output", default="lphp", choices=("lphp", "bp"))
+    ap.add_argument("--captures", default=str(CAPTURES), help="where the sessions are")
+    ap.add_argument("--series", choices=("lp", "hp"), help="train on that series' sessions")
+    ap.add_argument("--res", default="", help="the Res marks to use, e.g. 6 (default: all)")
+    ap.add_argument("--holdout-res", default="", help="Res marks never trained or validated on; tested whole")
+    ap.add_argument("--snapshots", action="store_true", help="train on the NAM-file takes as well")
+    ap.add_argument("--val-blocks", type=int, default=3, help="validation blocks per sweep take")
+    ap.add_argument("--val-seconds", type=float, default=8.0, help="scored seconds per validation block")
+    ap.add_argument("--run-in", type=float, default=1.0, help="unscored seconds before each block")
+    ap.add_argument("--prepare", action="store_true", help="build the memory-mapped takes, print the split, exit")
     ap.add_argument("--nam-split", action="append", default=[], help="a NAM-file take, split as NAM does")
     ap.add_argument("--train", action="append", default=[], help="training .npz (spec)")
     ap.add_argument("--valid", action="append", default=[], help="validation .npz (spec), for selection")
     ap.add_argument("--judge", action="append", default=[], help="held-out .npz (spec), scored at the end only")
+    ap.add_argument("--listen", action="store_true", help="write the chosen epoch's output on every test take")
     ap.add_argument("--cell", default="gru", choices=("gru", "lstm"))
     ap.add_argument("--hidden", type=int, default=24)
     ap.add_argument("--layers", type=int, default=1)
@@ -167,40 +330,50 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
 
+    train, valid, test = [], [], []
+    if args.series:
+        session_material(args, train, valid, test)
+    file_material(args, train, valid, test)
+    seg = int(args.seg * SR)
+    train = [t for t in train if t[2] - t[1] > seg]
+    split = describe(train, valid, test)
+    print(f"{len(train)} training spans, {split['seconds']['train']:.0f} s; {len(valid)} validation "
+          f"blocks, {split['seconds']['valid']:.0f} s; {len(test)} test takes, {split['seconds']['test']:.0f} s")
+    if args.prepare:
+        for kind in ("train", "valid", "test"):
+            print(f"\n{kind}:")
+            for e in split[kind]:
+                print(f"  {e['take']:24s} Res {e['res']:4g}  {e['from_s']:6.1f}-{e['to_s']:6.1f} s"
+                      + ("  held out" if e.get("held_out") else ""))
+        return
+    if not args.name:
+        raise SystemExit("--name is required to train")
+    if not train or not valid:
+        raise SystemExit("need training material and a validation set")
+
     torch.manual_seed(args.seed)
     if args.threads:
         torch.set_num_threads(args.threads)
     rng = np.random.default_rng(args.seed)
     device = torch.device(args.device)
     inputs = args.inputs.split(",")
-    train_sets, valid = [], {}
-    for spec in args.nam_split:
-        tr, va = nam_split(spec, args.output)
-        train_sets.append(tr)
-        valid[f"{pathlib.Path(spec).stem} (NAM's last 9 s)"] = va
-    train_sets += [load(s, args.output) for s in args.train]
-    valid.update({s: load(s, args.output) for s in args.valid})
-    judge = {s: load(s, args.output) for s in args.judge}
-    if not train_sets or not valid:
-        raise SystemExit("need training material and a validation set")
-
-    run = RUNS / args.name
+    run = pathlib.Path(args.captures) / "gru_runs" / args.name
     run.mkdir(parents=True, exist_ok=True)
     (run / "config.json").write_text(json.dumps(vars(args), indent=2) + "\n")
+    (run / "split.json").write_text(json.dumps(split, indent=1) + "\n")
     writer = SummaryWriter(str(run))
     model = RNNModel(len(inputs), args.hidden, args.cell, args.layers).to(device)
     n_params = sum(p.numel() for p in model.parameters())
     print(f"{args.name}: {args.cell.upper()}-{args.hidden} x{args.layers}, inputs {inputs}, {n_params} parameters, "
-          f"{sum(len(y) for _, y in train_sets) / SR:.0f} s of training audio, on {device}")
+          f"seed {args.seed}, on {device}", flush=True)
     opt = torch.optim.Adam(model.parameters(), lr=args.lr)
     sched = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, factor=0.5, patience=10)
-    seg = int(args.seg * SR)
     best, best_epoch, t0 = float("inf"), -1, time.monotonic()
     for epoch in range(args.epochs):
         model.train()
         losses = []
         for _ in range(args.steps_per_epoch):
-            x, y = segments(train_sets, inputs, seg, rng, args.batch)
+            x, y = segments(train, inputs, args.output, seg, rng, args.batch)
             x, y = x.to(device), y.to(device)
             with torch.no_grad():  # warm the state up on the first samples; no loss there
                 _, h = model(x[:, :args.warmup])
@@ -213,12 +386,14 @@ def main():
                 opt.step()
                 h = detach(h)
                 losses.append(loss.item())
-        val = score(model, valid, inputs, device)
-        v = float(np.mean(list(val.values())))
+        sums, _ = evaluate(model, valid, inputs, args.output, device)
+        v = pooled(sums)
         sched.step(v)
         lr = opt.param_groups[0]["lr"]
         writer.add_scalar("train/ESR", float(np.mean(losses)), epoch)
         writer.add_scalar("valid/ESR", v, epoch)
+        for r, e in by_res(valid, sums).items():
+            writer.add_scalar(f"valid_res/{r}", e, epoch)
         writer.add_scalar("lr", lr, epoch)
         mark = ""
         if v < best:
@@ -230,10 +405,22 @@ def main():
         if epoch - best_epoch >= args.patience:
             print(f"no improvement for {args.patience} epochs: stopping")
             break
+
     model.load_state_dict(torch.load(run / "best.pt"))
-    result = {"best_epoch": best_epoch, "valid": score(model, valid, inputs, device),
-              "judge": score(model, judge, inputs, device), "parameters": n_params,
-              "minutes": round((time.monotonic() - t0) / 60, 1)}
+    vsums, _ = evaluate(model, valid, inputs, args.output, device)
+    tsums, outs = evaluate(model, test, inputs, args.output, device, keep=args.listen)
+    result = {
+        "best_epoch": best_epoch, "valid": pooled(vsums), "valid_by_res": by_res(valid, vsums),
+        "test": {item[0].label: pooled([s]) for item, s in zip(test, tsums)},
+        "test_take_by_res": by_res(test, tsums, only="test"),
+        "held_out": pooled([s for item, s in zip(test, tsums) if item[4]]) if any(i[4] for i in test) else None,
+        "parameters": n_params, "minutes": round((time.monotonic() - t0) / 60, 1),
+    }
+    if args.listen:
+        (run / "listen").mkdir(exist_ok=True)
+        for item, y in zip(test, outs):
+            sf.write(run / "listen" / f"{item[0].session}_{item[0].name}.wav", np.clip(y, -1, 1), SR,
+                     subtype="PCM_24")
     (run / "result.json").write_text(json.dumps(result, indent=2) + "\n")
     print(json.dumps(result, indent=2))
 

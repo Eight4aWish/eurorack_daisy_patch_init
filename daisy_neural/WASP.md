@@ -343,6 +343,30 @@ capture's name and calibration: +20.0 dBu in, +20.8 dBu out from the ES-10's mea
 volts) and writes `<session>/a2/<take>.nam`. It skips captures already trained. NAM's
 checks stay on; `--ignore-checks` is for the take near the hiss.
 
+## 6. Train the GRUs
+
+`tools/train_gru.py` in the same environment. With `--series` it takes a whole series'
+sessions and splits them itself: training on the sweeps, validation on three 9-second
+blocks in every sweep take (beginning, middle, end; the first second of each unscored),
+and a test of every `test` take plus whole sessions at `--holdout-res`. See it before
+training:
+
+```
+.venv-nam/bin/python tools/train_gru.py --series lp --holdout-res 5 --prepare
+```
+
+That also builds a memory-mapped copy of each take (`<take>.npy` beside the `.npz`, about
+3 GB for LP), which parallel runs share. The LP series' ten runs, as designed (CLAUDE.md,
+"The playable GRUs"):
+
+```
+nohup caffeinate -im tools/train_lp_playable.sh > captures/wasp/gru_runs/lp_playable.log 2>&1 < /dev/null &
+```
+
+Each run writes `config.json`, `split.json`, TensorBoard logs, `best.pt`, and at the end
+`result.json` (validation and test ESR, per Res mark, and over the held-out Res) and
+`listen/`, the chosen epoch's output on every test take at the real Wasp's gain.
+
 ## Then: hearing the differences
 
 - **Architecture:** A2 against the cutoff GRU, both trained on the same snapshot take.
