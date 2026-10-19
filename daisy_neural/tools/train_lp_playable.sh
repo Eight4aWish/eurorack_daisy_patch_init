@@ -3,9 +3,11 @@
 #   cutoff and Res, every mark but Res 5: GRU-16 and GRU-24, three seeds each;
 #   cutoff only, at Res 6, sweeps plus the NAM-file takes: GRU-16 and GRU-24, two seeds each.
 # Ten runs side by side, one thread each. From daisy_neural/, with captures/wasp attached;
-# caffeinate keeps the machine awake until the last run finishes:
+# caffeinate keeps the machine awake until the last run finishes. It needs -s: started
+# over SSH, the Mac is only in a network "dark wake", and -i alone lets it fall back
+# into maintenance sleep with the runs paused (seen on the Mac mini, 2026-10-19):
 #
-#     nohup caffeinate -im tools/train_lp_playable.sh > captures/wasp/gru_runs/lp_playable.log 2>&1 < /dev/null &
+#     nohup caffeinate -sim tools/train_lp_playable.sh > captures/wasp/gru_runs/lp_playable.log 2>&1 < /dev/null &
 #
 # Each run logs to captures/wasp/gru_runs/<name>/log.txt.
 

@@ -360,8 +360,12 @@ That also builds a memory-mapped copy of each take (`<take>.npy` beside the `.np
 "The playable GRUs"):
 
 ```
-nohup caffeinate -im tools/train_lp_playable.sh > captures/wasp/gru_runs/lp_playable.log 2>&1 < /dev/null &
+nohup caffeinate -sim tools/train_lp_playable.sh > captures/wasp/gru_runs/lp_playable.log 2>&1 < /dev/null &
 ```
+
+`caffeinate -s` matters when launching over SSH: a sleeping Mac only half-wakes for the
+connection, and without `-s` it drops back to sleep with the runs paused. The minutes in
+a run's log stop while the machine sleeps; the file times don't.
 
 Each run writes `config.json`, `split.json`, TensorBoard logs, `best.pt`, and at the end
 `result.json` (validation and test ESR, per Res mark, and over the held-out Res) and
