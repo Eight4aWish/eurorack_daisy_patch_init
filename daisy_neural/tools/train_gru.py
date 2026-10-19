@@ -325,6 +325,7 @@ def main():
     ap.add_argument("--steps-per-epoch", type=int, default=20, help="batches per epoch")
     ap.add_argument("--epochs", type=int, default=300)
     ap.add_argument("--lr", type=float, default=5e-3)
+    ap.add_argument("--clip", type=float, default=0, help="largest gradient norm per step (0: no limit)")
     ap.add_argument("--patience", type=int, default=30, help="epochs without improvement before stopping")
     ap.add_argument("--device", default="cpu", help="cpu or mps")
     ap.add_argument("--seed", type=int, default=0)
@@ -368,7 +369,7 @@ def main():
           f"seed {args.seed}, on {device}", flush=True)
     opt = torch.optim.Adam(model.parameters(), lr=args.lr)
     sched = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, factor=0.5, patience=10)
-    best, best_epoch, t0 = float("inf"), -1, time.monotonic()
+    best, best_epoch, t0, norms = float("inf"), -1, time.monotonic(), []
     for epoch in range(args.epochs):
         model.train()
         losses = []
@@ -383,24 +384,35 @@ def main():
                 loss = esr(pred, y[:, a:b])
                 opt.zero_grad()
                 loss.backward()
+                # The gradient's size before any clipping. Without a limit, one huge
+                # gradient can throw a GRU out of a good minimum (seen 2026-10-19).
+                norm = float(torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip or float("inf")))
                 opt.step()
                 h = detach(h)
                 losses.append(loss.item())
+                norms.append(norm)
         sums, _ = evaluate(model, valid, inputs, args.output, device)
         v = pooled(sums)
         sched.step(v)
         lr = opt.param_groups[0]["lr"]
+        epoch_norms = np.array(norms[-len(losses):])
+        clipped = float(np.mean(epoch_norms > args.clip)) if args.clip else 0.0
         writer.add_scalar("train/ESR", float(np.mean(losses)), epoch)
         writer.add_scalar("valid/ESR", v, epoch)
         for r, e in by_res(valid, sums).items():
             writer.add_scalar(f"valid_res/{r}", e, epoch)
         writer.add_scalar("lr", lr, epoch)
+        writer.add_scalar("grad/median", float(np.median(epoch_norms)), epoch)
+        writer.add_scalar("grad/max", float(epoch_norms.max()), epoch)
+        writer.add_scalar("grad/clipped", clipped, epoch)
+        np.save(run / "grad_norms.npy", np.array(norms, dtype=np.float32))
         mark = ""
         if v < best:
             best, best_epoch, mark = v, epoch, "  *"
             torch.save(model.state_dict(), run / "best.pt")
         minutes = (time.monotonic() - t0) / 60
         print(f"epoch {epoch:4d}  train ESR {np.mean(losses):.4f}  valid ESR {v:.4f}  lr {lr:.1e}  "
+              f"grad {np.median(epoch_norms):.3g} (max {epoch_norms.max():.3g}, {100 * clipped:.0f}% clipped)  "
               f"{minutes:5.1f} min{mark}", flush=True)
         if epoch - best_epoch >= args.patience:
             print(f"no improvement for {args.patience} epochs: stopping")

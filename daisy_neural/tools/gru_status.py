@@ -27,7 +27,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 HERE = pathlib.Path(__file__).resolve().parent
 RUNS = HERE.parent / "captures" / "wasp" / "gru_runs"
-EPOCH = re.compile(r"^epoch\s+(\d+)\s+train ESR ([\d.]+)\s+valid ESR ([\d.]+)\s+lr (\S+)\s+([\d.]+) min")
+EPOCH = re.compile(r"^epoch\s+(\d+)\s+train ESR ([\d.]+)\s+valid ESR ([\d.]+)\s+lr (\S+)\s+"
+                   r"(?:grad (\S+) \(max (\S+), (\d+)% clipped\)\s+)?([\d.]+) min")
 COLOURS = {"cutoff + Res, GRU-16": "var(--c1)", "cutoff + Res, GRU-24": "var(--c2)",
            "cutoff, GRU-16": "var(--c3)", "cutoff, GRU-24": "var(--c4)"}
 DASHES = {1: "", 2: "6 4", 3: "2 3"}
@@ -64,7 +65,9 @@ def per_res(run, step):
 def read_run(run, processes):
     log = (run / "log.txt").read_text(errors="replace")
     cfg = json.loads((run / "config.json").read_text()) if (run / "config.json").exists() else {}
-    epochs = [(int(m[1]), float(m[2]), float(m[3]), float(m[4]), float(m[5]))
+    # (epoch, train ESR, valid ESR, lr, minutes, gradient median, gradient max, % clipped)
+    epochs = [(int(m[1]), float(m[2]), float(m[3]), float(m[4]), float(m[8]),
+               *((float(m[5]), float(m[6]), int(m[7])) if m[5] else (None, None, None)))
               for m in map(EPOCH.match, log.splitlines()) if m]
     result = json.loads((run / "result.json").read_text()) if (run / "result.json").exists() else None
     best = min(epochs, key=lambda e: e[2]) if epochs else None
@@ -174,12 +177,15 @@ def table(rs):
             f'<td><span class=bar><span style="width:{min(100, 100 * (since or 0) / r["patience"]):.0f}%"></span></span>'
             f'<span class=muted> {since if since is not None else "–"}/{r["patience"]}</span></td>'
             f'<td class=num>{f"{last[3]:.1e}" if last else "–"}</td>'
-            f'<td><span class="state {r["state"].split(":")[0].replace(" ", "-")}">{r["state"]}</span>'
+            + (f'<td class=num>{last[5]:.3g}<div class=small>max {last[6]:.3g} · {last[7]}% clipped</div></td>'
+               if last and last[5] is not None else '<td class=num>–</td>')
+            + f'<td><span class="state {r["state"].split(":")[0].replace(" ", "-")}">{r["state"]}</span>'
             + (f'<div class=small>{html.escape(eta)}</div>' if eta else "")
             + (f'<div class=small>{html.escape(test_txt)}</div>' if test_txt else "")
             + "".join(f'<div class="small err">{html.escape(t)}</div>' for t in r["tail"]) + "</td></tr>")
     return ('<div class=scroll><table><thead><tr><th>Network</th><th>Seed</th><th>Epoch</th>'
-            '<th>Best valid ESR</th><th>at epoch</th><th>Latest</th><th>Since best</th><th>lr</th><th>State</th>'
+            '<th>Best valid ESR</th><th>at epoch</th><th>Latest</th><th>Since best</th><th>lr</th>'
+            '<th>Gradient</th><th>State</th>'
             '</tr></thead><tbody>' + "".join(rows) + "</tbody></table></div>")
 
 
