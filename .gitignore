@@ -27,6 +27,8 @@ daisy_neural/amp_compare/
 **/tools/a2_host_steer
 **/tools/a2_explore_s*
 **/tools/a2_notamp
+**/tools/gru_host
+**/tools/gru_host_exact
 
 # Python
 __pycache__/
