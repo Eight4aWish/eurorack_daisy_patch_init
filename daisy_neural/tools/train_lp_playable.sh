@@ -2,7 +2,8 @@
 # The LP series' playable GRUs, as designed on 2026-10-19 (CLAUDE.md, the Wasp section):
 #   cutoff and Res, every mark but Res 5: GRU-16 and GRU-24, three seeds each;
 #   cutoff only, at Res 6, sweeps plus the NAM-file takes: GRU-16 and GRU-24, two seeds each.
-# Ten runs side by side, one thread each. From daisy_neural/, with captures/wasp attached;
+# Ten runs side by side, one thread each, the gradient norm clipped at 10 (about five times
+# its median; the first launch, unclipped, blew up in four runs of ten). From daisy_neural/, with captures/wasp attached;
 # caffeinate keeps the machine awake until the last run finishes. It needs -s: started
 # over SSH, the Mac is only in a network "dark wake", and -i alone lets it fall back
 # into maintenance sleep with the runs paused (seen on the Mac mini, 2026-10-19):
@@ -24,7 +25,7 @@ run() {  # a run name, then train_gru.py's options
     local name=$1
     shift
     mkdir -p "$RUNS/$name"
-    $PY tools/train_gru.py --name "$name" --threads 1 --listen "$@" > "$RUNS/$name/log.txt" 2>&1 &
+    $PY tools/train_gru.py --name "$name" --threads 1 --clip 10 --listen "$@" > "$RUNS/$name/log.txt" 2>&1 &
 }
 
 for h in 16 24; do

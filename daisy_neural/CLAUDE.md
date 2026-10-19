@@ -535,7 +535,17 @@ the recordings, before any training (`train_gru.py --series`):
   one. About 31 minutes train, 8 validate.
 - **Res 5 is the only held-out setting:** never trained or validated on, tested whole.
 - **The same procedure for every run:** Wright et al.'s recipe and ESR loss as in the
-  pilot, selection on pooled validation ESR, seeds varying the start and the segments.
+  pilot, selection on pooled validation ESR, seeds varying the start and the segments,
+  and the gradient norm clipped at 10. The first launch had no clipping, and four runs of
+  ten blew up: train and validation ESR jumping together in one epoch (cutoff GRU-24
+  seed 1 from 0.056 to 1.15), then early stopping before they recovered. Rerun unclipped
+  with the same seeds (they retrace exactly), the gradient's median was about 2, its
+  99th percentile 8 with Res as an input and about 20 without, and the cutoff-only runs
+  hit spikes of 131 and 328; the NAM-file takes with their quiet passages are half of
+  their training. A limit of 10 clips about 3% of steps. Aborted runs and the
+  measurement are kept in `gru_runs/_aborted_noclip_2026-10-19` and `_grad_measure`.
+  Respawning only the runs that failed was ruled out: the same seed repeats the blow-up,
+  and a new one is choosing seeds by result.
 - Ten runs side by side, one thread each, on the Mac mini (Apple M4, 16 GB), with the
   Crucial drive attached there: `tools/train_lp_playable.sh`. Takes are memory-mapped,
   so the ten share one copy of the data in memory.
