@@ -489,8 +489,20 @@ before, the same test take matching itself to −24 to −32 dB after a pause bu
 to −18 dB against one recorded straight after a sweep. Best guess: heat in the cutoff
 circuit, which with Frq at max is hottest at the 0 V between takes. Not learnable by
 either network; it sets how closely the real Wasp in HP matches itself, and so the
-floor for judging them. **Next: training, once the dataset has a bigger home (about
-20 GB with every session split).**
+floor for judging them. The dataset lives on the Crucial drive since 2026-10-18;
+`captures/wasp` is a link to it.
+
+**First A2 capture, 2026-10-19** (LP, Res 6, +5 V; `tools/train_a2.py`, NAM 0.13.0, 100
+epochs, **28.8 min on the MacBook Air's GPU**). On NAM's own validation passage A2-Lite
+scores ESR 0.048 and A2-Full 0.016: NAM's "might sound ok". On a held-out synth riff at
+the same setting (test_snaps' +5 V hold) both fall away: Lite 0.110, Full 0.18–0.21, and
+Full predicts peaks of 6.5 V past the real Wasp's 5.7 V ceiling. Alignment and level
+were ruled out. The riff is sustained saw, 3 dB hotter on average than NAM's training
+section and 14 dB hotter than its validation passage: NAM's file teaches the Wasp as a
+guitar hears it, not as a Eurorack oscillator drives it. That is the limit of NAM's
+simplified trainer (only its own input file), the reason the sweep takes are full of
+oscillator material, and the first real result of the comparison. Listening files are
+in `lp-res6/a2/listen/`.
 
 **Tooling:** `tools/wasp_capture.py`, bench sheet `WASP.md`. It plays and records in one
 stream, with a loopback cable for latency. Recordings live in `captures/wasp/`, which is
