@@ -367,6 +367,13 @@ nohup caffeinate -sim tools/train_lp_playable.sh > captures/wasp/gru_runs/lp_pla
 connection, and without `-s` it drops back to sleep with the runs paused. The minutes in
 a run's log stop while the machine sleeps; the file times don't.
 
+To watch them from any computer on the network, start the status page on the training
+machine and open `http://<machine>.local:8124` (the Mac mini: `Davids-Mac-mini.local`):
+
+```
+nohup .venv-nam/bin/python tools/gru_status.py > /tmp/gru_status.log 2>&1 < /dev/null &
+```
+
 Each run writes `config.json`, `split.json`, TensorBoard logs, `best.pt`, and at the end
 `result.json` (validation and test ESR, per Res mark, and over the held-out Res) and
 `listen/`, the chosen epoch's output on every test take at the real Wasp's gain.
