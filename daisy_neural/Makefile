@@ -2,7 +2,12 @@
 # for a stock patch.init with no screen: the B8 toggle picks the bank and the LED
 # blinks the slot number. One source (src/main.cpp, MIRTH_LITE), two builds, kept in
 # separate build folders so their objects never mix.
-ifeq ($(LITE),1)
+#
+# `make GRU_TEST=1` builds the GRU test firmware instead (src/gru_test.cpp): the Wasp
+# GRUs compiled in, cutoff and Res on the knobs, CPU on the screen. No card needed.
+ifeq ($(GRU_TEST),1)
+TARGET    = mirth_gru_test
+else ifeq ($(LITE),1)
 TARGET    = mirth_lite
 else
 TARGET    = mirth
@@ -29,19 +34,25 @@ DAISYSP_DIR  ?= $(DAISY_ROOT)/DaisySP
 # Build directory. A Lite build must never reuse the OLED build's objects (its main.o
 # calls a display it does not link). libDaisy's core Makefile, included below, sets
 # BUILD_DIR unconditionally, so this needs `override` to stick.
-ifeq ($(LITE),1)
+ifeq ($(GRU_TEST),1)
+override BUILD_DIR := build_gru_test
+else ifeq ($(LITE),1)
 override BUILD_DIR := build_lite
 else
 BUILD_DIR ?= build
 endif
 
 # Sources
+ifeq ($(GRU_TEST),1)
+CPP_SOURCES = src/gru_test.cpp $(_P_UP1)/common/oled_soft_i2c.cpp
+else
 CPP_SOURCES = src/main.cpp \
               src/capture_store.cpp
 ifeq ($(LITE),1)
 C_DEFS += -DMIRTH_LITE=1
 else
 CPP_SOURCES += $(_P_UP1)/common/oled_soft_i2c.cpp
+endif
 endif
 
 # FatFS long-filename support. libDaisy compiles ff.c with LFN enabled but does
