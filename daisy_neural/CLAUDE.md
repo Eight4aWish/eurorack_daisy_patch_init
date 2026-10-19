@@ -579,6 +579,20 @@ conditioning (NAM 0.13's WaveNet has FiLM layers and a condition input; its data
 is mono only), a hypernetwork, or the grey-box filter. Listening page: claude.ai artifact
 `8fizKnpeRxyMEaVrd73Ej9`.
 
+**The GRU port to the Daisy (started 2026-10-19).** Step 1: `nam/gru_runtime.h`, the
+engine (PyTorch's nn.GRU plus the dense output, portable C++, sizes from the file), the
+`.grnb` card file (`tools/grnb.py`, `tools/gru_export.py`) and the desktop check
+(`tools/gru_host.cpp`, `tools/gru_check.py`). The C++ output matches PyTorch to an ESR
+of 10⁻⁹–10⁻¹¹ at Res 2 and 6 with the fast table activations; at Res 10 to 7 × 10⁻⁵,
+the network amplifying rounding there; the score against the real Wasp is unchanged to
+four places everywhere. Step 2: a test firmware, `make GRU_TEST=1` (`src/gru_test.cpp`),
+with the cutoff + Res GRU-24 and the cutoff-only GRU-24 compiled in. Controls, agreed
+with David: Res on CV_3 (+ CV_7), cutoff offset 0–10 V on the CV_4 knob plus CV in
+volts on the CV_8 jack, trim and mix as in Mirth, B7 steps between the networks. Built
+(DTCMRAM 59%); CPU on the module not yet measured. The weights header
+(`nam/gru_test_nets.h`, from `tools/gru_to_header.py`) is gitignored until David decides
+to publish the Wasp captures.
+
 **Tooling:** `tools/wasp_capture.py`, bench sheet `WASP.md`. It plays and records in one
 stream, with a loopback cable for latency. Recordings live in `captures/wasp/`, which is
 gitignored. Tested offline against a simulated filter first, then used for both series
