@@ -550,6 +550,20 @@ the recordings, before any training (`train_gru.py --series`):
   Crucial drive attached there: `tools/train_lp_playable.sh`. Takes are memory-mapped,
   so the ten share one copy of the data in memory.
 
+**First results and listening (2026-10-19, runs part-finished).** Cutoff only at Res 6:
+0.0082 on the pilot's own 4 s riff (against the pilot's best GRU 0.050 and A2-Lite 0.105),
+0.012–0.016 on the whole `test` take: training on synth sweeps was what the pilot lacked.
+Cutoff and Res, test takes by mark: 0.012–0.030 at Res 0–4, **0.036 at the held-out Res
+5** (between its neighbours: the gap is filled), 0.055–0.062 at Res 6, then 0.11–0.21,
+0.24–0.31, 0.47 and 0.68 at Res 7–10. David's ears: the Res 6 cutoff examples are
+"stunning"; Res 8–10 is "just lacking in wildness, chaotic, randomness". Likely a property
+of the ESR loss as much as the network: where the Wasp is unpredictable, the
+error-minimising output is the average of the possibilities, which is tamer than any of
+them. Options recorded for later: a spectral or adversarial loss, a noise input, FiLM
+conditioning (NAM 0.13's WaveNet has FiLM layers and a condition input; its data pipeline
+is mono only), a hypernetwork, or the grey-box filter. Listening page: claude.ai artifact
+`8fizKnpeRxyMEaVrd73Ej9`.
+
 **Tooling:** `tools/wasp_capture.py`, bench sheet `WASP.md`. It plays and records in one
 stream, with a loopback cable for latency. Recordings live in `captures/wasp/`, which is
 gitignored. Tested offline against a simulated filter first, then used for both series
