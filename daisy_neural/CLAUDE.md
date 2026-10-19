@@ -591,7 +591,15 @@ with David: Res on CV_3 (+ CV_7), cutoff offset 0–10 V on the CV_4 knob plus C
 volts on the CV_8 jack, trim and mix as in Mirth, B7 steps between the networks. Built
 (DTCMRAM 59%); CPU on the module not yet measured. The weights header
 (`nam/gru_test_nets.h`, from `tools/gru_to_header.py`) is gitignored until David decides
-to publish the Wasp captures.
+to publish the Wasp captures. Step 3, merged into Mirth (`b5070b9`): a FILTERS bank of
+`.grnb` networks off the card, and David's knob layout for every bank (1–4 = patch, mix,
+drive, steer in AMPS and NOT-AMPS; patch, mix, cutoff, resonance in FILTERS; B7 held
+cycles the three banks). The engine is capped at GRU-24 in Mirth, with a 2,049-point tanh
+table; Mirth's DTCMRAM is at 77%. The test firmware took the same FILTERS layout. Open:
+how Mirth Lite reaches FILTERS (its toggle has two positions); level compensation for
+DRIVE; the patch.init's input full scale, so the filters can map volts to volts. Card
+files for the Wasp: `captures/wasp_mirth/f1_WASP_LP.grnb` (cutoff + Res) and
+`f2_WASP_LP_R6.grnb` (cutoff only). Not yet run on hardware.
 
 **Tooling:** `tools/wasp_capture.py`, bench sheet `WASP.md`. It plays and records in one
 stream, with a loopback cable for latency. Recordings live in `captures/wasp/`, which is
