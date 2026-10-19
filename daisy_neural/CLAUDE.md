@@ -534,7 +534,7 @@ the recordings, before any training (`train_gru.py --series`):
   20%). Each is 1 s of unscored run-in, then 8 s scored; no training segment touches
   one. About 31 minutes train, 8 validate.
 - **Res 5 is the only held-out setting:** never trained or validated on, tested whole.
-- **The same procedure for every run:** Wright et al.'s recipe and ESR loss as in the
+- **The same procedure for every run:** Wright et al.'s training shape with a plain ESR loss (not their pre-emphasised one, nor NAM's; see "NAM's trainer, reviewed") as in the
   pilot, selection on pooled validation ESR, seeds varying the start and the segments,
   and the gradient norm clipped at 10. The first launch had no clipping, and four runs of
   ten blew up: train and validation ESR jumping together in one epoch (cutoff GRU-24
@@ -614,6 +614,30 @@ with an averaged Wasp; nothing in the evaluation checked that the control does w
 real control does. Proposed: a control-response test (band levels per Res and cutoff hold
 against the real Wasp) in the evaluation, and a spectral term in the loss. Until then the
 cutoff-only networks, faithful at their one Res, are the playable ones.
+
+**NAM's trainer, reviewed (2026-10-19, from the installed v0.13.0 source).** Done after
+the module showed Res doing nothing; earlier only its A2 config had been read, and its
+loss was misdescribed here as ESR. What it does, against `train_gru.py`:
+
+| | NAM 0.13.0 (A2 config, `lightning_module.py`, `data.py`, `recurrent.py`) | `train_gru.py` |
+|---|---|---|
+| Training loss | **MSE** (weight 1) on an output **normalised to −18 dBFS RMS**, plus **MRSTFT** (auraloss: FFT 512/1024/2048, spectral convergence + log magnitude) at 0.0005, which at that level pulls about as hard as the MSE does at ESR ~0.05 | plain ESR per 2,048-sample chunk |
+| ESR | validation only, to keep the best epoch; the code warns that ESR on minibatches misbehaves when a target is near silent | the training loss: the 10¹⁸ gradients and the NaN |
+| Optimiser steps | one per batch of whole segments (truncation inside the segment) | one per 2,048-sample chunk |
+| Schedule | Adam 0.004, weight decay 3e-7, ×0.994 per epoch, fixed epochs; an epoch is one pass over every segment | Adam 0.005, halved on plateau, early stopping; an epoch is 320 s drawn at random |
+| Gradient clipping | none (MSE does not explode) | at 10 |
+| Recurrent start | LSTM forget-gate bias +2 ("up the remembering"), learned initial state | PyTorch defaults, zero state |
+| Knob inputs | the LSTM takes extra input dimensions for parametric models ("catnet") | the same idea |
+| Pre-emphasis, DC term | available, off for A2; Wright et al. (MDPI 2020, cited in NAM's code) pre-emphasise with 0.95 | none |
+| Seeds | one, 0 | three per design |
+
+What it says about the playable GRUs: the training loss rewarded getting each sample's
+waveform right and nothing else, so an averaged Wasp scored well and Res's spectral effect
+went unlearned; and ESR as a per-chunk loss is the likely cause of the exploding
+gradients. Candidate changes, for David's decision: MSE on a normalised output plus
+MRSTFT, ESR kept for selection and reporting; one optimiser step per batch; the GRU's
+update-gate bias started towards keeping its history; and the control-response test in
+the evaluation whatever else changes.
 
 **Tooling:** `tools/wasp_capture.py`, bench sheet `WASP.md`. It plays and records in one
 stream, with a loopback cable for latency. Recordings live in `captures/wasp/`, which is

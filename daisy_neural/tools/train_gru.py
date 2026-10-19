@@ -12,11 +12,14 @@ inputs alongside it, then one dense layer to the output sample.
     --inputs audio,cv         the cutoff as a knob (CV 1 volts)
     --inputs audio,cv,res     cutoff and resonance (the Res dial)
 
-Training is Wright et al.'s recipe: half-second segments drawn from the training material,
-the hidden state warmed up before any loss counts, truncated backpropagation every 2048
-samples, Adam, the learning rate cut when validation stops improving, and early stopping.
-The loss is ESR, the same score NAM reports, so the two compare directly. Validation and
-test scores are pooled: the error energy over all scored samples divided by the signal's.
+Training follows Wright et al.'s shape: half-second segments drawn from the training
+material, the hidden state warmed up before any loss counts, truncated backpropagation
+every 2048 samples, Adam, the learning rate cut when validation stops improving, and
+early stopping. The loss is plain ESR, which is neither Wright et al.'s (they pre-emphasise
+the signal before the ESR and add a DC term) nor NAM's (NAM trains on MSE of an output
+normalised to -18 dBFS plus a multi-resolution STFT term, and only reports ESR); see
+CLAUDE.md, "NAM's trainer, reviewed". Validation and test scores are pooled ESR: the
+error energy over all scored samples divided by the signal's.
 
 Sessions, for the playable networks. `--series lp` takes every session of that series in
 captures/wasp, and the split is fixed by the recordings, not by chance:
