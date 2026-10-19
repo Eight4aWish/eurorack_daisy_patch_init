@@ -378,6 +378,35 @@ Each run writes `config.json`, `split.json`, TensorBoard logs, `best.pt`, and at
 `result.json` (validation and test ESR, per Res mark, and over the held-out Res) and
 `listen/`, the chosen epoch's output on every test take at the real Wasp's gain.
 
+## 7. How much does the Wasp vary from itself? (LP, Res 6–10)
+
+The playable GRUs fall away above Res 7, and by ear they lack the Wasp's wildness there.
+Before recording more data, measure how closely the Wasp repeats itself: if it cannot,
+no network will match it sample for sample. Fifteen test-only sessions are made,
+`lp-res<N>-rep1`…`-rep3` for N = 6…10, each the series' own `test` take (identical
+samples), with the LP settings: Lev 10, Frq 0, Mix at LP, CV 2 at 0.
+
+1. The Crucial drive on the recording laptop; the rack on for half an hour.
+2. The rig check (step 1).
+3. For each mark, 6 to 10: set Res, then
+   - `rep1` and `rep2` back to back: the Wasp's short-term variation;
+   - turn Res fully anticlockwise and back to the mark, then `rep3`: that plus the error of
+     setting the knob by eye.
+
+```
+.venv/bin/python tools/wasp_capture.py record captures/wasp/lp-res10-rep1
+.venv/bin/python tools/wasp_capture.py split captures/wasp/lp-res10-rep1
+.venv/bin/python tools/wasp_capture.py drift captures/wasp/lp-res10 captures/wasp/lp-res10-rep1 \
+    captures/wasp/lp-res10-rep2 captures/wasp/lp-res10-rep3
+```
+
+`drift` compares each with the mark's original session (18 October), which adds a day.
+Read it against the networks' test ESR at the same mark, decided before recording:
+the Wasp repeating itself far better than the network means the network is short of
+something, and more data at Res 6–10 is worth recording; the Wasp varying about as much
+as the network's error means the network is near the floor, and listening decides;
+`rep3` far from `rep2` means setting the knob by eye is a large error at that mark.
+
 ## Then: hearing the differences
 
 - **Architecture:** A2 against the cutoff GRU, both trained on the same snapshot take.
