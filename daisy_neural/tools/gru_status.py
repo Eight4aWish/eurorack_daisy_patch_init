@@ -160,10 +160,18 @@ def table(rs):
         b, last, res = r["best"], (r["epochs"][-1] if r["epochs"] else None), r["result"]
         since = (last[0] - b[0]) if b else None
         if r["state"] == "training" and b and r["pace"]:
-            stop_by = b[0] + r["patience"]
-            eta = f"epoch {stop_by} at the earliest, ~{(stop_by - last[0]) * r['pace']:.0f} min"
+            if r["patience"]:
+                stop_by = b[0] + r["patience"]
+                eta = f"epoch {stop_by} at the earliest, ~{(stop_by - last[0]) * r['pace']:.0f} min"
+            else:  # a fixed budget: every epoch runs
+                left = (r["max_epochs"] - 1 - last[0]) * r["pace"]
+                eta = f"ends at epoch {r['max_epochs']}, ~{left / 60:.1f} h"
         else:
             eta = ""
+        # Since the best epoch, out of the patience; with a fixed budget, the epochs done
+        # out of the budget instead.
+        span = r["patience"] or r["max_epochs"]
+        done = since if r["patience"] else (last[0] + 1 if last else 0)
         if res:
             held = res.get("held_out")
             tests = list(res.get("test_take_by_res", {}).values())
@@ -178,8 +186,8 @@ def table(rs):
             f'<td class=num><b>{fmt(b[2] if b else None)}</b></td>'
             f'<td class=num>{b[0] if b else "–"}</td>'
             f'<td class=num>{fmt(last[2] if last else None)}</td>'
-            f'<td><span class=bar><span style="width:{min(100, 100 * (since or 0) / r["patience"]):.0f}%"></span></span>'
-            f'<span class=muted> {since if since is not None else "–"}/{r["patience"]}</span></td>'
+            f'<td><span class=bar><span style="width:{min(100, 100 * (done or 0) / span):.0f}%"></span></span>'
+            f'<span class=muted> {done if done is not None else "–"}/{span}</span></td>'
             f'<td class=num>{f"{last[3]:.1e}" if last else "–"}</td>'
             + (f'<td class=num>{last[5]:.3g}<div class=small>max {last[6]:.3g} · {last[7]}% clipped</div></td>'
                if last and last[5] is not None else '<td class=num>–</td>')
@@ -188,7 +196,8 @@ def table(rs):
             + (f'<div class=small>{html.escape(test_txt)}</div>' if test_txt else "")
             + "".join(f'<div class="small err">{html.escape(t)}</div>' for t in r["tail"]) + "</td></tr>")
     return ('<div class=scroll><table><thead><tr><th>Network</th><th>Seed</th><th>Epoch</th>'
-            '<th>Best valid ESR</th><th>at epoch</th><th>Latest</th><th>Since best</th><th>lr</th>'
+            '<th>Best valid ESR</th><th>at epoch</th><th>Latest</th>'
+            + ('<th>Since best</th>' if any(r["patience"] for r in rs) else '<th>Progress</th>') + '<th>lr</th>'
             '<th>Gradient</th><th>State</th>'
             '</tr></thead><tbody>' + "".join(rows) + "</tbody></table></div>")
 
@@ -265,7 +274,7 @@ def page(args):
 {table(rs)}
 <h2>Validation ESR by epoch</h2>
 <p class=muted>Pooled over the validation blocks (beginning, middle and end of every sweep take). Log scale; lower is better.
-A run stops after {rs[0]["patience"] if rs else 30} epochs without a new best, or at {rs[0]["max_epochs"] if rs else 300}.</p>
+{(f'A run stops after {rs[0]["patience"]} epochs without a new best, or at {rs[0]["max_epochs"]}.') if rs and rs[0]["patience"] else (f'Every run goes the full {rs[0]["max_epochs"]} epochs; the best by validation ESR is kept.' if rs else '')}</p>
 {chart(rs)}
 {res_table(rs)}
 </main></body></html>"""
