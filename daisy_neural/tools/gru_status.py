@@ -110,7 +110,7 @@ def chart(rs):
     pts = [(e[0], e[2]) for r in rs for e in r["epochs"]]
     if not pts:
         return "<p class=muted>No epochs logged yet.</p>"
-    w, h, left, right, top, bottom = 760, 320, 52, 12, 12, 34
+    w, h, left, right, top, bottom = 760, 320, 52, 12, 20, 34
     xmax = max(50, max(p[0] for p in pts) + 5)
     lo = math.floor(math.log10(max(min(p[1] for p in pts), 1e-4)))
     top = max(p[1] for p in pts)  # the axis ends at the next 1, 2 or 5 above the highest point
@@ -216,7 +216,7 @@ CSS = """
   --accent:#ff4d5e; --c1:#ff4d5e; --c2:#ffa23a; --c3:#6f9bff; --c4:#3cc7b1; --ok:#5cc97f; --warn:#ff7a70; color-scheme:dark }
 * { box-sizing:border-box }
 body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.45 "IBM Plex Sans", system-ui, sans-serif }
-main { max-width:1000px; margin:0 auto; padding-block:24px 48px;
+main { max-width:1240px; margin:0 auto; padding-block:24px 48px;
   padding-left:max(16px, env(safe-area-inset-left, 0px)); padding-right:max(16px, env(safe-area-inset-right, 0px));
   display:grid; grid-template-columns:minmax(0, 1fr); gap:18px }
 h1 { font-size:22px; margin:0; text-wrap:balance } h1 b { color:var(--accent) }
