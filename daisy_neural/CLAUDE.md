@@ -550,12 +550,27 @@ the recordings, before any training (`train_gru.py --series`):
   Crucial drive attached there: `tools/train_lp_playable.sh`. Takes are memory-mapped,
   so the ten share one copy of the data in memory.
 
-**First results and listening (2026-10-19, runs part-finished).** Cutoff only at Res 6:
-0.0082 on the pilot's own 4 s riff (against the pilot's best GRU 0.050 and A2-Lite 0.105),
-0.012–0.016 on the whole `test` take: training on synth sweeps was what the pilot lacked.
-Cutoff and Res, test takes by mark: 0.012–0.030 at Res 0–4, **0.036 at the held-out Res
-5** (between its neighbours: the gap is filled), 0.055–0.062 at Res 6, then 0.11–0.21,
-0.24–0.31, 0.47 and 0.68 at Res 7–10. David's ears: the Res 6 cutoff examples are
+**Results, all ten runs (2026-10-19, gradient clipped at 10).** Test ESR on the `test`
+take, mean of the seeds (range in brackets):
+
+| Res | 0 | 1 | 2 | 3 | 4 | **5 (held out)** | 6 | 7 | 8 | 9 | 10 |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Cutoff + Res GRU-24 (3 seeds) | 0.015 | 0.014 | 0.009 | 0.012 | 0.023 | **0.037** (0.033–0.042) | 0.057 | 0.10 | 0.25 | 0.49 | 0.67 |
+| Cutoff + Res GRU-16 (3 seeds) | 0.014 | 0.014 | 0.009 | 0.011 | 0.020 | **0.031** (0.020–0.037) | 0.067 | 0.17 | 0.30 | 0.51 | 0.72 |
+| Cutoff only GRU-24 (2 seeds) | | | | | | | **0.012** (0.0117–0.0125) | | | | |
+| Cutoff only GRU-16 (2 seeds) | | | | | | | 0.017 (0.016–0.019) | | | | |
+
+Validation ESR (pooled, all marks): cutoff + Res GRU-24 0.148 (0.143–0.153), GRU-16
+0.157 (0.155–0.159); seeds agree closely. On the pilot's own 4 s riff (Res 6, +5 V) the
+best cutoff-only GRU-24 scores 0.0082, against the pilot's best GRU 0.050 and A2-Lite
+0.105: training on synth sweeps was what the pilot lacked. Held-out Res 5 sits between
+its neighbours, so one network fills the gap in resonance (comparison 4, at Res 5). At
+Res 6 the cutoff-only network is about 5 times better than cutoff + Res, but it had six
+times the Res 6 training material (the NAM-file takes), so that is not a clean cost of
+the second knob. Training: gradients still reached 10¹⁸ and twice infinity; clipping
+held, but one run (cutoff + Res GRU-24 seed 1) went to NaN at epoch 113, two after its
+best. Skipping any step whose gradient is not finite is the fix for the next batch.
+David's ears: the Res 6 cutoff examples are
 "stunning"; Res 8–10 is "just lacking in wildness, chaotic, randomness". Likely a property
 of the ESR loss as much as the network: where the Wasp is unpredictable, the
 error-minimising output is the average of the possibilities, which is tamer than any of
