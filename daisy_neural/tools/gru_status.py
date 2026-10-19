@@ -30,6 +30,7 @@ RUNS = HERE.parent / "captures" / "wasp" / "gru_runs"
 EPOCH = re.compile(r"^epoch\s+(\d+)\s+train (?:ESR|MSE) ([\d.e+-]+)\s+valid ESR ([\d.]+)\s+lr (\S+)\s+"
                    r"(?:grad (\S+) \(max (\S+), (\d+)% clipped\)\s+)?([\d.]+) min")
 COLOURS = {"cutoff + Res, GRU-16": "var(--c1)", "cutoff + Res, GRU-24": "var(--c2)",
+           "cutoff + Res, WaveNet FiLM": "var(--c3)",
            "cutoff, GRU-16": "var(--c3)", "cutoff, GRU-24": "var(--c4)"}
 DASHES = {1: "", 2: "6 4", 3: "2 3"}
 
@@ -43,6 +44,8 @@ except ImportError:  # the per-Res table needs TensorBoard; the rest doesn't
 
 def design(cfg):
     controls = {"audio,cv,res": "cutoff + Res", "audio,cv": "cutoff", "audio": "fixed"}.get(cfg["inputs"], cfg["inputs"])
+    if cfg.get("arch") == "wavenet":
+        return f"{controls}, WaveNet FiLM"
     net = f"{cfg['cell'].upper()}-{cfg['hidden']}" + (f" x{cfg['layers']}" if cfg.get("layers", 1) > 1 else "")
     return f"{controls}, {net}"
 
