@@ -259,6 +259,22 @@ matching. Use the `=` with negative lists. `record` runs every take in turn, pri
 peaks after each, and skips any already recorded. Don't touch the rack while it runs. To
 redo one take: `--only sweep2 --overwrite`.
 
+**Synth material at fixed cutoffs, for A2 through `nam-full`** (added 2026-10-19). NAM's
+file is guitar material, and the first A2 capture showed it: ESR 0.048 on NAM's passage
+but 0.110 on a held-out synth riff. These takes hold the cutoff at each snapshot voltage
+under the same oscillator material as the sweeps:
+
+```
+.venv/bin/python tools/wasp_capture.py make session hp-res6-fixed --mix hp --res 6 --cv-range=-10,0 \
+    --snapshots=-9,-7,-5,-3,-1 --fixed-only --knobs "Lev 10, Frq max"
+.venv/bin/python tools/wasp_capture.py record captures/wasp/hp-res6-fixed
+```
+
+A 3-minute warm-up take comes first, recorded but never trained on, because the Wasp
+drifts on the first take after a pause; then 3 minutes per CV, back to back. About 18
+minutes. `split` writes matched pairs to `fixed/` (`<take>_x.wav` and each output), kept
+apart from `nam/` so the simple trainer never picks them up.
+
 ## 4. Split and check
 
 ```

@@ -423,7 +423,9 @@ def make_session(args):
         if not lo <= v <= hi:
             print(f"note: snapshot {v:+.2f} V is outside the sweep range {lo:+.2f}..{hi:+.2f} V; "
                   "the GRU will not have trained there")
-    x, md5 = read_nam_input() if snaps else (None, None)
+    if args.fixed_only and not snaps:
+        raise SystemExit("--fixed-only needs --snapshots: the CVs to hold")
+    x, md5 = read_nam_input() if snaps and not args.fixed_only else (None, None)
 
     peaks_v = [v for v in (0.5, 1.0, 2.0, 3.5, 5.0, 7.0, 9.0) if v <= FS_MAX * out_vfs]
     peaks_fs = [v / out_vfs for v in peaks_v]
@@ -447,12 +449,27 @@ def make_session(args):
         print(f"  {name:22s} {takes[-1]['seconds']:6.1f} s  {role}")
 
     print(f"{rel(d)}/play:")
+    if args.fixed_only:
+        # Synth material with the cutoff held at each snapshot CV, for A2 through nam-full.
+        # The Wasp drifts on the first take after a pause (HP, 2026-10-18), so a warm-up take
+        # at the first CV comes first; it is recorded but never trained on. The takes then
+        # run back to back.
+        def fixed_audio(i, minutes):
+            sub = np.random.default_rng([args.seed, MIX_ENDS.index(args.mix), round(args.res * 10), 100 + i])
+            return sweep_audio(minutes * 60, sub, peaks_fs)
+        if args.warm_minutes > 0:
+            add("warm", "warm", fixed_audio(0, args.warm_minutes), snaps[0])
+        for i, v in enumerate(snaps, 1):
+            add(f"fixed{i}_{v:+.2f}V", "fixed", fixed_audio(i, args.fixed_minutes), v)
+        snaps_fixed = snaps
+    else:
+        snaps_fixed = []
     # 1. A2 snapshots: NAM's own input file, bit for bit, at each cutoff CV.
-    for i, v in enumerate(snaps, 1):
+    for i, v in enumerate([] if args.fixed_only else snaps, 1):
         add(f"snap{i}_{v:+.2f}V", "snapshot", x, v, nam=True)
     # 2. The knob: material for the GRU while the CV moves. Fresh material for every Res
     #    position, so the series as a whole covers more ground.
-    n_sweeps = math.ceil(args.sweep_minutes / 3.0)  # 0 gives a test-only session (a drift check)
+    n_sweeps = 0 if args.fixed_only else math.ceil(args.sweep_minutes / 3.0)  # 0: test only
     for i in range(1, n_sweeps + 1):
         sub = np.random.default_rng([args.seed, MIX_ENDS.index(args.mix), round(args.res * 10), i])
         secs = args.sweep_minutes * 60 / n_sweeps
@@ -468,11 +485,12 @@ def make_session(args):
         add(name, "test", audio, cv[:len(audio)])
 
     points = list(np.linspace(lo, hi, 6))
-    held_out("test", np.concatenate([held(points, 4.0, ramp_from=points[0]),
-                                     np.linspace(lo, hi, 16 * SR), np.linspace(hi, lo, 16 * SR)]))
+    if not args.fixed_only:
+        held_out("test", np.concatenate([held(points, 4.0, ramp_from=points[0]),
+                                         np.linspace(lo, hi, 16 * SR), np.linspace(hi, lo, 16 * SR)]))
     # In the comparison session only: CV between the snapshots, where A2 can only jump,
     # and on them, where A2 is at home.
-    if snaps:
+    if snaps and not args.fixed_only:
         mids = [(a + b) / 2 for a, b in zip(snaps, snaps[1:])]
         held_out("test_snaps", held(mids + snaps, 4.0, ramp_from=(mids or snaps)[0]))
 
@@ -481,7 +499,8 @@ def make_session(args):
         "sr": SR, "out_vfs": out_vfs, "in_vfs": load_rig().get("in_vfs"),
         "mix": args.mix, "res": args.res, "knobs": args.knobs, "snapshots_v": snaps, "cv_range_v": [lo, hi],
         "sweep_peaks_v": peaks_v, "test_peak_v": args.test_peak, "seed": args.seed,
-        "nam_input": {"file": INPUT_WAV.name, "md5": md5} if snaps else None,
+        "nam_input": {"file": INPUT_WAV.name, "md5": md5} if md5 else None,
+        "fixed_v": snaps_fixed,
         "channels": {"play": ["audio -> Wasp AUDIO IN", "CV -> Wasp CV 1", "loopback -> ES-10 IN 3"],
                      "rec": [f"Wasp LP/HP OUT, Mix at {args.mix.upper()}", "Wasp BP OUT", "loopback"]},
         "takes": takes,
@@ -768,6 +787,12 @@ def split(args):
                  y_lphp=yl.astype(np.float32), y_bp=yb.astype(np.float32),
                  res=np.float32(session.get("res", np.nan)), mix=session.get("mix", ""),
                  role=t["role"], sr=SR, latency=lag + frac, cut_at=cut)
+        if t["role"] == "fixed":
+            # Matched pairs for nam-full: the audio as played, and each output, aligned.
+            (d / "fixed").mkdir(exist_ok=True)
+            sf.write(d / "fixed" / f"{t['name']}_x.wav", np.clip(x, -1, 1), SR, subtype="PCM_24")
+            for nm, sig in (("lphp", yl), ("bp", yb)):
+                sf.write(d / "fixed" / f"{t['name']}_{nm}.wav", np.clip(sig, -1, 1), SR, subtype="PCM_24")
         if t["role"] in ("sweep", "test"):
             for nm, sig in (("lphp", yl), ("bp", yb)):
                 sf.write(d / "listen" / f"{t['name']}_wasp_{nm}.wav", np.clip(sig, -1, 1), SR, subtype="PCM_24")
@@ -835,6 +860,11 @@ def main():
                                        "Negative lists need the =: --snapshots=-2,0,1.5,3,4.5")
     p.add_argument("--cv-range", required=True, help="the GRU's sweep range, volts: --cv-range=-3,5")
     p.add_argument("--knobs", default="", help='Lev and Frq, as text: "Lev 7, Frq noon"')
+    p.add_argument("--fixed-only", action="store_true",
+                   help="only synth material with the cutoff held at each --snapshots CV (for nam-full)")
+    p.add_argument("--fixed-minutes", type=float, default=3.0, help="per held CV, with --fixed-only")
+    p.add_argument("--warm-minutes", type=float, default=3.0,
+                   help="a warm-up take first, never trained on (--fixed-only)")
     p.add_argument("--sweep-minutes", type=float, default=6.0,
                    help="GRU sweep material (default 6); 0 for a test-only session, the drift check")
     p.add_argument("--test-peak", type=float, default=5.0, help="held-out riff level, volts peak")
