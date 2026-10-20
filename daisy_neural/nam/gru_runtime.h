@@ -204,8 +204,17 @@ struct State
 };
 
 // The step itself, for H units and I inputs. With H and I known at compile time
-// (StepFixed below) the loops unroll completely; with them read from the Net, the same
-// code runs in plain loops.
+// (StepFixed below) the loops unroll; with them read from the Net (0, 0), the same
+// arithmetic runs in plain loops.
+//
+// Measured on the Patch SM (2026-10-20, cycles timed around the network): the first
+// repacked version still took 6,116 cycles a sample for GRU-16 and 10,330 for GRU-24,
+// about 1.7 cycles an instruction. The core was waiting on its own arithmetic: each
+// multiply-add waits for the last one into the same sum, and each gate function is a
+// chain of dependent steps, done one unit after another. So the work is arranged to
+// overlap: two units at a time (six independent sums, each history value loaded once for
+// both), then every sigmoid in one pass and every tanh in another, where neighbouring
+// units' steps can interleave.
 template <int H, int I>
 inline float StepBody(const Net& n, State& s, const float* x, int h_rt, int i_rt) noexcept
 {
@@ -214,41 +223,66 @@ inline float StepBody(const Net& n, State& s, const float* x, int h_rt, int i_rt
     for(int i = 0; i < ii; i++)
         xs[i] = x[i] * n.scale[i];
 
-    float        hn[kMaxHidden];
-    const float* w  = n.whh;
-    const float* wi = n.wih;
-    const float* b  = n.bias;
-    for(int j = 0; j < hh; j++, w += 3 * hh, wi += 3 * ii, b += 4)
+    // Pass 1: every gate's sums. pr, pz: r and z before their sigmoid; pn: n's input
+    // part; ph: n's recurrent part (with b_hn), which r multiplies.
+    float pr[kMaxHidden], pz[kMaxHidden], pn[kMaxHidden], ph[kMaxHidden];
+    for(int j = 0; j < hh; j += 2)
     {
-        // Three running sums, one per gate, fed by one load of each history value.
-        float ar = b[0], az = b[1], ac = b[3];
+        const float* w0 = n.whh + j * 3 * hh;
+        const float* w1 = w0 + 3 * hh;
+        const float* b0 = n.bias + j * 4;
+        const float* b1 = b0 + 4;
+        float        r0 = b0[0], z0 = b0[1], c0 = b0[3];
+        float        r1 = b1[0], z1 = b1[1], c1 = b1[3];
 #pragma GCC unroll 32
         for(int k = 0; k < hh; k++)
         {
             const float h = s.h[k];
-            ar += w[3 * k] * h;
-            az += w[3 * k + 1] * h;
-            ac += w[3 * k + 2] * h;
+            r0 += w0[3 * k] * h;
+            z0 += w0[3 * k + 1] * h;
+            c0 += w0[3 * k + 2] * h;
+            r1 += w1[3 * k] * h;
+            z1 += w1[3 * k + 1] * h;
+            c1 += w1[3 * k + 2] * h;
         }
-        float xr = 0.f, xz = 0.f, xc = b[2];
+        const float* v0 = n.wih + j * 3 * ii;
+        const float* v1 = v0 + 3 * ii;
+        float        xr0 = 0.f, xz0 = 0.f, xc0 = b0[2], xr1 = 0.f, xz1 = 0.f, xc1 = b1[2];
 #pragma GCC unroll 4
         for(int i = 0; i < ii; i++)
         {
-            xr += wi[i] * xs[i];
-            xz += wi[ii + i] * xs[i];
-            xc += wi[2 * ii + i] * xs[i];
+            xr0 += v0[i] * xs[i];
+            xz0 += v0[ii + i] * xs[i];
+            xc0 += v0[2 * ii + i] * xs[i];
+            xr1 += v1[i] * xs[i];
+            xz1 += v1[ii + i] * xs[i];
+            xc1 += v1[2 * ii + i] * xs[i];
         }
-        const float rg = Sigmoid(xr + ar);
-        const float zg = Sigmoid(xz + az);
-        const float ng = Tanh(xc + rg * ac);
-        hn[j]          = ng + zg * (s.h[j] - ng);  // (1 - z) n + z h
+        pr[j]     = r0 + xr0;
+        pz[j]     = z0 + xz0;
+        pn[j]     = xc0;
+        ph[j]     = c0;
+        pr[j + 1] = r1 + xr1;
+        pz[j + 1] = z1 + xz1;
+        pn[j + 1] = xc1;
+        ph[j + 1] = c1;
     }
-    float y = n.bd;
-#pragma GCC unroll 32
+    // Pass 2: the sigmoids, independent of one another.
+#pragma GCC unroll 4
     for(int j = 0; j < hh; j++)
     {
-        s.h[j] = hn[j];
-        y += n.wd[j] * hn[j];
+        pr[j] = Sigmoid(pr[j]);
+        pz[j] = Sigmoid(pz[j]);
+    }
+    // Pass 3: n, the new history, and the output.
+    float y = n.bd;
+#pragma GCC unroll 4
+    for(int j = 0; j < hh; j++)
+    {
+        const float ng = Tanh(pn[j] + pr[j] * ph[j]);
+        const float hn = ng + pz[j] * (s.h[j] - ng);  // (1 - z) n + z h
+        s.h[j]         = hn;
+        y += n.wd[j] * hn;
     }
     return y;
 }
