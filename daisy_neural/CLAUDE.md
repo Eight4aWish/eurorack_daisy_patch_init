@@ -722,6 +722,25 @@ the dial scaled to −1..1), Res no longer an input, each batch from one Res mar
 the first recipe exactly, so only the architecture changes against `lp_cr_*`. GRU-16 and
 GRU-24 (2,931 and 6,123 training parameters), seeds 1–3; the control test runs after.
 
+**The hypernetwork arm: no better (finished 2026-10-20 10:48).** Validation ESR 0.166–0.282,
+against the baseline's 0.143–0.159. Three of the six runs stopped early (epochs 28–46) at
+0.25–0.28 and failed (held-out Res 5: 0.26–0.32). The other three (epochs 118–168) tie the
+baseline on held-out Res 5 (0.033–0.050 against 0.032–0.045) and on the test take at Res
+0–8, and lose at Res 9–10 (0.52–0.97 against 0.47–0.79). On the control test, the deciding
+measure, all six lose. Medians against `lp_cr_*`:
+
+| Res response (audible cells) | hypernetwork | baseline |
+|---|---|---|
+| right way | 0.54 | 0.72 |
+| amount | 0.28 | 0.48 |
+| error | 6.5 dB | 4.9 dB |
+| spurious movement in calm cells | 0.25 | 0.11 |
+
+The cutoff response is unchanged (right way 0.92–0.99). Making every weight a curve in Res
+is not what was missing. One-Res batches and three times the training parameters may also
+have made it harder to train, as the three short runs suggest. Not pursued further without
+a new design.
+
 **What the Wasp's randomness is (2026-10-20).** Four recordings of identical input at each of
 Res 6–10 (the three repeat takes and 18 October's): their average is the repeatable part,
 each take minus it the random part. In absolute terms the random part peaks at the cutoff
