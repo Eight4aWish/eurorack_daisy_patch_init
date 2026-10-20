@@ -9,14 +9,24 @@ the ear ignores and an averaged Wasp keeps ESR low. This test judges what is hea
 The `test` take was recorded with identical input at every Res mark, its cutoff held at
 2, 4, 6, 8 and 10 V in turn. For each run, the network is driven with that same input
 at each mark (Res 5 included, which no network trained on) and its level is measured in
-seven bands during each hold, as is the real Wasp's at the same mark. Then:
+seven bands during each hold, as is the real Wasp's at the same mark. A cell is one
+(mark, hold, band); its change is the level there against Res 6 (for Res) or against the
+6 V hold (for the cutoff), network and Wasp alike.
 
-  res_err_db    the change Res makes (each mark against Res 6, band by band, at every
-                hold), network against Wasp: mean absolute difference, dB
-  res_move      how far the network's sound moves with Res, over how far the Wasp's does
-                (1 = the right amount; the first GRU-16 was well under)
-  cut_err_db    the same for the cutoff: each hold against the 6 V hold, at every mark
-  cut_move      and its amount
+The first version averaged every cell, and passed the first GRUs whose Res was inaudible
+on the module: most cells are ones where the real Wasp's Res changes nothing either. So
+the verdict now comes from the AUDIBLE cells, where the real Wasp changes by 3 dB or more:
+
+  right_way     share of audible cells where the network moves the same way by 1 dB or more
+  amount        the median of the network's change over the Wasp's there (1 = right,
+                0 = no movement, below 0 = the wrong way)
+  err_db        mean absolute difference there, dB
+  spurious      share of the QUIET cells (the Wasp moves under 1 dB) where the network
+                moves 3 dB or more
+
+for Res and for the cutoff, plus the first version's all-cell figures. The per-cell
+changes are kept in each run's control_response.json, so a run can be re-scored without
+running it again.
 
 Run in .venv-nam:
 
@@ -80,20 +90,28 @@ def measure(run, captures):
         t.res = float(r)  # the same input; only the Res input changes
         _, o = T.evaluate(model, [(t, 0, t.n, T.SETTLE, False)], inputs, out, "cpu", keep=True, out_scale=scale)
         net[r] = band_levels(o[0])
-    res_d = [(net[r][v] - net[6][v], real[r][v] - real[6][v]) for r in MARKS if r != 6 for v in HOLDS]
-    cut_d = [(net[r][v] - net[r][6], real[r][v] - real[r][6]) for r in MARKS for v in HOLDS if v != 6]
-    held = [(net[5][v] - net[6][v], real[5][v] - real[6][v]) for v in HOLDS]
+    res_cells = {f"R{r} {v}V": (net[r][v] - net[6][v], real[r][v] - real[6][v]) for r in MARKS if r != 6 for v in HOLDS}
+    cut_cells = {f"R{r} {v}V": (net[r][v] - net[r][6], real[r][v] - real[r][6]) for r in MARKS for v in HOLDS if v != 6}
+    return {"res": score(res_cells), "cut": score(cut_cells),
+            "cells": {"bands_hz": BANDS,
+                      "res": {k: [np.round(a, 2).tolist(), np.round(b, 2).tolist()] for k, (a, b) in res_cells.items()},
+                      "cut": {k: [np.round(a, 2).tolist(), np.round(b, 2).tolist()] for k, (a, b) in cut_cells.items()}}}
 
-    def summary(pairs):
-        n, w = np.array([p[0] for p in pairs]), np.array([p[1] for p in pairs])
-        return float(np.mean(np.abs(n - w))), float(np.mean(np.abs(n)) / np.mean(np.abs(w)))
 
-    res_err, res_move = summary(res_d)
-    cut_err, cut_move = summary(cut_d)
-    held_err, _ = summary(held)
-    return {"res_err_db": round(res_err, 2), "res_move": round(res_move, 2),
-            "cut_err_db": round(cut_err, 2), "cut_move": round(cut_move, 2),
-            "res5_err_db": round(held_err, 2)}
+def score(cells, audible=3.0, quiet=1.0):
+    """The verdict on one control from its cells {name: (network change, Wasp change)}, each
+    an array over the bands, in dB."""
+    n = np.concatenate([c[0] for c in cells.values()])
+    w = np.concatenate([c[1] for c in cells.values()])
+    loud, calm = np.abs(w) >= audible, np.abs(w) < quiet
+    right = (np.sign(n) == np.sign(w)) & (np.abs(n) >= 1.0)
+    return {"audible_cells": int(loud.sum()),
+            "right_way": round(float(np.mean(right[loud])), 2) if loud.any() else None,
+            "amount": round(float(np.median(n[loud] / w[loud])), 2) if loud.any() else None,
+            "err_db": round(float(np.mean(np.abs(n[loud] - w[loud]))), 2) if loud.any() else None,
+            "spurious": round(float(np.mean(np.abs(n[calm]) >= audible)), 2) if calm.any() else None,
+            "all_err_db": round(float(np.mean(np.abs(n - w))), 2),
+            "all_move": round(float(np.mean(np.abs(n)) / np.mean(np.abs(w))), 2)}
 
 
 def main():
@@ -102,7 +120,8 @@ def main():
     ap.add_argument("--captures", default=str(T.CAPTURES))
     args = ap.parse_args()
     captures = pathlib.Path(args.captures)
-    print(f"{'run':24s} {'Res err dB':>10s} {'Res move':>9s} {'cut err dB':>11s} {'cut move':>9s} {'Res 5 err dB':>13s}")
+    print(f"{'':24s} {'RES (audible cells)':^37s}  {'CUTOFF (audible cells)':^37s}")
+    print(f"{'run':24s} " + "  ".join(f"{'right way':>9s} {'amount':>7s} {'err dB':>7s} {'spurious':>8s}" for _ in range(2)))
     for r in map(pathlib.Path, args.runs):
         if not (r / "best.pt").exists():
             continue
@@ -110,8 +129,8 @@ def main():
         if m is None:
             continue
         (r / "control_response.json").write_text(json.dumps(m, indent=1) + "\n")
-        print(f"{r.name:24s} {m['res_err_db']:10.2f} {m['res_move']:9.2f} {m['cut_err_db']:11.2f} "
-              f"{m['cut_move']:9.2f} {m['res5_err_db']:13.2f}", flush=True)
+        print(f"{r.name:24s} " + "  ".join(f"{m[k]['right_way']:9.2f} {m[k]['amount']:7.2f} {m[k]['err_db']:7.2f} "
+                                           f"{m[k]['spurious']:8.2f}" for k in ("res", "cut")), flush=True)
 
 
 if __name__ == "__main__":
