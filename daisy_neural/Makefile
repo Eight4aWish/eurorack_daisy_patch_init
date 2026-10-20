@@ -42,6 +42,10 @@ else
 BUILD_DIR ?= build
 endif
 
+# The build's git commit, shown on the splash screen, so what is running is never a guess
+# (2026-10-20: a card swap left it unclear whether the bootloader had flashed a new build).
+C_DEFS += -DMIRTH_BUILD=\"$(shell git -C $(_P_DIR) rev-parse --short HEAD 2>/dev/null || echo unknown)$(shell git -C $(_P_DIR) diff --quiet HEAD -- . 2>/dev/null || echo +)\"
+
 # Sources
 ifeq ($(GRU_TEST),1)
 CPP_SOURCES = src/gru_test.cpp $(_P_UP1)/common/oled_soft_i2c.cpp

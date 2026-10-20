@@ -66,6 +66,10 @@
 #include <cstdio>
 #include <cstring>
 
+#ifndef MIRTH_BUILD
+#define MIRTH_BUILD "unknown"
+#endif
+
 using namespace daisy;
 using namespace daisysp;
 using namespace patch_sm;
@@ -234,6 +238,7 @@ static volatile float g_mix      = 0.f;
 static volatile float g_drive_db = 0.f;
 static volatile float g_cut      = 0.f;  // FILTERS: volts
 static volatile float g_res      = 0.f;  // FILTERS: the Res dial
+static volatile float g_gru_cycles = 0.f;  // FILTERS: the network's cost, CPU cycles per sample
 
 // ---------------------------------------------------------------------------
 // Capture switching
@@ -393,6 +398,7 @@ static void ApplySteer(float u)
 static void ProcessFilter(float* buf, size_t n, float cut_to, float res_to)
 {
     static float cut = 0.f, res = 0.f;
+    const uint32_t t0 = System::GetTick();
     res += 0.05f * (res_to - res);
     float raw[gru::kMaxInputs];
     for(size_t i = 0; i < n; i++)
@@ -409,6 +415,9 @@ static void ProcessFilter(float* buf, size_t n, float cut_to, float res_to)
         buf[i] = y;
     }
     cut = cut_to;
+    // The network's own cost, measured around it rather than estimated, smoothed.
+    const float cycles = (float)(System::GetTick() - t0) * (480e6f / (float)System::GetTickFreq()) / (float)n;
+    g_gru_cycles += 0.05f * (cycles - g_gru_cycles);
 }
 
 // ================================================================
@@ -697,7 +706,10 @@ static void DrawRunPage()
     // percent signs go. Both clamped to two digits so the line never overruns.
     const int cpu_avg = (int)(cpu_meter.GetAvgCpuLoad() * 100.f + 0.5f);
     const int cpu_max = (int)(cpu_meter.GetMaxCpuLoad() * 100.f + 0.5f);
-    snprintf(line, sizeof(line), "CPU %2d(%2d)", cpu_avg > 99 ? 99 : cpu_avg, cpu_max > 99 ? 99 : cpu_max);
+    if(filt)  // on a filter: the load, and the network's measured cycles per sample
+        snprintf(line, sizeof(line), "%2d%% %5dc", cpu_avg > 99 ? 99 : cpu_avg, (int)g_gru_cycles);
+    else
+        snprintf(line, sizeof(line), "CPU %2d(%2d)", cpu_avg > 99 ? 99 : cpu_avg, cpu_max > 99 ? 99 : cpu_max);
     display.DrawString(0, 18, line, false);
 
     // The two knob lines sit as the knobs do on the panel: knobs 1 and 2 (patch, mix) on
@@ -837,6 +849,7 @@ int main(void)
     display.Init(patch.A2, patch.A3);
     display.Clear();
     display.DrawStringCentered(4, "MIRTH", false);
+    display.DrawStringCentered(40, MIRTH_BUILD, false);  // the git commit this was built from
     display.DrawStringCentered(18, engine.Name(), false);
     {
         char line[24];
