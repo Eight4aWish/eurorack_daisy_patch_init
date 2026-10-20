@@ -753,19 +753,46 @@ the listening page for him to judge by ear before anything is narrowed.
 
 **Faking the randomness on top (2026-10-20, offline, `tools/wasp_noise_layer.py`).** The
 networks learn the repeatable part, so the random part can be layered on rather than
-learned. Scored by band gap: mean |dB| between a clip's octave-band levels and the four
+learned. This is the deterministic + stochastic split of Serra's Spectral Modeling
+Synthesis (1989–90) and of DDSP's harmonic + filtered noise (2020), with a network as the
+deterministic part. It is needed because a network trained to match the waveform learns
+the average. Scored by band gap: mean |dB| between a clip's octave-band levels and the four
 takes' average at the 4–10 V holds (two real takes: 0.12–0.28 dB, flattered, being two of
-the four). Not yet heard.
+the four).
+
+Round 1 drew its bank and table from the clip it was judged on (in-sample). David's
+verdict on it: the real takes sound different at each CV step, smudged and muffled
+(4 V), pinging resonant mids (6 V), then grainy (8–10 V). The random-phase layer best
+brings out the harmonics at the 6 V step. The granular EQ is best at higher CV and best
+overall: very good at Res 9, with audible digital artefacts at Res 10, on both the
+average and the network. Measured at Res 10, its gains hit the ±12 dB limit more often
+(4.2% against 2.9%) and move faster (1.3–2.2 dB per 10.7 ms frame against 1.0–1.7). The
+roughest spot is at the cutoff at 4 V: 2.2 dB frame to frame and 2.4 dB band to band.
+
+Round 2 (`tools/wasp_noise_layer.py` as committed) learns everything from 24–56 s of the
+take, a slow sweep 0 → 10 → 0 V, and is judged on 8–24 s. Band gap, mean of seeds 1–3
+(spread up to ±0.2 dB):
 
 | | Res 9 | Res 10 |
 |---|---|---|
-| repeatable part (the four takes' average) | 1.86 | 2.33 |
-| + granular EQ | 1.02 | 1.04 |
-| + random-phase layer | 0.89 | 0.96 |
-| + noise shaped to the measured random part (ceiling) | 0.23 | 0.17 |
+| repeatable part (the four takes' average) | 1.85 | 2.31 |
+| + g1, granular EQ as in round 1 | 0.76 | 0.92 |
+| + g2, gentle (16-frame grains, ±9 dB, quarter-octave smoothing, grains from within 1 V) | 0.83 | 0.95 |
+| + rp, random-phase layer | 0.94 | 1.15 |
+| + both (rp, then g2) | 1.28 | 1.75 |
+| + noise shaped to the clip's own random part (ceiling, in-sample) | 0.20 | 0.18 |
 | GRU-24 cutoff + Res (`lp_cr_gru24_s2`, Mirth's f1) | 2.54 | 4.92 |
-| + granular EQ | 2.23 | 4.04 |
-| + random-phase layer | 2.47 | 4.44 |
+| + g1 | 2.32 | 4.27 |
+| + g2 | 2.19 | 4.32 |
+| + rp | 2.50 | 4.35 |
+| + both | 2.51 | 3.93 |
+
+Learned out of sample, the granular EQ scores as well as in round 1 (better, in fact):
+the leak did not flatter it. g1 and g2 tie on the numbers. Stacking both overshoots on
+the average, too much added energy. Round 2 is not yet heard; the MP3s are in
+eight4awish_private `mirth/listening/2026-10-20-wasp/`. Both layers work on a
+2,048-point STFT, about 43 ms of latency on the module. A latency-free version (a filter
+bank) waits for a winner by ear.
 
 The granular EQ is David's idea: no added signal, the recorded misbehaviour used to boost
 and cut the spectrum. A bank of how takes 2–4 lift and dip against the average, in
