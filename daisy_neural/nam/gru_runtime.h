@@ -25,7 +25,17 @@
  *
  * Sizes are read from the file, up to kMaxHidden units (GRU_MAX_HIDDEN, 32 unless the
  * build says otherwise; Mirth sets 24 to save DTCMRAM) and kMaxInputs inputs. The hidden
- * size must be a multiple of 4: the inner loops are unrolled by four.
+ * size must be a multiple of 4.
+ *
+ * Speed (2026-10-19). The first version kept PyTorch's layout and ran three separate dot
+ * products per unit: every multiply-add loaded its weight AND the history value, plus loop
+ * counting, about four instructions each. GRU-24 then took the Patch SM's whole CPU. So
+ * Load() repacks the weights: for each unit, its three recurrent rows interleaved column
+ * by column (whh[j][k][gate]), so one load of h[k] feeds all three gates, the offsets fit
+ * one instruction, and the reads run straight through memory. GRU-16 and GRU-24 with two
+ * or three inputs get fully unrolled kernels (StepFixed); any other size runs the same
+ * arithmetic in plain loops. The r and z biases are merged, which PyTorch's equations
+ * allow; n's are not, since b_hn sits inside r * (...).
  */
 
 #include <cmath>
@@ -53,17 +63,20 @@ enum Kind : uint8_t
     kRes   = 2,  // the Res dial, 0-10
 };
 
-// The weights, PyTorch's layout, row-major: wih is 3H x I, whh is 3H x H.
+// The weights, repacked by Load() for speed (see the top of the file):
+//   whh[(j * H + k) * 3 + g]   unit j's three recurrent rows, interleaved by column k
+//   wih[(j * 3 + g) * I + i]   unit j's input weights, gate by gate
+//   bias[j * 4 + 0..3]         r: b_ir + b_hr, z: b_iz + b_hz, n: b_in, n: b_hn
+// with g = 0, 1, 2 for PyTorch's gates r, z, n.
 struct Net
 {
     int     hidden = 0;
     int     inputs = 0;
     uint8_t kind[kMaxInputs]  = {};
     float   scale[kMaxInputs] = {};
-    float   wih[3 * kMaxHidden * kMaxInputs];
     float   whh[3 * kMaxHidden * kMaxHidden];
-    float   bih[3 * kMaxHidden];
-    float   bhh[3 * kMaxHidden];
+    float   wih[3 * kMaxHidden * kMaxInputs];
+    float   bias[4 * kMaxHidden];
     float   wd[kMaxHidden];
     float   bd = 0.f;
 };
@@ -74,26 +87,38 @@ inline constexpr int WeightCount(int hidden, int inputs)
     return 3 * hidden * inputs + 3 * hidden * hidden + 6 * hidden + hidden + 1;
 }
 
-// Copy a payload (file order, little-endian float32, any alignment) into a Net. False if
-// the sizes are out of range.
+// Read a payload (file order: PyTorch's weight_ih 3H x I, weight_hh 3H x H, bias_ih 3H,
+// bias_hh 3H, then the dense layer's H weights and bias; little-endian float32, any
+// alignment) into a Net, repacking as it goes. False if the sizes are out of range.
 inline bool Load(Net& n, int hidden, int inputs, const void* payload)
 {
     if(hidden <= 0 || hidden > kMaxHidden || (hidden % 4) != 0 || inputs <= 0 || inputs > kMaxInputs)
         return false;
-    n.hidden          = hidden;
-    n.inputs          = inputs;
-    const int      g  = 3 * hidden;
-    const uint8_t* p  = static_cast<const uint8_t*>(payload);
-    auto           cp = [&p](float* dst, int count) {
-        std::memcpy(dst, p, sizeof(float) * count);
-        p += sizeof(float) * count;
+    const int      H = hidden, I = inputs;
+    const uint8_t* p = static_cast<const uint8_t*>(payload);
+    auto           rd = [&p]() {
+        float v;
+        std::memcpy(&v, p, sizeof(float));
+        p += sizeof(float);
+        return v;
     };
-    cp(n.wih, g * inputs);
-    cp(n.whh, g * hidden);
-    cp(n.bih, g);
-    cp(n.bhh, g);
-    cp(n.wd, hidden);
-    cp(&n.bd, 1);
+    n.hidden = H;
+    n.inputs = I;
+    for(int row = 0; row < 3 * H; row++)  // weight_ih: row = gate * H + unit
+        for(int i = 0; i < I; i++)
+            n.wih[((row % H) * 3 + row / H) * I + i] = rd();
+    for(int row = 0; row < 3 * H; row++)  // weight_hh
+        for(int k = 0; k < H; k++)
+            n.whh[((row % H) * H + k) * 3 + row / H] = rd();
+    for(int j = 0; j < 4 * H; j++)
+        n.bias[j] = 0.f;
+    for(int row = 0; row < 3 * H; row++)  // bias_ih: r and z merge, n's stays apart
+        n.bias[(row % H) * 4 + row / H] += rd();
+    for(int row = 0; row < 3 * H; row++)  // bias_hh: n's goes in its own slot
+        n.bias[(row % H) * 4 + (row / H == 2 ? 3 : row / H)] += rd();
+    for(int j = 0; j < H; j++)
+        n.wd[j] = rd();
+    n.bd = rd();
     return true;
 }
 
@@ -121,20 +146,6 @@ inline float Tanh(float x) noexcept
 }
 #endif
 inline float Sigmoid(float x) noexcept { return 0.5f + 0.5f * Tanh(0.5f * x); }
-
-// Dot product of n floats, n a multiple of 4.
-inline float Dot4(const float* a, const float* b, int n) noexcept
-{
-    float s0 = 0.f, s1 = 0.f, s2 = 0.f, s3 = 0.f;
-    for(int i = 0; i < n; i += 4)
-    {
-        s0 += a[i] * b[i];
-        s1 += a[i + 1] * b[i + 1];
-        s2 += a[i + 2] * b[i + 2];
-        s3 += a[i + 3] * b[i + 3];
-    }
-    return (s0 + s1) + (s2 + s3);
-}
 
 // The .grnb file (tools/grnb.py writes it; the two must agree). Little-endian:
 //     0  'GRNB'   4  version (u16, 1)   6  reserved   8  hidden (u16)   10  inputs (u16)
@@ -192,36 +203,76 @@ struct State
     void  Reset() { std::memset(h, 0, sizeof(h)); }
 };
 
+// The step itself, for H units and I inputs. With H and I known at compile time
+// (StepFixed below) the loops unroll completely; with them read from the Net, the same
+// code runs in plain loops.
+template <int H, int I>
+inline float StepBody(const Net& n, State& s, const float* x, int h_rt, int i_rt) noexcept
+{
+    const int hh = H > 0 ? H : h_rt, ii = I > 0 ? I : i_rt;
+    float     xs[kMaxInputs];
+    for(int i = 0; i < ii; i++)
+        xs[i] = x[i] * n.scale[i];
+
+    float        hn[kMaxHidden];
+    const float* w  = n.whh;
+    const float* wi = n.wih;
+    const float* b  = n.bias;
+    for(int j = 0; j < hh; j++, w += 3 * hh, wi += 3 * ii, b += 4)
+    {
+        // Three running sums, one per gate, fed by one load of each history value.
+        float ar = b[0], az = b[1], ac = b[3];
+#pragma GCC unroll 32
+        for(int k = 0; k < hh; k++)
+        {
+            const float h = s.h[k];
+            ar += w[3 * k] * h;
+            az += w[3 * k + 1] * h;
+            ac += w[3 * k + 2] * h;
+        }
+        float xr = 0.f, xz = 0.f, xc = b[2];
+#pragma GCC unroll 4
+        for(int i = 0; i < ii; i++)
+        {
+            xr += wi[i] * xs[i];
+            xz += wi[ii + i] * xs[i];
+            xc += wi[2 * ii + i] * xs[i];
+        }
+        const float rg = Sigmoid(xr + ar);
+        const float zg = Sigmoid(xz + az);
+        const float ng = Tanh(xc + rg * ac);
+        hn[j]          = ng + zg * (s.h[j] - ng);  // (1 - z) n + z h
+    }
+    float y = n.bd;
+#pragma GCC unroll 32
+    for(int j = 0; j < hh; j++)
+    {
+        s.h[j] = hn[j];
+        y += n.wd[j] * hn[j];
+    }
+    return y;
+}
+
+template <int H, int I>
+inline float StepFixed(const Net& n, State& s, const float* x) noexcept
+{
+    return StepBody<H, I>(n, s, x, H, I);
+}
+
 // One sample: x holds the network's raw inputs (audio sample, volts, dial position) in
 // the file's input order; the scales are applied here. Returns the output sample.
 inline float Step(const Net& n, State& s, const float* x) noexcept
 {
-    const int H = n.hidden, I = n.inputs;
-    float     xs[kMaxInputs];
-    for(int k = 0; k < I; k++)
-        xs[k] = x[k] * n.scale[k];
-
-    float hn[kMaxHidden];
-    for(int j = 0; j < H; j++)
+    switch(n.hidden * 8 + n.inputs)
     {
-        const int r = j, z = H + j, c = 2 * H + j;  // the three gate rows for unit j
-        float     ir = n.bih[r], iz = n.bih[z], ic = n.bih[c];
-        for(int k = 0; k < I; k++)
-        {
-            ir += n.wih[r * I + k] * xs[k];
-            iz += n.wih[z * I + k] * xs[k];
-            ic += n.wih[c * I + k] * xs[k];
-        }
-        const float hr = Dot4(&n.whh[r * H], s.h, H) + n.bhh[r];
-        const float hz = Dot4(&n.whh[z * H], s.h, H) + n.bhh[z];
-        const float hc = Dot4(&n.whh[c * H], s.h, H) + n.bhh[c];
-        const float rg = Sigmoid(ir + hr);
-        const float zg = Sigmoid(iz + hz);
-        const float ng = Tanh(ic + rg * hc);
-        hn[j]          = (1.f - zg) * ng + zg * s.h[j];
+        case 16 * 8 + 2: return StepFixed<16, 2>(n, s, x);
+        case 16 * 8 + 3: return StepFixed<16, 3>(n, s, x);
+#if GRU_MAX_HIDDEN >= 24
+        case 24 * 8 + 2: return StepFixed<24, 2>(n, s, x);
+        case 24 * 8 + 3: return StepFixed<24, 3>(n, s, x);
+#endif
+        default: return StepBody<0, 0>(n, s, x, n.hidden, n.inputs);
     }
-    std::memcpy(s.h, hn, sizeof(float) * H);
-    return Dot4(n.wd, s.h, H) + n.bd;
 }
 
 } // namespace gru
