@@ -70,6 +70,8 @@ def load_model(run):
     if cfg.get("arch", "rnn") == "wavenet":
         film = cfg.get("film", "activation_pre")
         m = T.WaveNetModel(len(inputs), "" if film == "none" else film)
+    elif cfg.get("arch") == "hyper":
+        m = T.HyperRNN(len(inputs), cfg["hidden"], cfg.get("hyper_degree", 2))
     else:
         m = T.RNNModel(len(inputs), cfg["hidden"], cfg.get("cell", "gru"), cfg.get("layers", 1))
     m.load_state_dict(torch.load(run / "best.pt", map_location="cpu"))
@@ -80,7 +82,7 @@ def load_model(run):
 
 def measure(run, captures):
     model, inputs, out, scale = load_model(run)
-    if "res" not in inputs:
+    if "res" not in inputs and not hasattr(model, "set_res"):
         return None  # a cutoff-only network: no Res to test
     reference = T.Take(captures / "lp-res6" / "gru" / "test.npz")
     real, net = {}, {}

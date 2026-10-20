@@ -68,6 +68,13 @@ still picks the best epoch and is what is reported. --arch wavenet trains NAM's 
 in A2-Lite's layout with the inputs (audio, cutoff, Res) as its conditioning at every layer
 and FiLM before each activation (--film), on the GPU if --device mps.
 
+--arch hyper (2026-10-20, David's option (a)): Res sets the weights instead of entering as
+an input. Every GRU and dense weight is w0 + P1(r) w1 + P2(r) w2, r the Res dial scaled to
+-1..1 and P1, P2 the first Legendre polynomials (--hyper-degree); w1 and w2 start at zero,
+so training starts from a plain GRU and learns what Res changes. --inputs is then
+audio,cv, and each training batch is drawn from a single Res mark so one set of weights
+serves it. On the Daisy the weights would be recomputed when Res moves, once a block.
+
 Runs land in captures/wasp/gru_runs/<name>/, with TensorBoard logs:
 
     .venv-nam/bin/tensorboard --logdir captures/wasp/gru_runs
@@ -251,6 +258,45 @@ class RNNModel(nn.Module):
         return self.dense(z).squeeze(-1), h
 
 
+class HyperRNN(nn.Module):
+    """A GRU whose every weight, and the dense layer's, is a smooth function of the Res
+    dial: w(r) = w0 + sum_d P_d(r) w_d, r = (Res - 5) / 5, P_1 = r, P_2 = (3r^2 - 1) / 2.
+    set_res() chooses the dial position for the calls that follow."""
+
+    def __init__(self, n_inputs, hidden, degree=2):
+        super().__init__()
+        self.base = RNNModel(n_inputs, hidden, "gru", 1)
+        self.names = [n for n, _ in self.base.named_parameters()]
+        self.degree = degree
+        self.extra = nn.ParameterList(
+            [nn.Parameter(torch.zeros_like(p)) for _ in range(degree) for _, p in self.base.named_parameters()])
+        self.res = 6.0
+
+    def set_res(self, res):
+        self.res = float(res)
+
+    def weights(self):
+        r = (self.res - 5.0) / 5.0
+        basis = [r, 1.5 * r * r - 0.5][: self.degree]
+        k = len(self.names)
+        out = {}
+        for i, (name, p) in enumerate(self.base.named_parameters()):
+            w = p
+            for d, b in enumerate(basis):
+                w = w + b * self.extra[d * k + i]
+            out[name] = w
+        return out
+
+    def forward(self, x, h=None):
+        w = self.weights()
+        hidden = self.base.rnn.hidden_size
+        if h is None:
+            h = torch.zeros(1, x.shape[0], hidden, dtype=x.dtype, device=x.device)
+        z, h = torch._VF.gru(x, h, [w["rnn.weight_ih_l0"], w["rnn.weight_hh_l0"], w["rnn.bias_ih_l0"],
+                                    w["rnn.bias_hh_l0"]], True, 1, 0.0, self.training, False, True)
+        return nn.functional.linear(z, w["dense.weight"], w["dense.bias"]).squeeze(-1), h
+
+
 def a2_lite_config(n_inputs, film):
     """NAM's A2-Lite layout (its PackedWaveNet's 3-channel submodel), taking n_inputs
     channels as both its input and the condition every layer mixes in. film names the FiLM
@@ -334,9 +380,12 @@ def evaluate(model, items, inputs, out, device, keep=False, chunk=SR, out_scale=
     model.eval()
     rf = getattr(model, "receptive_field", 1)
     sums, outputs, groups = [None] * len(items), [None] * len(items), {}
-    for i, (_, a, b, u, *_) in enumerate(items):
-        groups.setdefault((b - a, u), []).append(i)
-    for (length, unscored), idx in groups.items():
+    hyper = hasattr(model, "set_res")
+    for i, (t, a, b, u, *_) in enumerate(items):
+        groups.setdefault((b - a, u, t.res if hyper else None), []).append(i)
+    for (length, unscored, res), idx in groups.items():
+        if hyper:
+            model.set_res(res)
         err, sig, h, parts = np.zeros(len(idx)), np.zeros(len(idx)), None, []
         for c in range(0, length, chunk):
             d = min(chunk, length - c)
@@ -385,11 +434,16 @@ def by_res(items, sums, only=None):
 
 # ---------------------------------------------------------------------- training
 
-def segments(train, inputs, out, seg, rng, n, context=0):
+def segments(train, inputs, out, seg, rng, n, context=0, same_res=False):
     """n random segments, seg samples long, from the training spans (weighted by length).
     context extra samples of input come before each (a WaveNet's receptive field), from
-    inside the same span; the target covers the seg samples only."""
+    inside the same span; the target covers the seg samples only. same_res draws the whole
+    batch from one Res mark, chosen in proportion to its material; returns it as well."""
     room = np.array([b - a - seg - context for _, a, b in train], dtype=np.float64)
+    res = None
+    if same_res:
+        res = train[rng.choice(len(train), p=room / room.sum())][0].res
+        room = np.where([t.res == res for t, _, _ in train], room, 0.0)
     pick = rng.choice(len(train), size=n, p=room / room.sum())
     xs, ys = [], []
     for i in pick:
@@ -397,7 +451,8 @@ def segments(train, inputs, out, seg, rng, n, context=0):
         s = int(rng.integers(a + context, b - seg))
         xs.append(t.features(s - context, s + seg, inputs))
         ys.append(t.target(s, s + seg, out))
-    return torch.from_numpy(np.stack(xs)), torch.from_numpy(np.stack(ys))
+    x, y = torch.from_numpy(np.stack(xs)), torch.from_numpy(np.stack(ys))
+    return (x, y, res) if same_res else (x, y)
 
 
 def target_scale(train, out, dbfs):
@@ -427,8 +482,10 @@ def main():
     ap.add_argument("--valid", action="append", default=[], help="validation .npz (spec), for selection")
     ap.add_argument("--judge", action="append", default=[], help="held-out .npz (spec), scored at the end only")
     ap.add_argument("--listen", action="store_true", help="write the chosen epoch's output on every test take")
-    ap.add_argument("--arch", default="rnn", choices=("rnn", "wavenet"),
-                    help="rnn (GRU or LSTM, --cell), or NAM's WaveNet in A2-Lite's layout")
+    ap.add_argument("--arch", default="rnn", choices=("rnn", "wavenet", "hyper"),
+                    help="rnn (GRU or LSTM, --cell), NAM's WaveNet in A2-Lite's layout, or a GRU "
+                         "whose weights are set by Res (hyper)")
+    ap.add_argument("--hyper-degree", type=int, default=2, help="hyper: polynomial degree in Res")
     ap.add_argument("--film", default="activation_pre",
                     help="wavenet: the FiLM point in every layer (NAM 0.13's names), or none")
     ap.add_argument("--loss", default="esr", choices=("esr", "mse"),
@@ -494,7 +551,12 @@ def main():
     (run / "config.json").write_text(json.dumps(vars(args), indent=2) + "\n")
     (run / "split.json").write_text(json.dumps(split, indent=1) + "\n")
     writer = SummaryWriter(str(run))
-    if args.arch == "wavenet":
+    if args.arch == "hyper":
+        if "res" in inputs:
+            raise SystemExit("--arch hyper: Res sets the weights; use --inputs audio,cv")
+        model = HyperRNN(len(inputs), args.hidden, args.hyper_degree).to(device)
+        what = f"Hyper-GRU-{args.hidden} (weights of degree {args.hyper_degree} in Res)"
+    elif args.arch == "wavenet":
         model = WaveNetModel(len(inputs), "" if args.film == "none" else args.film).to(device)
         (run / "wavenet_config.json").write_text(json.dumps(model.config, indent=1) + "\n")
         what = f"WaveNet (A2-Lite layout, FiLM {args.film})"
@@ -528,7 +590,11 @@ def main():
         model.train()
         losses = []
         for _ in range(args.steps_per_epoch):
-            x, y = segments(train, inputs, args.output, seg, rng, args.batch, context)
+            if args.arch == "hyper":
+                x, y, batch_res = segments(train, inputs, args.output, seg, rng, args.batch, context, same_res=True)
+                model.set_res(batch_res)
+            else:
+                x, y = segments(train, inputs, args.output, seg, rng, args.batch, context)
             x, y = x.to(device), (y * scale).to(device)
             if args.arch == "wavenet":
                 pred, _ = model(x)
