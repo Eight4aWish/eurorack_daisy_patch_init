@@ -788,7 +788,7 @@ average and the network. Measured at Res 10, its gains hit the ±12 dB limit mor
 (4.2% against 2.9%) and move faster (1.3–2.2 dB per 10.7 ms frame against 1.0–1.7). The
 roughest spot is at the cutoff at 4 V: 2.2 dB frame to frame and 2.4 dB band to band.
 
-Round 2 (`tools/wasp_noise_layer.py` as committed) learns everything from 24–56 s of the
+Round 2 (`tools/wasp_noise_layer.py layers`) learns everything from 24–56 s of the
 take, a slow sweep 0 → 10 → 0 V, and is judged on 8–24 s. Band gap, mean of seeds 1–3
 (spread up to ±0.2 dB):
 
@@ -808,10 +808,49 @@ take, a slow sweep 0 → 10 → 0 V, and is judged on 8–24 s. Band gap, mean o
 
 Learned out of sample, the granular EQ scores as well as in round 1 (better, in fact):
 the leak did not flatter it. g1 and g2 tie on the numbers. Stacking both overshoots on
-the average, too much added energy. Round 2 is not yet heard; the MP3s are in
-eight4awish_private `mirth/listening/2026-10-20-wasp/`. Both layers work on a
+the average, too much added energy.
+
+David on round 2: the gentle g2 cured the digital artefact. It keeps a little of the real
+Wasp's warble at the 6 V step, less pronounced; to him that warble is self-oscillation and
+not that musical, a bit over the top. The random-phase layer was weaker than in round 1,
+the pinging muffled, with some digital noise at Res 10. Its sweep-learned table is within
+2–3 dB of a clip-learned one, with the same shape, so the cause is unexplained; parked.
+
+Round 3 (`spectrum` mode) puts the granular EQ's character on one setting s: grains
+8·2^s frames, limit ±(12 − 3s) dB, a Gaussian across bands of 0.816·s twelfth-octave
+bands; s 0 is round 1's settings, s 1 g2's. Every step draws grains from within 1 V. On
+the average, gain change at and above the cutoff falls steadily, at Res 10 1.39 → 1.29 →
+1.04 → 0.96 → 0.76 dB per frame for s 0, 0.5, 1, 1.5, 2, while band gaps barely
+separate (0.76–1.23 dB across marks and steps). **David chose s 0.5** (~117 ms grains,
+±10.5 dB, eighth-octave smoothing), **with no depth control** (2026-10-20).
+
+The chosen setting on the network (`chosen` mode, marks 6–10; band gap):
+
+| Res | average → + s 0.5 | GRU-24 → + s 0.5 |
+|---|---|---|
+| 6 | 0.43 → 1.20 | 0.99 → 2.22 |
+| 7 | 0.43 → 1.05 | 1.10 → 2.20 |
+| 8 | 0.31 → 1.45 | 1.49 → 2.24 |
+| 9 | 1.85 → 1.08 | 2.54 → 2.32 |
+| 10 | 2.31 → 1.23 | 4.92 → 4.17 |
+
+At Res 6–8 the layer makes things worse. There the real takes sit on the average (0.0 dB)
+in every band that carries energy, while the layer lifts those same bands by 0.5–2 dB
+(Res 8, 8 V: +2.1 dB at 500 Hz, +2.2 dB at 2 kHz, bands 16–21 dB below the loudest). Its
+bank moves 0.8 dB on average below the cutoff even at Res 6, where the random part is
+−40 dB. Two explanations tested and rejected:
+1. The sweep is noisier than the held steps it is applied to. No: the random share in the
+   sweep, at the same CV, is within 1–2 dB of the holds at every mark (except Res 8 at
+   4 V: −11.8 against −17.7 dB).
+2. Twelfth-octave bands between the riff's harmonics hold almost no energy and swing.
+   Smoothing powers over 5 bands before the ratio made it worse (bank below the cutoff
+   0.81 → 1.35 dB at Res 6; band gaps up about 0.2 dB at every mark).
+
+So the cause is open. The same spurious lift is probably part of what is heard at Res 9–10
+(Res 9, 6 V: +1.6 dB at 200 Hz, where the real take moves −0.1). The MP3s for every round
+are in eight4awish_private `mirth/listening/2026-10-20-wasp/`. Both layers work on a
 2,048-point STFT, about 43 ms of latency on the module. A latency-free version (a filter
-bank) waits for a winner by ear.
+bank) waits until the layer is settled.
 
 The granular EQ is David's idea: no added signal, the recorded misbehaviour used to boost
 and cut the spectrum. A bank of how takes 2–4 lift and dip against the average, in
