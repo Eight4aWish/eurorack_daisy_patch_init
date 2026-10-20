@@ -672,6 +672,38 @@ over every Res mark, hold and band and so rates the first GRUs near right (Res m
 0.9–1.7) although on the module their Res was inaudible: to be sharpened towards the cells
 where the real Wasp changes audibly, and the direction of change, before it is believed.
 
+**Overnight results (2026-10-20), with the control test sharpened to the audible cells**
+(`control_response.py`, `711dfff`; cells where the real Wasp moves 3 dB or more):
+the FiLM WaveNet (A2-Lite size) learned neither control well (Res: right way 0.08–0.30,
+amount 0.02–0.06; cutoff error 10–13 dB, amount 0.5–0.6; validation ESR 0.225). The
+second-recipe GRU-16s made the cutoff more faithful (error 3.7–5.2 dB against 5.5–6.8)
+and lost Res almost entirely (amount 0.04–0.13, right way 0.30–0.49, against 0.36–0.68
+and 0.59–0.78 for the first recipe). Res fed in as a third input number has now failed
+three ways; the hypernetwork or the grey-box filter is next. The test's cutoff "spurious"
+figure (0.73–0.87 for every network) is bands at the noise floor and needs a level gate.
+
+**How much the Wasp varies from itself (2026-10-20, WASP.md step 7).** The `test` take at
+Res 6–10, three times each (two back to back, the third after turning Res off and back),
+against itself and against the 18 October sessions; full-band ESR after removing any
+sub-sample offset, and band levels during the cutoff holds:
+
+| Res | back to back | after knob reset | vs 18 Oct | first-recipe networks | spectrum, take to take |
+|---|---|---|---|---|---|
+| 6 | 0.0003 | 0.010 | 0.0006 | 0.05–0.09 | within 0.1 dB |
+| 7 | 0.0015 | 0.013 | 0.030 | 0.09–0.21 | within 0.3 dB |
+| 8 | 0.073 | 0.065 | 0.072 | 0.24–0.32 | within 0.1 dB |
+| 9 | 0.39 | 0.59 | 0.73 | 0.47–0.59 | within 0.2 dB |
+| 10 | 0.87 | 0.91 | 0.92 | 0.66–0.79 | within 0.5 dB |
+
+Read by the rule fixed beforehand: at Res 6–7 the Wasp repeats itself 15–100 times better
+than the networks match it, so they are short of something. From Res 8 its waveform is
+chaotic, a fresh realisation every take, while its spectrum holds within a fraction of a
+dB: sample matching stops meaning anything, and at Res 10 the networks score better than
+the Wasp matches itself only by predicting the average, which is the tameness David heard.
+More data cannot fix that; training must reward the spectrum (and its distribution), not
+the waveform. Setting Res by eye costs ~0.01 ESR at 6–7, nearly all phase, and nothing
+measurable above: half-marks are practical. Takes: `lp-res<N>-rep1..3` on the drive.
+
 **Tooling:** `tools/wasp_capture.py`, bench sheet `WASP.md`. It plays and records in one
 stream, with a loopback cable for latency. Recordings live in `captures/wasp/`, which is
 gitignored. Tested offline against a simulated filter first, then used for both series

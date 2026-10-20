@@ -407,6 +407,12 @@ something, and more data at Res 6–10 is worth recording; the Wasp varying abou
 as the network's error means the network is near the floor, and listening decides;
 `rep3` far from `rep2` means setting the knob by eye is a large error at that mark.
 
+**Done 2026-10-20** (rig check identical to 18 October: latency 12,368, loopback gain
+0.9155). Back to back the Wasp repeats itself to ESR 0.0003 at Res 6 and 0.0015 at 7, then
+0.073, 0.39 and 0.87 at 8, 9 and 10: chaotic waveforms over a spectrum that holds within a
+fraction of a dB. The knob reset adds ~0.01 at 6–7 and nothing measurable above. Full
+table and reading: CLAUDE.md, "How much the Wasp varies from itself".
+
 ## Then: hearing the differences
 
 - **Architecture:** A2 against the cutoff GRU, both trained on the same snapshot take.
