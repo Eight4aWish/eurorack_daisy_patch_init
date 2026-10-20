@@ -941,8 +941,12 @@ and accumulators are still float in that study, so read it as a veto, not a perm
 That result is what makes A2-**Full** arguable on this board: 13,066 weights and a
 204 KB float history come to ~128 KB at 16-bit against 126 KB of BRAM, but ~96 KB at
 12-bit, and the 18×18 DSP slices cost the same either way. No M7 can run A2-Full at all
-(7× A2-Lite's ~1,660 MAC/sample puts it at 210–427% CPU), so the FPGA is not merely
-better there — it is the only platform where the larger architecture is on the table.
+(7× A2-Lite's ~1,660 MAC/sample puts it at 210–427% CPU), so of the Daisy, the Teensy and
+the Tiliqua, the FPGA is the only one where the larger architecture is on the table. A
+Raspberry Pi CM5 (4 × Cortex-A76, 2.4 GHz) would run it in floating point: a Pi 4 runs two
+or three NAM "standard" WaveNets, the same order of size, at once (nostatic.org, February
+2025; no Pi 5 figure found). That costs a carrier board (power, codec, CV in) and Linux
+audio latency of a few milliseconds, against the FPGA's sample-level timing (2026-10-20).
 
 What it actually costs, which is not silicon and not skills:
 
