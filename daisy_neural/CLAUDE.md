@@ -847,7 +847,8 @@ bank moves 0.8 dB on average below the cutoff even at Res 6, where the random pa
    0.81 → 1.35 dB at Res 6; band gaps up about 0.2 dB at every mark).
 
 So the cause is open. The same spurious lift is probably part of what is heard at Res 9–10
-(Res 9, 6 V: +1.6 dB at 200 Hz, where the real take moves −0.1).
+(Res 9, 6 V: +1.6 dB at 200 Hz, where the real take moves −0.1). The MP3s for every round
+are in eight4awish_private `mirth/listening/2026-10-20-wasp/`.
 
 **Decision (David, 2026-10-20): phase it in.** The layer runs only where the Wasp is
 random, by Res, with no knob (`phase()` in the tool). Its gains in dB scale from 0 at
@@ -860,44 +861,53 @@ cutoff. So it need not be an STFT with 43 ms of latency: a time-varying graphic 
 biquad per band) would add none, at coarser bands. Which way it goes is still to be
 decided.
 
-**The layer on the module (built 2026-10-20; not yet run on hardware).** David asked for
-GRU-16 + granular on the card, and the GRU-24s off it. Built as heard: the STFT version,
-since that is what he chose by ear and what can be checked against the listening tool;
-the latency-free graphic EQ is the follow-up if the delay bothers him.
+**The layer on the module (2026-10-20).** David asked for GRU-16 + granular on the card,
+and the GRU-24s off it. Built as heard: the STFT version, since that is what he chose by
+ear and what can be checked against the listening tool; the latency-free graphic EQ is
+the follow-up if the delay bothers him.
 - `nam/gran_layer.h`: 2,048-point frames every 512 samples, a plain radix-2 FFT (1,024
-  complex points, packed real) so the desktop and the Patch SM run identical code. Each
-  frame's work is spread over three audio blocks (FFT; gains; inverse FFT and
-  overlap-add), so no block carries a whole frame (about 200,000 cycles, which on top of
-  GRU-16's 6,116 a sample would overrun a 48-sample block). Latency kDelay = 2,048 + 4 × 48
-  = 2,240 samples (46.7 ms), the dry side delayed to match (also when bypassed, so A/B
-  keeps its timing). Grains as the tool's s 0.5, the phase-in as `phase()`, xorshift32
-  random numbers. Two simplifications against the offline tool: a grain is drawn with the
-  CV at its start, not its centre, and grains never run past the sweep's end.
+  complex points, packed real) so the desktop and the Patch SM run identical code. Grains
+  as the tool's s 0.5, the phase-in as `phase()`, xorshift32 random numbers. Two
+  simplifications against the offline tool: a grain is drawn with the CV at its start,
+  not its centre, and grains never run past the sweep's end. The dry side is delayed to
+  match (also when bypassed, so A/B keeps its timing).
+- **First build (`5f8d8b0`), on the bench:** FLT1 (GRU-16 cutoff + Res) 62%, 6,119 cycles,
+  fine to play, a bit tame, nice at F 8 and R 9.9; FLT2 (cutoff only, Res 6) 61%, 6,012,
+  very boring next to FLT1; LFOs into F and R move both nicely. FLT3 (with the layer)
+  72% on average but its worst block 10,990–11,043 cycles a sample, over the 10,000
+  budget: glitching badly, worse from R 8.0 where the gains start, the layer audible
+  between the glitches. That build did a frame's work in three blocks, a third each:
+  about 235,000 cycles a block, 2.7 times the estimate (about 39 cycles a butterfly,
+  its working arrays in RAM_D2). An estimate from instruction counts again, which this
+  brief says not to trust.
+- **Second build:** the frame's work in ten slices (a new frame comes every 10.67
+  blocks): two or three FFT passes a block, the gains in two. The FFT's working arrays
+  and twiddles (12 KB) moved to DTCMRAM (now 86.6%, which leaves the stack, growing down
+  from its top, about 17 KB); the rest of the engine (82 KB) stays in RAM_D2. Expected
+  from FLT3's 72% average: a worst block of about 7,200–7,500 cycles. Latency kDelay =
+  2,048 + 11 × 48 = 2,576 samples (53.7 ms). C++ against Python unchanged (ESR 1e-12).
+  Card order changed at David's request so the two cut + Res networks sit together:
+  FLT1 cutoff only, FLT2 cutoff + Res, FLT3 the same with the layer.
 - `tools/wasp_layer.py`: builds the banks exactly as the listening tool (slopes 1.008 and
   0.959 octaves per volt, as its fits), packs them into a version-2 `.grnb`'s layer
   section (int8 at 0.1 dB, 1.9 MB for Res 9 and 10), and holds the same algorithm in
   float64. `tools/gran_check.py` runs the header on the desktop (`tools/gran_host.cpp`)
   against it: ESR 5e-13 to 7e-13 on the real layer, and below the phase-in the output is
-  the input delayed by exactly 2,240 samples (to 1.2e-7).
+  the input delayed by exactly kDelay samples (to 1.2e-7).
 - The streaming version scores as the offline one (band gap, seeds 1–3): average 1.85 →
   1.04 at Res 9 and 2.31 → 1.15 at Res 10 (offline 1.08 and 1.23); GRU-24 2.54 → 2.31 and
   4.92 → 3.96 (offline 2.32 and 4.17). On the GRU-16 that goes on the card: 3.13 → 3.34
   at Res 9 (slightly worse, within the seeds' spread) and 4.78 → 4.10 at Res 10.
 - Mirth: `SwapFilter` reads a version-2 file's layer straight into a 4 MB SDRAM buffer
   (sd_diskio cleans and invalidates whole cache lines, so the offset into a sector does
-  not matter) and refuses the file whole if it will not load or parse. The engine's
-  tables and rings (96 KB) sit in RAM_D2 beside A2's history (RAM_D2 66%, DTCMRAM
-  unchanged at 77%). On a filter the cycles figure is now the worst block, easing back
-  over about a second: for a filter without a layer the same number as before, for the
-  layer the one that decides a glitch.
-- The card: `f1_WASP_LP_16.grnb` (cutoff + Res GRU-16, `lp_cr_gru16_s3`, was f3),
-  `f2_WASP_R6_16.grnb` (cutoff only, Res 6, `lp6_c_gru16_s1`, was f4), and
-  `f3_WASP_LP_GR.grnb` ("WASP LP GR": f1's network plus the layer). The GRU-24s (f1, f2,
-  f5 before) are off the card and kept in `captures/wasp_mirth/off_card/`. f1 and f3 are
-  the same network, so they A/B the layer above Res 8. The MP3s for every round
-are in eight4awish_private `mirth/listening/2026-10-20-wasp/`. Both layers work on a
-2,048-point STFT, about 43 ms of latency on the module. A latency-free version (a filter
-bank) waits until the layer is settled.
+  not matter) and refuses the file whole if it will not load or parse. On a filter the
+  cycles figure is now the worst block, easing back over about a second: for a filter
+  without a layer the same number as before, for the layer the one that decides a glitch.
+- The card (second build): `f1_WASP_R6_16.grnb` (cutoff only, Res 6, `lp6_c_gru16_s1`),
+  `f2_WASP_LP_16.grnb` (cutoff + Res GRU-16, `lp_cr_gru16_s3`) and `f3_WASP_LP_GR.grnb`
+  ("WASP LP GR": f2's network plus the layer), so f2 and f3 A/B the layer above Res 8.
+  The GRU-24s (f1, f2, f5 before 2026-10-20) are off the card and kept in
+  `captures/wasp_mirth/off_card/`.
 
 The granular EQ is David's idea: no added signal, the recorded misbehaviour used to boost
 and cut the spectrum. A bank of how takes 2–4 lift and dip against the average, in

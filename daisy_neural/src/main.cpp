@@ -39,7 +39,7 @@
  * cutoff and resonance as live controls (nam/gru_runtime.h; the first are the
  * Doepfer A-124 Wasp's, CLAUDE.md). A version-2 file also carries a granular layer
  * (nam/gran_layer.h): the Wasp's take-to-take randomness, phased in from Res 8 to 9,
- * at 46.7 ms of latency for that slot, wet and dry alike. Mirth Lite has no way to reach FILTERS yet: its
+ * at 53.7 ms of latency for that slot, wet and dry alike. Mirth Lite has no way to reach FILTERS yet: its
  * B8 toggle has two positions. AMPS: the captures on the card, played exactly as captured; the
  * steer knob does nothing there, on purpose. NOT-AMPS: twelve starter captures,
  * each with one transform chosen by measurement to leave the region where real
@@ -117,7 +117,12 @@ using namespace patch_sm;
 #endif
 #include "nam/gru_runtime.h"
 // A FILTERS file may carry a granular layer after its network (.grnb version 2): the
-// Wasp's take-to-take randomness, phased in above Res 8 (nam/gran_layer.h).
+// Wasp's take-to-take randomness, phased in above Res 8 (nam/gran_layer.h). Its FFT's
+// working arrays and twiddles (12 KB) go in DTCMRAM with the GRU's hot data; the rest
+// of the engine is placed below, in RAM_D2.
+#ifndef NEURAL_NO_TCM_PLACEMENT
+#define GRAN_FAST_DATA __attribute__((section(".dtcmram_bss")))
+#endif
 #include "nam/gran_layer.h"
 static constexpr const char* kFallbackName    = fallback::kName;
 static const float* const    kFallbackWeights = fallback::kWeights;
@@ -412,7 +417,7 @@ static void ApplySteer(float u)
 
 // One block through the FILTERS network, in place: the cutoff ramped across the block
 // from where the last one ended, Res smoothed over about 20 ms. Then the layer, if the
-// filter has one: its output is the network's, 46.7 ms late (the dry side is delayed to
+// filter has one: its output is the network's, 53.7 ms late (the dry side is delayed to
 // match in the mix). restart: the network has not run since the last call (bypass, a
 // swap), so the layer drops what it was holding. Audio callback only.
 static void ProcessFilter(float* buf, size_t n, float cut_to, float res_to, bool restart)
@@ -590,7 +595,7 @@ void AudioCallback(AudioHandle::InputBuffer  in,
 
     // Dry/wet. The dry side is the input before the trim, delayed to line up with
     // a not-amp that has latency (RATE runs 48·R samples behind), or with a filter's
-    // granular layer (kDelay, 2,240 samples, bypassed or not, so A/B keeps its timing);
+    // granular layer (kDelay, 2,576 samples, bypassed or not, so A/B keeps its timing);
     // the swap fade mutes the wet side only.
     static notamps::DryDelay dry_delay;
     const int   lat     = g_na >= 0 ? g_proc.Latency() : 0;

@@ -22,13 +22,18 @@
  * banks' Res marks each grain takes the higher bank with the chance given by where Res
  * sits between them.
  *
- * Timing: one frame's work is three audio blocks (Advance(), once per block: the FFT;
- * the gains; the inverse FFT and overlap-add), about 1,800 cycles a sample each on the
- * H750 at most, so it never lands on one block. kDelay leaves room for that. The dry
- * side is delayed by the same, by DelayDry(), so the mix still lines up.
+ * Timing: one frame's work is spread over ten audio blocks (Advance(), once per block),
+ * a few FFT passes each, since a new frame comes every 10.67 blocks. The first version
+ * did it in three, a third of the work each, and on the module its worst block cost
+ * about 11,000 cycles a sample against a budget of 10,000 (2026-10-20, David's bench),
+ * glitching, though the average fitted. kDelay leaves room for the ten. The dry side is
+ * delayed by the same, by DelayDry(), so the mix still lines up.
  *
  * Portable C++, standard library only. The FFT is a plain radix-2 one (1,024-point
- * complex, packed real), so the Patch SM and the desktop run identical code.
+ * complex, packed real), so the Patch SM and the desktop run identical code. Its working
+ * arrays and twiddles, which every butterfly touches, are separate from the Engine and
+ * take GRAN_FAST_DATA, so a build can put them in its fastest memory (Mirth: DTCMRAM;
+ * the Engine itself, 84 KB, sits in RAM_D2).
  */
 
 #include <cmath>
@@ -36,15 +41,21 @@
 #include <cstdint>
 #include <cstring>
 
+#ifndef GRAN_FAST_DATA
+#define GRAN_FAST_DATA
+#endif
+
 namespace gran
 {
 
 inline constexpr int      kFft       = 2048;
 inline constexpr int      kHalf      = kFft / 2;  // the complex FFT's size
+inline constexpr int      kPasses    = 10;        // log2(kHalf)
 inline constexpr int      kBins      = kFft / 2 + 1;
 inline constexpr int      kHop       = 512;
 inline constexpr int      kBlock     = 48;
-inline constexpr int      kDelay     = kFft + 4 * kBlock;  // 2,240 samples, 46.7 ms
+inline constexpr int      kSlices    = 10;
+inline constexpr int      kDelay     = kFft + (kSlices + 1) * kBlock;  // 2,576 samples, 53.7 ms
 inline constexpr int      kRing      = 4096;
 inline constexpr uint32_t kMask      = kRing - 1;
 inline constexpr int      kMaxBanks  = 4;
@@ -55,6 +66,12 @@ inline constexpr int      kHeader    = 48;
 inline constexpr int      kBankDesc  = 16;
 inline constexpr uint32_t kMagic     = 0x594C5247u;  // "GRLY" read little-endian
 inline constexpr double   kTwoPi     = 6.283185307179586;
+
+// The FFT's working arrays and twiddles (12 KB): one engine per program.
+GRAN_FAST_DATA inline float fftRe[kHalf];
+GRAN_FAST_DATA inline float fftIm[kHalf];
+GRAN_FAST_DATA inline float fftCos[kHalf / 2];
+GRAN_FAST_DATA inline float fftSin[kHalf / 2];
 
 struct Bank
 {
@@ -160,8 +177,8 @@ class Engine
             win_[n] = (float)(0.5 - 0.5 * std::cos(kTwoPi * n / kFft));  // periodic Hann
         for(int k = 0; k < kHalf / 2; k++)
         {
-            cos_[k] = (float)std::cos(kTwoPi * k / kHalf);
-            sin_[k] = (float)std::sin(kTwoPi * k / kHalf);
+            fftCos[k] = (float)std::cos(kTwoPi * k / kHalf);
+            fftSin[k] = (float)std::sin(kTwoPi * k / kHalf);
         }
         for(int k = 0; k <= kHalf; k++)
         {
@@ -233,28 +250,29 @@ class Engine
     }
 
     // Once per block, after its samples, with that block's cutoff (volts) and Res: one
-    // stage of the frame in hand. A frame takes the cutoff and Res of the block it
-    // completed in.
+    // slice of the frame in hand, about a tenth of its work. A frame takes the cutoff and
+    // Res of the block it completed in.
     void Advance(const Layer& L, float cut, float res)
     {
-        switch(stage_)
+        if(stage_ == 0)
         {
-            case 0:
-                if(!frame_ready_)
-                    return;
-                frame_ready_ = false;
-                f_end_ = frame_end_, f_cut_ = cut, f_res_ = res;
-                Forward();
-                stage_ = 1;
-                break;
-            case 1:
-                Gains(L);
-                stage_ = 2;
-                break;
-            default:
-                Inverse();
-                stage_ = 0;
-                break;
+            if(!frame_ready_)
+                return;
+            frame_ready_ = false;
+            f_end_ = frame_end_, f_cut_ = cut, f_res_ = res;
+        }
+        switch(++stage_)
+        {
+            case 1: Pack(), Permute(), Passes(0, 2, false); break;
+            case 2: Passes(2, 5, false); break;
+            case 3: Passes(5, 8, false); break;
+            case 4: Passes(8, kPasses, false), Split(); break;
+            case 5: GainsStream(L, 0); break;
+            case 6: GainsStream(L, 1), Apply(); break;
+            case 7: Unsplit(), Permute(), Passes(0, 2, true); break;
+            case 8: Passes(2, 5, true); break;
+            case 9: Passes(5, 8, true); break;
+            default: Passes(8, kPasses, true), Unpack(), stage_ = 0; break;
         }
     }
 
@@ -307,60 +325,69 @@ class Engine
         g.live = true;
     }
 
-    // In-place radix-2 FFT of kHalf points, forward (e^-) or inverse (e^+, unscaled).
-    void Fft(bool inverse)
+    // The radix-2 FFT of kHalf points in fftRe/fftIm, in pieces so a frame's work can be
+    // spread over blocks: Permute() is the bit reversal, Passes(p0, p1) the butterfly
+    // passes p0 to p1 - 1 (pass p joins pairs of 2^p-point transforms), and in order they
+    // make one FFT, forward (e^-) or inverse (e^+, unscaled).
+    void Permute()
     {
         for(int i = 0; i < kHalf; i++)
         {
             const int j = rev_[i];
             if(j > i)
             {
-                float t = re_[i];
-                re_[i]  = re_[j];
-                re_[j]  = t;
-                t       = im_[i];
-                im_[i]  = im_[j];
-                im_[j]  = t;
+                float t   = fftRe[i];
+                fftRe[i]  = fftRe[j];
+                fftRe[j]  = t;
+                t         = fftIm[i];
+                fftIm[i]  = fftIm[j];
+                fftIm[j]  = t;
             }
         }
+    }
+    void Passes(int p0, int p1, bool inverse)
+    {
         const float sgn = inverse ? 1.f : -1.f;
-        for(int len = 2; len <= kHalf; len <<= 1)
+        for(int p = p0; p < p1; p++)
         {
-            const int half = len >> 1, step = kHalf / len;
+            const int len = 2 << p, half = len >> 1, step = kHalf / len;
             for(int i = 0; i < kHalf; i += len)
                 for(int k = 0; k < half; k++)
                 {
-                    const float wr = cos_[k * step], wi = sgn * sin_[k * step];
+                    const float wr = fftCos[k * step], wi = sgn * fftSin[k * step];
                     const int   a = i + k, b = a + half;
-                    const float tr = re_[b] * wr - im_[b] * wi;
-                    const float ti = re_[b] * wi + im_[b] * wr;
-                    re_[b]         = re_[a] - tr;
-                    im_[b]         = im_[a] - ti;
-                    re_[a] += tr;
-                    im_[a] += ti;
+                    const float tr = fftRe[b] * wr - fftIm[b] * wi;
+                    const float ti = fftRe[b] * wi + fftIm[b] * wr;
+                    fftRe[b]       = fftRe[a] - tr;
+                    fftIm[b]       = fftIm[a] - ti;
+                    fftRe[a] += tr;
+                    fftIm[a] += ti;
                 }
         }
     }
 
-    // Stage 1: the frame, windowed, packed two real samples to a complex one, through
-    // the FFT, and split into the real FFT's kBins bins.
-    void Forward()
+    // The frame, windowed and packed two real samples to a complex one.
+    void Pack()
     {
         const uint32_t start = f_end_ - (kFft - 1);
         for(int n = 0; n < kHalf; n++)
         {
-            re_[n] = in_[(start + 2 * n) & kMask] * win_[2 * n];
-            im_[n] = in_[(start + 2 * n + 1) & kMask] * win_[2 * n + 1];
+            fftRe[n] = in_[(start + 2 * n) & kMask] * win_[2 * n];
+            fftIm[n] = in_[(start + 2 * n + 1) & kMask] * win_[2 * n + 1];
         }
-        Fft(false);
-        // X[k] = E[k] + W^k O[k], E and O the even and odd samples' FFTs, W = e^(-2 pi i / kFft).
-        xr_[0]     = re_[0] + im_[0];
+    }
+
+    // The complex FFT split into the real FFT's kBins bins: X[k] = E[k] + W^k O[k], E and
+    // O the even and odd samples' FFTs, W = e^(-2 pi i / kFft).
+    void Split()
+    {
+        xr_[0]     = fftRe[0] + fftIm[0];
         xi_[0]     = 0.f;
-        xr_[kHalf] = re_[0] - im_[0];
+        xr_[kHalf] = fftRe[0] - fftIm[0];
         xi_[kHalf] = 0.f;
         for(int k = 1; k < kHalf; k++)
         {
-            const float zr = re_[k], zi = im_[k], cr = re_[kHalf - k], ci = -im_[kHalf - k];
+            const float zr = fftRe[k], zi = fftIm[k], cr = fftRe[kHalf - k], ci = -fftIm[kHalf - k];
             const float er = 0.5f * (zr + cr), ei = 0.5f * (zi + ci);
             const float orr = 0.5f * (zi - ci), oi = -0.5f * (zr - cr);  // (Z - conj Z') / 2i
             const float wr = wcos_[k], wi = -wsin_[k];
@@ -369,50 +396,54 @@ class Engine
         }
     }
 
-    // Stage 2: this frame's gains, both streams advanced by one frame, applied to the bins.
-    void Gains(const Layer& L)
+    // One stream's part of this frame's gains: a new grain if one is due (stream 0 draws
+    // before stream 1, and grains are drawn whatever the depth), then its contribution.
+    void GainsStream(const Layer& L, int s)
     {
-        float  depth;
         int    lo, hi;
         double p;
-        PhaseIn(L, f_res_, depth, lo, hi, p);
+        PhaseIn(L, f_res_, depth_, lo, hi, p);
         const int G = L.grain;
-        for(int k = 0; k < kBins; k++)
-            g_[k] = 0.f;
-        const float inv_dlc = 1.f / L.dlc, top = (float)(L.bands - 1);
-        for(int s = 0; s < 2; s++)
-        {
-            const int i = (int)((frame_ + (uint32_t)(s ? G / 2 : 0)) % (uint32_t)G);
-            Grain&    g = grain_[s];
-            if(i == 0 || !g.live)
-                NewGrain(g, L);
-            if(depth == 0.f)
-                continue;
-            const Bank&   b     = L.bank[g.bank];
-            const float   w     = 1.f - std::fabs(((float)i + 0.5f) / (float)G * 2.f - 1.f);
-            const float   shift = b.slope * (Clip10(RdF(b.cv + 4 * (g.src + i))) - Clip10(f_cut_));
-            const float   base  = (shift - L.lc0) * inv_dlc;
-            const int8_t* row   = b.gains + ((size_t)g.take * b.frames + g.src + i) * (size_t)L.bands;
-            const float   a     = depth * w * L.db_step;
+        if(s == 0)
             for(int k = 0; k < kBins; k++)
+                g_[k] = 0.f;
+        const int i = (int)((frame_ + (uint32_t)(s ? G / 2 : 0)) % (uint32_t)G);
+        Grain&    g = grain_[s];
+        if(i == 0 || !g.live)
+            NewGrain(g, L);
+        if(s == 1)
+            frame_++;
+        if(depth_ == 0.f)
+            return;
+        const float   inv_dlc = 1.f / L.dlc, top = (float)(L.bands - 1);
+        const Bank&   b       = L.bank[g.bank];
+        const float   w       = 1.f - std::fabs(((float)i + 0.5f) / (float)G * 2.f - 1.f);
+        const float   shift   = b.slope * (Clip10(RdF(b.cv + 4 * (g.src + i))) - Clip10(f_cut_));
+        const float   base    = (shift - L.lc0) * inv_dlc;
+        const int8_t* row     = b.gains + ((size_t)g.take * b.frames + g.src + i) * (size_t)L.bands;
+        const float   a       = depth_ * w * L.db_step;
+        for(int k = 0; k < kBins; k++)
+        {
+            const float pos = lfq_[k] * inv_dlc + base;
+            float       v;
+            if(pos <= 0.f)
+                v = row[0];
+            else if(pos >= top)
+                v = row[L.bands - 1];
+            else
             {
-                const float pos = lfq_[k] * inv_dlc + base;
-                float       v;
-                if(pos <= 0.f)
-                    v = row[0];
-                else if(pos >= top)
-                    v = row[L.bands - 1];
-                else
-                {
-                    const int   j = (int)pos;
-                    const float f = pos - (float)j;
-                    v             = (float)row[j] + f * (float)(row[j + 1] - row[j]);
-                }
-                g_[k] += a * v;
+                const int   j = (int)pos;
+                const float f = pos - (float)j;
+                v             = (float)row[j] + f * (float)(row[j + 1] - row[j]);
             }
+            g_[k] += a * v;
         }
-        frame_++;
-        if(depth == 0.f)
+    }
+
+    // The gains applied to the bins (nothing to do below the phase-in).
+    void Apply()
+    {
+        if(depth_ == 0.f)
             return;
         for(int k = 0; k < kBins; k++)
         {
@@ -422,11 +453,10 @@ class Engine
         }
     }
 
-    // Stage 3: back to kHalf complex points, the inverse FFT, unpacked, windowed and
-    // overlap-added where the frame came from.
-    void Inverse()
+    // Back to kHalf complex points: E[k] = (X[k] + conj X[N/2-k]) / 2,
+    // O[k] = (X[k] - conj X[N/2-k]) W^-k / 2, Z = E + i O.
+    void Unsplit()
     {
-        // E[k] = (X[k] + conj X[N/2-k]) / 2, O[k] = (X[k] - conj X[N/2-k]) W^-k / 2, Z = E + i O.
         for(int k = 0; k < kHalf; k++)
         {
             const float ar = xr_[k], ai = xi_[k], br = xr_[kHalf - k], bi = -xi_[kHalf - k];
@@ -434,16 +464,20 @@ class Engine
             const float dr = 0.5f * (ar - br), di = 0.5f * (ai - bi);
             const float wr = wcos_[k], wi = wsin_[k];  // W^-k
             const float orr = dr * wr - di * wi, oi = dr * wi + di * wr;
-            re_[k]          = er - oi;
-            im_[k]          = ei + orr;
+            fftRe[k]        = er - oi;
+            fftIm[k]        = ei + orr;
         }
-        Fft(true);
+    }
+
+    // The inverse FFT's output unpacked, windowed and overlap-added where the frame came from.
+    void Unpack()
+    {
         const uint32_t start = f_end_ - (kFft - 1);
         const float    norm  = 1.f / ((float)kHalf * 1.5f);  // the inverse's 1/N, and the Hann overlap's sum of squares
         for(int n = 0; n < kHalf; n++)
         {
-            ola_[(start + 2 * n) & kMask] += re_[n] * norm * win_[2 * n];
-            ola_[(start + 2 * n + 1) & kMask] += im_[n] * norm * win_[2 * n + 1];
+            ola_[(start + 2 * n) & kMask] += fftRe[n] * norm * win_[2 * n];
+            ola_[(start + 2 * n + 1) & kMask] += fftIm[n] * norm * win_[2 * n + 1];
         }
     }
 
@@ -451,17 +485,15 @@ class Engine
     float    ola_[kRing];
     float    dry_[kRing];
     float    win_[kFft];
-    float    cos_[kHalf / 2], sin_[kHalf / 2];
     float    wcos_[kHalf + 1], wsin_[kHalf + 1];
     float    lfq_[kBins];
-    float    re_[kHalf], im_[kHalf];
     float    xr_[kBins], xi_[kBins];
     float    g_[kBins];
     uint16_t rev_[kHalf];
     uint32_t t_ = 0, td_ = 0, frame_end_ = 0, f_end_ = 0, frame_ = 0;
     int      stage_       = 0;
     bool     frame_ready_ = false;
-    float    f_cut_ = 0.f, f_res_ = 0.f;
+    float    f_cut_ = 0.f, f_res_ = 0.f, depth_ = 0.f;
     Grain    grain_[2];
     Rng      rng_;
 };

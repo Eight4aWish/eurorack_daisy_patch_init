@@ -21,9 +21,9 @@ wasp_noise_layer.py): the gains scale from 0 at Res 8 to 1 at Res 9; between two
 banks' marks each grain takes the higher bank with probability given by where Res sits
 between them.
 
-Latency: DELAY = 2,048 + 4 * 48 samples (46.7 ms), for the dry side as well. The
-firmware spreads one frame's work over three audio blocks (FFT, gains, inverse FFT and
-overlap-add) and DELAY leaves room for that.
+Latency: DELAY = 2,048 + 11 * 48 samples (53.7 ms), for the dry side as well. The
+firmware spreads one frame's work over ten audio blocks (a few FFT passes each; three
+blocks overran the Patch SM's budget, 2026-10-20) and DELAY leaves room for that.
 """
 import pathlib
 import struct
@@ -36,7 +36,8 @@ from scipy.signal import stft, welch
 SR = 48000
 NFFT, HOP = 2048, 512
 BLOCK = 48
-DELAY = NFFT + 4 * BLOCK
+SLICES = 10    # the firmware spreads a frame's work over this many audio blocks
+DELAY = NFFT + (SLICES + 1) * BLOCK
 FIT = (24.0, 56.0)
 CV_WINDOW = 1.0
 DB_STEP = 0.1  # one stored unit, dB
