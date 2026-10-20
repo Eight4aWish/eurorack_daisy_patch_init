@@ -32,7 +32,9 @@ Modes (one gain per mark across a mark's clips; band gap over seeds 1-3, audio s
   spectrum  round 3, marks 9 and 10, on the average: s 0, 0.5, 1, 1.5, 2 (steps 1-5),
             grains from within 1 V; prints each step's gain change at and above the
             cutoff (dB per frame)
-  chosen    s 0.5 on the average and on the GRU, marks 6-10
+  chosen    s 0.5 on the average and on the GRU, marks 6-10, phased in by Res as
+            phase() says: off at 6-8 (the network alone), full at 9 and 10. Without the
+            phase-in it measured worse than no layer at 6-8 (commit fb5a853)
 Writes 16-bit WAVs of 8-24 s to /tmp/noise_layer/<mode>/ and a report.json, and prints
 each clip's band gap: mean |dB| between its octave-band levels and the four takes'
 average at the 4-10 V holds. Run on the machine with the captures:
@@ -79,6 +81,16 @@ def spec(y):
 def step(s):
     """The granular EQ's settings at s: grain frames, limit (dB), smoothing sigma (bands)."""
     return int(round(8 * 2 ** s)), 12 - 3 * s, 0.816 * s
+
+
+def phase(res):
+    """David's phase-in (2026-10-20): the layer only where the Wasp is random. Returns
+    (w, p): the layer's gains in dB are scaled by w, 0 up to Res 8 and 1 from Res 9,
+    linear between; from Res 9 to 10 each grain draws from the Res 10 bank with
+    probability p, otherwise the Res 9 bank (a choice per grain, not a blend of the two,
+    which would make it less random than either). At the marks this is: off at 6-8, each
+    mark's own bank at full depth at 9 and 10."""
+    return min(max(res - 8.0, 0.0), 1.0), min(max(res - 9.0, 0.0), 1.0)
 
 
 ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
@@ -153,7 +165,7 @@ for r in MARKS[mode]:
     xq_all = np.log2(np.maximum(fq, 1.0)[:, None] / fc_frames[None, :])  # octaves from the cutoff
     LAST = {}
 
-    def granular(base, rng, L, limit, bank, near_cv):
+    def granular(base, rng, L, limit, bank, near_cv, depth=1.0):
         pool = np.where((tq > FIT[0] + 0.5) & (tq < FIT[1] - 0.5))[0]
         _, _, Zb = spec(base)
         gains = np.zeros(Zb.shape)
@@ -170,15 +182,15 @@ for r in MARKS[mode]:
                     w = 1 - abs((i + 0.5) / L * 2 - 1)  # triangular; the two streams sum to ~1
                     fsrc = fc_frames[src + i] * 2 ** xq_all[:, t_]  # same octaves-from-cutoff in the source frame
                     g = np.clip(bank[k][:, src + i], -limit, limit)
-                    gains[:, t_] += w * np.interp(np.log2(np.maximum(fsrc, 1.0)), lc, g)
+                    gains[:, t_] += depth * w * np.interp(np.log2(np.maximum(fsrc, 1.0)), lc, g)
         LAST["g"] = gains
         return istft(np.abs(Zb) * 10 ** (gains / 20) * np.exp(1j * np.angle(Zb)), SR,
                      nperseg=NFFT, noverlap=NFFT - HOP)[1][:n]
 
-    def at(s):
+    def at(s, depth=1.0):
         L, limit, sigma = step(s)
         bank = gaussian_filter1d(raw, sigma, axis=1, mode="nearest") if sigma > 0 else raw
-        return lambda base, rng: granular(base, rng, L, limit, bank, True)
+        return lambda base, rng: granular(base, rng, L, limit, bank, True, depth)
 
     target = {v: np.mean([bands(t, seg) for t in al], axis=0) for v, seg in HOLDS.items()}
     def gap(c):
@@ -212,7 +224,8 @@ for r in MARKS[mode]:
     elif mode == "spectrum":
         arms = {f"s{k}": at(s) for k, s in enumerate((0.0, 0.5, 1.0, 1.5, 2.0), start=1)}
     else:
-        arms = {"s2": at(CHOSEN)}
+        w, _ = phase(r)  # at a mark the bank is the mark's own, as phase() gives
+        arms = {"s2": at(CHOSEN, w)} if w > 0 else {}
         bases["gru"] = gru
 
     scores = {k: [gap(c)] for k, c in fixed.items()}

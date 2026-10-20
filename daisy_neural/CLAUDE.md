@@ -847,7 +847,18 @@ bank moves 0.8 dB on average below the cutoff even at Res 6, where the random pa
    0.81 → 1.35 dB at Res 6; band gaps up about 0.2 dB at every mark).
 
 So the cause is open. The same spurious lift is probably part of what is heard at Res 9–10
-(Res 9, 6 V: +1.6 dB at 200 Hz, where the real take moves −0.1). The MP3s for every round
+(Res 9, 6 V: +1.6 dB at 200 Hz, where the real take moves −0.1).
+
+**Decision (David, 2026-10-20): phase it in.** The layer runs only where the Wasp is
+random, by Res, with no knob (`phase()` in the tool). Its gains in dB scale from 0 at
+Res 8 to 1 at Res 9, linear between. From Res 9 to 10 each grain draws from the Res 10
+bank with probability Res − 9, otherwise from the Res 9 bank: a choice per grain, since
+blending two independent grains would be less random than either. At the marks: Res 6–8
+play the network alone, and Res 9–10 are unchanged (checked: band gaps as above). For the
+module, the granular EQ analyses nothing; its gains come from the bank, the CV and the
+cutoff. So it need not be an STFT with 43 ms of latency: a time-varying graphic EQ (a
+biquad per band) would add none, at coarser bands. Which way it goes is still to be
+decided. The MP3s for every round
 are in eight4awish_private `mirth/listening/2026-10-20-wasp/`. Both layers work on a
 2,048-point STFT, about 43 ms of latency on the module. A latency-free version (a filter
 bank) waits until the layer is settled.
