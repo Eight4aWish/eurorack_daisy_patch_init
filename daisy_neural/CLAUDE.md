@@ -941,6 +941,22 @@ how random the Wasp is at that distance from the cutoff. On the repeatable part 
 layer closes about half the gap; on the network a fifth or less, because the network's own
 band-level error at Res 9–10 is larger than the randomness.
 
+**Wrapped (David, 2026-10-20).** "This is as far as I want to take this." The story, in
+his words: to get something more Wasp-like we added some granular, and while it is not a
+perfect copy of the Wasp, it has some of its own character, which is audibly interesting.
+What stands behind each part: the networks learn the cutoff and Res but only the average
+Wasp (the control tests, the Res ladder); above Res 8 the Wasp stops repeating itself
+(the repeat takes); the granular layer borrows that take-to-take movement back from the
+recordings (three listening rounds, David's s 0.5, phased in from Res 8 to 9); it runs on
+the module within budget (FLT3 worst block 7,637 cycles, about 8,600 at full depth),
+matching the desktop reference exactly. No further bench tests are needed for that. The
+card as left: FLT1 cutoff only (Res 6), FLT2 cutoff + Res, FLT3 the same with the layer,
+firmware `0654694`. The recording rig can come down; the Res 6–10 repeat takes exist only
+on the Crucial drive. Left open on purpose, none needed for the story: the patch.init's
+input full scale (for any "at the Wasp's own level" claim); the peak guard and the
+latency-free graphic EQ; why the layer lifts bands at Res 6–8 that the Wasp holds still;
+GRU-24 on the Teensy.
+
 **Tooling:** `tools/wasp_capture.py`, bench sheet `WASP.md`. It plays and records in one
 stream, with a loopback cable for latency. Recordings live in `captures/wasp/`, which is
 gitignored. Tested offline against a simulated filter first, then used for both series
