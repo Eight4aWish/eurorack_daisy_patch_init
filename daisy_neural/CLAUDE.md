@@ -722,6 +722,20 @@ the dial scaled to −1..1), Res no longer an input, each batch from one Res mar
 the first recipe exactly, so only the architecture changes against `lp_cr_*`. GRU-16 and
 GRU-24 (2,931 and 6,123 training parameters), seeds 1–3; the control test runs after.
 
+**What the Wasp's randomness is (2026-10-20).** Four recordings of identical input at each of
+Res 6, 8, 9 and 10 (today's three takes and 18 October's): their average is the repeatable
+part, each take minus it the random part. The random part's energy sits at the cutoff
+frequency and moves with it (2 and 4 V holds: under 200 Hz; 6 V: 500–1,000 Hz; 8 V:
+2–4 kHz; 10 V: 4–8 kHz). It is negligible at Res 6 (−23 to −43 dB of the signal) and at
+the 2 V hold, and at Res 9–10 is nearly as loud as the repeatable part at 4–6 V (−3.4 to
+−7 dB), less at 8–10 V (−9 to −21 dB). Its level barely follows the input's (r 0.05–0.30)
+and moderately the output's (0.23–0.60): it is the resonance near self-oscillation ringing
+with a fresh phase and amplitude every take. The networks' "average Wasp" is the
+repeatable part, so a stochastic layer can be added rather than learned: narrowband noise
+centred on the cutoff, its level from a table in cutoff and Res (David's idea, a sample
+bank of the misbehaviour, in parametric form). Cheap on the Daisy; to be judged by ear
+against the real Wasp first, offline. Script: the session's scratch `chaos.py`.
+
 **Tooling:** `tools/wasp_capture.py`, bench sheet `WASP.md`. It plays and records in one
 stream, with a loopback cable for latency. Recordings live in `captures/wasp/`, which is
 gitignored. Tested offline against a simulated filter first, then used for both series
