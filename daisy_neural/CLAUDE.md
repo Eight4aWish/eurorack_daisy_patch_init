@@ -888,6 +888,26 @@ the follow-up if the delay bothers him.
   2,048 + 11 × 48 = 2,576 samples (53.7 ms). C++ against Python unchanged (ESR 1e-12).
   Card order changed at David's request so the two cut + Res networks sit together:
   FLT1 cutoff only, FLT2 cutoff + Res, FLT3 the same with the layer.
+- **Second build (`0654694`), on the bench:** FLT1 61%, 5,999; FLT2 62%, 6,119; FLT3 70%,
+  7,637, up to about 8,600 once the gains run (above R 8): no more glitches. David:
+  above F 8 and R 8.7 "like a strobing effect on top of the signal, almost like noise
+  being added rather than grains"; past the point where the layer comes in, at the
+  extremes, "almost like hearing grains". FLT2 alone (no layer) has notes that set up "a
+  not unpleasant vibration, a bit like resonance" with the knobs: mid-range beating at F
+  5.9 R 9.0, deeper rumbling at F 4.2 R 9.0. FLT3 exaggerates these, "perhaps a bit too
+  much", and at F 5.4 R 8.9 gives "a reverb type thing", the rumbling "coming from a
+  cave". LFOs into F and R: "not unpleasant". Lowering the mix does not change it, so
+  it is not the output clipping.
+- **Read against the reference** (`wasp_layer.Stream`, which the firmware matches, on
+  the riff at its training level, F and R held): FLT3's peaks rise 4–7 dB over FLT2's
+  (F 8 R 9.5: −6.3 → +1.0 dBFS; F 8 R 8.7: −6.3 → −2.4; F 6 R 9.5: −6.7 → −0.7) while
+  its average level rises 0.3–1.3 dB; the real Wasp's peaks hold at −6.2 dBFS from Res 5
+  to 10. Some grains lift the resonance region by up to 10 dB: the exaggerated beating.
+  The envelope's fluctuation at 5–25 Hz is no greater with the layer than without. The
+  cave fits the frame: gains that change frame to frame smear a ringing resonance over
+  each 43 ms window, most audibly where the cutoff is low (about 320 Hz at F 5.4).
+  Options, not yet chosen: a peak guard holding the layer's peaks to the network's
+  (adds no delay); the latency-free graphic EQ, which has no frames to smear.
 - `tools/wasp_layer.py`: builds the banks exactly as the listening tool (slopes 1.008 and
   0.959 octaves per volt, as its fits), packs them into a version-2 `.grnb`'s layer
   section (int8 at 0.1 dB, 1.9 MB for Res 9 and 10), and holds the same algorithm in
