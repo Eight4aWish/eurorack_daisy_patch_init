@@ -221,7 +221,15 @@ up to 239 samples, head kernel 16. **The embedded engines run the 3-channel size
 often quoted is for a generic 600MHz M7, not the Daisy.
 
 **Prior art.** No neural firmware for patch.init / Patch SM / Daisy Patch / Versio was
-found, and no NAM or ToneX capture of any Eurorack module (searched 2026-09-24).
+found, and no NAM or ToneX capture of any Eurorack module (searched 2026-09-24). Close to
+it, found 2026-10-20: Simionato and Fasciani (arXiv 2405.04124, EURASIP JASMP 2025)
+modelled a Behringer Neutron's low-pass filter among other analog effects, with the
+controls as conditioning inputs to recurrent and state-space networks, on a computer;
+Neurorack (IRCAM ACIDS, 2021) runs deep generative audio in a Eurorack module on a Jetson
+Nano; GuitarML's NeuralSeed runs a GRU-10 with knob inputs on a Daisy Seed pedal. The
+video's "similar, not the same" list is in eight4awish-video `slides/mirth-storyboard.md`.
+David's line, always: these people have done something similar but not the same; never
+"first".
 
 **Parametric (knob-conditioned) captures are not new** (found 2026-10-19, from NAM's own
 history; a broader search is still owed before anything public says "first"):
