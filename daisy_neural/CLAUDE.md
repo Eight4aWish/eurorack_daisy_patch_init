@@ -723,18 +723,61 @@ the first recipe exactly, so only the architecture changes against `lp_cr_*`. GR
 GRU-24 (2,931 and 6,123 training parameters), seeds 1–3; the control test runs after.
 
 **What the Wasp's randomness is (2026-10-20).** Four recordings of identical input at each of
-Res 6, 8, 9 and 10 (today's three takes and 18 October's): their average is the repeatable
-part, each take minus it the random part. The random part's energy sits at the cutoff
-frequency and moves with it (2 and 4 V holds: under 200 Hz; 6 V: 500–1,000 Hz; 8 V:
-2–4 kHz; 10 V: 4–8 kHz). It is negligible at Res 6 (−23 to −43 dB of the signal) and at
-the 2 V hold, and at Res 9–10 is nearly as loud as the repeatable part at 4–6 V (−3.4 to
-−7 dB), less at 8–10 V (−9 to −21 dB). Its level barely follows the input's (r 0.05–0.30)
-and moderately the output's (0.23–0.60): it is the resonance near self-oscillation ringing
-with a fresh phase and amplitude every take. The networks' "average Wasp" is the
-repeatable part, so a stochastic layer can be added rather than learned: narrowband noise
-centred on the cutoff, its level from a table in cutoff and Res (David's idea, a sample
-bank of the misbehaviour, in parametric form). Cheap on the Daisy; to be judged by ear
-against the real Wasp first, offline. Script: the session's scratch `chaos.py`.
+Res 6–10 (the three repeat takes and 18 October's): their average is the repeatable part,
+each take minus it the random part. In absolute terms the random part peaks at the cutoff
+and moves with it (2 and 4 V holds: under 200 Hz; 6 V: 500–1,000 Hz; 8 V: 2–4 kHz; 10 V:
+4–8 kHz; fit f ≈ 2^(3.1–3.5 + 0.91–0.96 V) Hz). As a share of the output it is everything
+at and above the cutoff: at Res 9–10, −42 to −24 dB of the output two to six octaves below
+it, −13 to −5 dB within an octave below, −5 to −1.5 dB above, where it is most of what
+there is. An earlier reading here, narrowband noise centred on the cutoff, was wrong: a
+layer built that way was 10 dB off in band levels. Its level barely follows the input's
+(r 0.05–0.30) and moderately the output's (0.23–0.60): the resonance near
+self-oscillation ringing with a fresh phase and amplitude every take.
+
+Across the dial (`tools/wasp_res_ladder.py`, the `test` take 8–24 s, dB of the output):
+
+| Res | whole clip | 2→4 V glide | 4 V hold | 6 V hold | 8 V hold | 10 V hold |
+|---|---|---|---|---|---|---|
+| 6 | −27.6 | −25.4 | −23.5 | −39.0 | −41.8 | −42.5 |
+| 7 | −22.6 | −19.9 | −19.0 | −35.3 | −38.4 | −41.6 |
+| 8 | −16.9 | −12.5 | −17.7 | −25.3 | −37.8 | −41.5 |
+| 9 | −7.0 | −6.9 | −5.0 | −7.0 | −14.8 | −19.8 |
+| 10 | −4.7 | −4.9 | −3.4 | −3.6 | −9.4 | −22.2 |
+
+It climbs steadily from 6 to 8, first where the cutoff is low, then jumps at 9, reaching
+every cutoff up to 6 V; the 2 V hold stays near −30 dB at every mark. The low end does not
+move with Res (50–200 Hz at the 10 V hold within 0.1 dB of Res 0 at every mark, as a
+state-variable filter should); the level rises 6 dB RMS from Res 0 to 10 instead. David's
+question (2026-10-20): Res above 6 may be out of the usable range anyway; the ladder is on
+the listening page for him to judge by ear before anything is narrowed.
+
+**Faking the randomness on top (2026-10-20, offline, `tools/wasp_noise_layer.py`).** The
+networks learn the repeatable part, so the random part can be layered on rather than
+learned. Scored by band gap: mean |dB| between a clip's octave-band levels and the four
+takes' average at the 4–10 V holds (two real takes: 0.12–0.28 dB, flattered, being two of
+the four). Not yet heard.
+
+| | Res 9 | Res 10 |
+|---|---|---|
+| repeatable part (the four takes' average) | 1.86 | 2.33 |
+| + granular EQ | 1.02 | 1.04 |
+| + random-phase layer | 0.89 | 0.96 |
+| + noise shaped to the measured random part (ceiling) | 0.23 | 0.17 |
+| GRU-24 cutoff + Res (`lp_cr_gru24_s2`, Mirth's f1) | 2.54 | 4.92 |
+| + granular EQ | 2.23 | 4.04 |
+| + random-phase layer | 2.47 | 4.44 |
+
+The granular EQ is David's idea: no added signal, the recorded misbehaviour used to boost
+and cut the spectrum. A bank of how takes 2–4 lift and dip against the average, in
+twelfth-octave bands per STFT frame (2,048 points, hop 512), limited to ±12 dB and filed by
+octaves from that frame's cutoff; grains of 8 frames (~85 ms) drawn from it at random, two
+staggered triangular streams, re-mapped to the target's cutoff and applied as magnitude
+gains with the target's phase kept. A first version measured the gains per FFT bin and
+scored worse than no layer (2.94 and 3.21): near-empty bins made wild ratios. The
+random-phase layer is a copy of the output with its phases scrambled, scaled per bin by
+how random the Wasp is at that distance from the cutoff. On the repeatable part either
+layer closes about half the gap; on the network a fifth or less, because the network's own
+band-level error at Res 9–10 is larger than the randomness.
 
 **Tooling:** `tools/wasp_capture.py`, bench sheet `WASP.md`. It plays and records in one
 stream, with a loopback cable for latency. Recordings live in `captures/wasp/`, which is
