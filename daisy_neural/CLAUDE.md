@@ -704,6 +704,24 @@ More data cannot fix that; training must reward the spectrum (and its distributi
 the waveform. Setting Res by eye costs ~0.01 ESR at 6–7, nearly all phase, and nothing
 measurable above: half-marks are practical. Takes: `lp-res<N>-rep1..3` on the drive.
 
+**The GRU engine on the module, measured (2026-10-20).** Mirth now shows its build's commit
+on the splash and, on a filter, the network's cycles per sample timed around it (the
+budget is 10,000). The first engine: GRU-16 61%, GRU-24 99% and glitching. The repacked
+engine (one history load feeding three gates, unrolled; `9ae4047`): GRU-16 6,116 cycles
+(62%), cutoff-only GRU-16 6,019, GRU-24 10,330, over budget. It cut instructions about in
+half on paper and barely moved the clock: about 1.7 cycles an instruction. A rearranged
+engine (two units at once, the gate functions in batches; `67615a6`) measured slower
+(GRU-24 10,920 and 11,660) and was reverted (`e3c811e`). Libdaisy's Boost is already on, at
+480 MHz, the H750's rated maximum. So GRU-16 is the Daisy's size for now; GRU-24 waits for
+a build that times each part of the step on the module, or for the Teensy's faster core.
+No more speed rewrites from instruction counts alone.
+
+**The hypernetwork arm, launched 2026-10-20 07:30 on the mini** (`tools/train_lp_hyper.sh`,
+David's option (a)): every weight a smooth curve in Res (w0 + P1 w1 + P2 w2, Legendre in
+the dial scaled to −1..1), Res no longer an input, each batch from one Res mark; otherwise
+the first recipe exactly, so only the architecture changes against `lp_cr_*`. GRU-16 and
+GRU-24 (2,931 and 6,123 training parameters), seeds 1–3; the control test runs after.
+
 **Tooling:** `tools/wasp_capture.py`, bench sheet `WASP.md`. It plays and records in one
 stream, with a loopback cable for latency. Recordings live in `captures/wasp/`, which is
 gitignored. Tested offline against a simulated filter first, then used for both series
