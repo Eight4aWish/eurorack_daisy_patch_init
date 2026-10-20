@@ -25,7 +25,7 @@
  * Timing: one frame's work is three audio blocks (Advance(), once per block: the FFT;
  * the gains; the inverse FFT and overlap-add), about 1,800 cycles a sample each on the
  * H750 at most, so it never lands on one block. kDelay leaves room for that. The dry
- * side is delayed by the same, by Process().
+ * side is delayed by the same, by DelayDry(), so the mix still lines up.
  *
  * Portable C++, standard library only. The FFT is a plain radix-2 one (1,024-point
  * complex, packed real), so the Patch SM and the desktop run identical code.
@@ -185,22 +185,41 @@ class Engine
         }
     }
 
-    // Silence, history cleared, grains forgotten. Main loop, with the output muted.
+    // Silence, history cleared, grains forgotten. With the output muted.
     void Reset(uint32_t seed)
     {
         std::memset(in_, 0, sizeof(in_));
         std::memset(ola_, 0, sizeof(ola_));
-        t_ = 0, stage_ = 0, frame_ready_ = false, frame_ = 0;
+        std::memset(dry_, 0, sizeof(dry_));
+        t_ = 0, td_ = 0, stage_ = 0, frame_ready_ = false, frame_ = 0;
         rng_.x = seed ? seed : 1;
         for(auto& g : grain_)
             g.live = false;
     }
 
-    // One sample: x in, the layer's output and the dry input out, both kDelay late.
-    inline float Process(float x, float& dry)
+    // The wet side cleared, after the network has been paused (bypass, a swap), so its
+    // last kDelay of audio is not played back on resuming. The dry side and the grains
+    // carry on. Cheap enough for the audio callback (two 16 KB clears).
+    void Restart()
+    {
+        std::memset(in_, 0, sizeof(in_));
+        std::memset(ola_, 0, sizeof(ola_));
+        stage_ = 0, frame_ready_ = false;
+    }
+
+    // The dry side, kDelay late, so a dry/wet mix lines up with Process()'s output.
+    inline float DelayDry(float x)
+    {
+        dry_[td_ & kMask] = x;
+        const float y     = dry_[(td_ - kDelay) & kMask];
+        td_++;
+        return y;
+    }
+
+    // One sample of the network's output in, the layer's output out, kDelay late.
+    inline float Process(float x)
     {
         in_[t_ & kMask]     = x;
-        dry                 = in_[(t_ - kDelay) & kMask];
         const uint32_t r    = (t_ - kDelay) & kMask;
         const float    y    = ola_[r];
         ola_[r]             = 0.f;
@@ -430,6 +449,7 @@ class Engine
 
     float    in_[kRing];
     float    ola_[kRing];
+    float    dry_[kRing];
     float    win_[kFft];
     float    cos_[kHalf / 2], sin_[kHalf / 2];
     float    wcos_[kHalf + 1], wsin_[kHalf + 1];
@@ -438,7 +458,7 @@ class Engine
     float    xr_[kBins], xi_[kBins];
     float    g_[kBins];
     uint16_t rev_[kHalf];
-    uint32_t t_ = 0, frame_end_ = 0, f_end_ = 0, frame_ = 0;
+    uint32_t t_ = 0, td_ = 0, frame_end_ = 0, f_end_ = 0, frame_ = 0;
     int      stage_       = 0;
     bool     frame_ready_ = false;
     float    f_cut_ = 0.f, f_res_ = 0.f;

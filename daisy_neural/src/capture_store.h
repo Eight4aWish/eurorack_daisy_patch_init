@@ -66,20 +66,28 @@ constexpr int      kMaxFilters      = 16;
 
 struct FilterEntry
 {
-    char  name[kNameLen + 1];
-    char  path[kPathLen];
-    float gain;
-    int   hidden;
-    int   inputs;
+    char     name[kNameLen + 1];
+    char     path[kPathLen];
+    float    gain;
+    int      hidden;
+    int      inputs;
+    uint32_t layer_bytes;   // version 2: the granular layer's section, after the payload; else 0
+    uint32_t layer_offset;  // where it starts in the file
+    uint32_t layer_crc;
 };
 
 int                FilterCount();
 const FilterEntry* GetFilter(int index);
 int                FindFilter(const char* name);
 
-/** Read one .grnb whole into an internal buffer and point data at it, for gru::Parse()
- *  to check (magic, sizes, CRC32) and copy into a network. The buffer is reused by the
- *  next load. Main loop only, with the network silent. */
+/** Read one .grnb's header and network (not its layer) into an internal buffer and point
+ *  data at it, for gru::Parse() to check (magic, sizes, CRC32) and copy into a network.
+ *  The buffer is reused by the next load. Main loop only, with the network silent. */
 bool LoadFilterFile(int index, const uint8_t** data, size_t* bytes);
+
+/** Read a version-2 .grnb's layer section (nam/gran_layer.h) into dst, a 32-byte-aligned
+ *  SDRAM buffer of at least the entry's layer_bytes, and check its CRC32. False on any
+ *  failure, leaving dst's contents unspecified. Main loop only, with the layer silent. */
+bool LoadFilterLayer(int index, uint8_t* dst, size_t capacity, size_t* bytes);
 
 } // namespace captures

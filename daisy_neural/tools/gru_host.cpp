@@ -56,7 +56,12 @@ int main(int argc, char** argv)
     static gru::Net net;
     float           gain = 1.f;
     char            name[gru::kGrnbNameLen];
-    if(!gru::Parse(file.data(), file.size(), net, gain, name))
+    // A version-2 file's layer follows the network; Parse() takes the header and network
+    // only, as the firmware gives it.
+    size_t len = file.size();
+    if(len >= (size_t)gru::kGrnbHeader && (file[4] | (file[5] << 8)) == 2)
+        len = gru::kGrnbHeader + sizeof(float) * (size_t)gru::WeightCount(file[8] | (file[9] << 8), file[10] | (file[11] << 8));
+    if(len > file.size() || !gru::Parse(file.data(), len, net, gain, name))
     {
         fprintf(stderr, "%s: not a valid .grnb\n", argv[1]);
         return 1;

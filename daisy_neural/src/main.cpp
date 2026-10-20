@@ -37,7 +37,9 @@
  *
  * Three banks. FILTERS: GRU networks off the card (.grnb), each a filter with its
  * cutoff and resonance as live controls (nam/gru_runtime.h; the first are the
- * Doepfer A-124 Wasp's, CLAUDE.md). Mirth Lite has no way to reach FILTERS yet: its
+ * Doepfer A-124 Wasp's, CLAUDE.md). A version-2 file also carries a granular layer
+ * (nam/gran_layer.h): the Wasp's take-to-take randomness, phased in from Res 8 to 9,
+ * at 46.7 ms of latency for that slot, wet and dry alike. Mirth Lite has no way to reach FILTERS yet: its
  * B8 toggle has two positions. AMPS: the captures on the card, played exactly as captured; the
  * steer knob does nothing there, on purpose. NOT-AMPS: twelve starter captures,
  * each with one transform chosen by measurement to leave the region where real
@@ -114,6 +116,9 @@ using namespace patch_sm;
 #define GRU_HOT_DATA __attribute__((section(".dtcmram_bss")))
 #endif
 #include "nam/gru_runtime.h"
+// A FILTERS file may carry a granular layer after its network (.grnb version 2): the
+// Wasp's take-to-take randomness, phased in above Res 8 (nam/gran_layer.h).
+#include "nam/gran_layer.h"
 static constexpr const char* kFallbackName    = fallback::kName;
 static const float* const    kFallbackWeights = fallback::kWeights;
 static constexpr float       kFallbackGain    = fallback::kGain;
@@ -222,6 +227,15 @@ GRU_HOT_DATA inline gru::State g_filter_state;
 static float                   g_filter_gain = 1.f;
 static char                    g_filter_name[gru::kGrnbNameLen] = "";
 
+// The filter's granular layer, when its file has one: the engine's tables and rings
+// (~95 KB) in RAM_D2 beside A2's history, the bank it points into (1.9 MB for the Wasp)
+// in SDRAM. g_layer_on is cleared before a load and set only once one has parsed.
+NAM_A2_STATE_DATA static gran::Engine g_layer;
+static constexpr size_t                 kLayerCap = 4u << 20;
+alignas(32) static uint8_t DSY_SDRAM_BSS g_layer_buf[kLayerCap];
+static gran::Layer                      g_layer_def;
+static volatile bool                    g_layer_on = false;
+
 static bool         g_bypass        = false;
 static bool         g_display_dirty = true;
 
@@ -238,7 +252,10 @@ static volatile float g_mix      = 0.f;
 static volatile float g_drive_db = 0.f;
 static volatile float g_cut      = 0.f;  // FILTERS: volts
 static volatile float g_res      = 0.f;  // FILTERS: the Res dial
-static volatile float g_gru_cycles = 0.f;  // FILTERS: the network's cost, CPU cycles per sample
+// FILTERS: the network's cost (and its layer's), CPU cycles per sample: the worst block,
+// easing back over about a second. A layer does a third of a frame's work in some blocks
+// and none in others, so the worst block, not the average, is what decides a glitch.
+static volatile float g_gru_cycles = 0.f;
 
 // ---------------------------------------------------------------------------
 // Capture switching
@@ -394,11 +411,17 @@ static void ApplySteer(float u)
 }
 
 // One block through the FILTERS network, in place: the cutoff ramped across the block
-// from where the last one ended, Res smoothed over about 20 ms. Audio callback only.
-static void ProcessFilter(float* buf, size_t n, float cut_to, float res_to)
+// from where the last one ended, Res smoothed over about 20 ms. Then the layer, if the
+// filter has one: its output is the network's, 46.7 ms late (the dry side is delayed to
+// match in the mix). restart: the network has not run since the last call (bypass, a
+// swap), so the layer drops what it was holding. Audio callback only.
+static void ProcessFilter(float* buf, size_t n, float cut_to, float res_to, bool restart)
 {
     static float cut = 0.f, res = 0.f;
     const uint32_t t0 = System::GetTick();
+    const bool     layer = g_layer_on;
+    if(layer && restart)
+        g_layer.Restart();
     res += 0.05f * (res_to - res);
     float raw[gru::kMaxInputs];
     for(size_t i = 0; i < n; i++)
@@ -412,12 +435,14 @@ static void ProcessFilter(float* buf, size_t n, float cut_to, float res_to)
             y = 0.f;
             g_filter_state.Reset();
         }
-        buf[i] = y;
+        buf[i] = layer ? g_layer.Process(y) : y;
     }
+    if(layer)
+        g_layer.Advance(g_layer_def, cut_to, res);
     cut = cut_to;
-    // The network's own cost, measured around it rather than estimated, smoothed.
+    // The cost, measured around it rather than estimated: the worst block, easing back.
     const float cycles = (float)(System::GetTick() - t0) * (480e6f / (float)System::GetTickFreq()) / (float)n;
-    g_gru_cycles += 0.05f * (cycles - g_gru_cycles);
+    g_gru_cycles = cycles > g_gru_cycles ? cycles : g_gru_cycles + 0.001f * (cycles - g_gru_cycles);
 }
 
 // ================================================================
@@ -539,16 +564,21 @@ void AudioCallback(AudioHandle::InputBuffer  in,
     // network from here at the same time feeds it half-written numbers. The
     // output is muted during Swap anyway. Found 2026-09-28: a seed could go NaN
     // this way, and the DC blocker below then held the NaN forever.
+    static bool filter_ran = false;  // last block, for the layer's restart
     if(!g_bypass && g_xf != Xf::Swap)
     {
         if(filt)
-            ProcessFilter(scratch, n, cut_to, res_to);
+            ProcessFilter(scratch, n, cut_to, res_to, !filter_ran);
         else
             engine.ProcessBlock(scratch, scratch, n);
+        filter_ran = filt;
     }
     else
+    {
         for(size_t i = 0; i < n; i++)
             scratch[i] = 0.f;  // no wet while bypassed or swapping
+        filter_ran = false;
+    }
 
     // DC blocker, ~20Hz one-pole. Needed for the seed slot, which is
     // asymmetric and parks on an offset nothing has trained out (measured: RMS
@@ -559,14 +589,17 @@ void AudioCallback(AudioHandle::InputBuffer  in,
     constexpr float kDcR = 0.99738f;  // exp(-2*pi*20/48000)
 
     // Dry/wet. The dry side is the input before the trim, delayed to line up with
-    // a not-amp that has latency (RATE runs 48·R samples behind); the swap fade
-    // mutes the wet side only.
+    // a not-amp that has latency (RATE runs 48·R samples behind), or with a filter's
+    // granular layer (kDelay, 2,240 samples, bypassed or not, so A/B keeps its timing);
+    // the swap fade mutes the wet side only.
     static notamps::DryDelay dry_delay;
-    const int   lat  = g_na >= 0 ? g_proc.Latency() : 0;
+    const int   lat     = g_na >= 0 ? g_proc.Latency() : 0;
+    const bool  lay_dry = filt && g_layer_on;
     const float wetg = mix * g_xf_gain, dryg = 1.f - mix;
     for(size_t i = 0; i < n; i++)
     {
-        const float raw = scratch[i] * wetg + dry_delay.Process(in[0][i], lat) * dryg;
+        const float d   = lay_dry ? g_layer.DelayDry(in[0][i]) : dry_delay.Process(in[0][i], lat);
+        const float raw = scratch[i] * wetg + d * dryg;
         float       y   = raw - dcb_x1 + kDcR * dcb_y1;
         // A recursive filter keeps a NaN or Inf forever, so one bad block from
         // an untrained network would silence the module until power-off.
@@ -658,6 +691,17 @@ static bool SwapFilter(int index)
     size_t         bytes = 0;
     float          gain  = 1.f;
     char           name[gru::kGrnbNameLen];
+    // A version-2 file's layer first, into SDRAM (about half a second for the Wasp's
+    // 1.9 MB). The old filter's layer is switched off before its bank is overwritten; a
+    // file whose layer will not load or parse is refused whole.
+    const captures::FilterEntry* e = captures::GetFilter(index);
+    g_layer_on = false;
+    if(e && e->layer_bytes > 0)
+    {
+        size_t got = 0;
+        if(!captures::LoadFilterLayer(index, g_layer_buf, kLayerCap, &got) || !gran::Parse(g_layer_buf, got, g_layer_def))
+            return false;
+    }
     if(!captures::LoadFilterFile(index, &data, &bytes) || !gru::Parse(data, bytes, g_filter, gain, name))
         return false;
     g_na = -1;
@@ -665,6 +709,11 @@ static bool SwapFilter(int index)
     g_filter_gain = gain;
     snprintf(g_filter_name, sizeof(g_filter_name), "%s", name);
     g_filter_state.Reset();
+    if(e && e->layer_bytes > 0)
+    {
+        g_layer.Reset(System::GetTick() | 1u);
+        g_layer_on = true;
+    }
     return true;
 }
 
@@ -706,7 +755,7 @@ static void DrawRunPage()
     // percent signs go. Both clamped to two digits so the line never overruns.
     const int cpu_avg = (int)(cpu_meter.GetAvgCpuLoad() * 100.f + 0.5f);
     const int cpu_max = (int)(cpu_meter.GetMaxCpuLoad() * 100.f + 0.5f);
-    if(filt)  // on a filter: the load, and the network's measured cycles per sample
+    if(filt)  // on a filter: the load, and the network's (and layer's) worst block in cycles per sample
         snprintf(line, sizeof(line), "%2d%% %5dc", cpu_avg > 99 ? 99 : cpu_avg, (int)g_gru_cycles);
     else
         snprintf(line, sizeof(line), "CPU %2d(%2d)", cpu_avg > 99 ? 99 : cpu_avg, cpu_max > 99 ? 99 : cpu_max);
@@ -834,6 +883,8 @@ int main(void)
 
     engine.InitFallback(sr);
     cpu_meter.Init(sr, patch.AudioBlockSize());
+    g_layer.Init();  // its FFT tables, once
+    g_layer.Reset(1);
 
     // Card before audio starts, so the first capture is in place by the time
     // anything is heard. A missing or unreadable card is not fatal: the

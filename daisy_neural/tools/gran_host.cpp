@@ -5,7 +5,8 @@
 //
 // in.bin:  u32 n, then n f32 samples, then one f32 cutoff (volts) and one f32 Res per
 //          block of 48 (ceil(n / 48) of each).
-// out.bin: n f32 of the layer's output, then n f32 of the dry side, both kDelay late.
+// out.bin: n f32 of the layer's output, then n f32 of the input through DelayDry(),
+//          both kDelay late.
 // Blocks of 48 exactly as Mirth runs them: every sample through Process(), then one
 // Advance() with that block's cutoff and Res.
 
@@ -84,7 +85,10 @@ int main(int argc, char** argv)
     {
         const uint32_t end = (b + 1) * gran::kBlock < n ? (b + 1) * gran::kBlock : n;
         for(uint32_t t = b * gran::kBlock; t < end; t++)
-            y[t] = engine.Process(x[t], dry[t]);
+        {
+            y[t]   = engine.Process(x[t]);
+            dry[t] = engine.DelayDry(x[t]);
+        }
         engine.Advance(layer, cut[b], res[b]);
     }
     FILE* f = std::fopen(argv[3], "wb");

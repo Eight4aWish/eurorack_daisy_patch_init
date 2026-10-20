@@ -91,20 +91,31 @@ bool EndsWith(const char* name, const char* ext)  // ext lower case, with its do
 }
 bool EndsWithA2nb(const char* name) { return EndsWith(name, ".a2nb"); }
 
-/** A .grnb header: magic, version, plausible sizes. The CRC is checked at load. */
+// A .grnb's network payload in bytes (tools/grnb.py weight_count, gru::WeightCount).
+size_t GrnbPayload(int h, int i) { return 4u * (size_t)(3 * h * i + 3 * h * h + 6 * h + h + 1); }
+
+/** A .grnb header: magic, version (1, or 2 with a layer), plausible sizes. The CRCs are
+ *  checked at load. */
 bool ReadFilterHeader(const char* path, FilterEntry& entry)
 {
     if(f_open(&s_file, path, FA_READ) != FR_OK)
         return false;
     uint8_t    hdr[kGrnbHeaderBytes];
-    UINT       got = 0;
-    const bool ok  = (f_read(&s_file, hdr, sizeof(hdr), &got) == FR_OK) && (got == sizeof(hdr));
+    UINT       got  = 0;
+    const bool ok   = (f_read(&s_file, hdr, sizeof(hdr), &got) == FR_OK) && (got == sizeof(hdr));
+    const FSIZE_t size = f_size(&s_file);
     f_close(&s_file);
-    if(!ok || Rd32(hdr + 0) != kGrnbMagic || Rd16(hdr + 4) != 1)
+    const uint16_t version = ok ? Rd16(hdr + 4) : 0;
+    if(!ok || Rd32(hdr + 0) != kGrnbMagic || (version != 1 && version != 2))
         return false;
     entry.hidden = Rd16(hdr + 8);
     entry.inputs = Rd16(hdr + 10);
     if(entry.hidden <= 0 || entry.hidden > 64 || entry.inputs <= 0 || entry.inputs > 4)
+        return false;
+    entry.layer_offset = (uint32_t)(kGrnbHeaderBytes + GrnbPayload(entry.hidden, entry.inputs));
+    entry.layer_bytes  = version == 2 ? Rd32(hdr + 52) : 0;
+    entry.layer_crc    = version == 2 ? Rd32(hdr + 56) : 0;
+    if(version == 2 && (entry.layer_bytes == 0 || (FSIZE_t)entry.layer_offset + entry.layer_bytes != size))
         return false;
     uint32_t gain_bits = Rd32(hdr + 12);
     memcpy(&entry.gain, &gain_bits, sizeof(float));
@@ -336,7 +347,8 @@ bool LoadFilterFile(int index, const uint8_t** data, size_t* bytes)
         s_status = "open fail";
         return false;
     }
-    const FSIZE_t size = f_size(&s_file);
+    // A version-2 file's layer follows the network; only the header and network come here.
+    const FSIZE_t size = e->layer_bytes ? (FSIZE_t)e->layer_offset : f_size(&s_file);
     if(size < kGrnbHeaderBytes || size > kBounceBytes)
     {
         f_close(&s_file);
@@ -353,6 +365,41 @@ bool LoadFilterFile(int index, const uint8_t** data, size_t* bytes)
     }
     *data    = s_bounce;
     *bytes   = (size_t)size;
+    s_status = "ok";
+    return true;
+}
+
+bool LoadFilterLayer(int index, uint8_t* dst, size_t capacity, size_t* bytes)
+{
+    const FilterEntry* e = GetFilter(index);
+    if(!e || !dst || !bytes || e->layer_bytes == 0 || e->layer_bytes > capacity)
+    {
+        s_status = "no layer";
+        return false;
+    }
+    if(f_open(&s_file, e->path, FA_READ) != FR_OK)
+    {
+        s_status = "open fail";
+        return false;
+    }
+    // Straight into dst: the card's DMA lands in SDRAM, and sd_diskio cleans and
+    // invalidates whole cache lines around it, so the offset into a sector does not
+    // matter as long as it is a multiple of 4, which every .grnb's layer offset is.
+    UINT          got = 0;
+    const FRESULT sr  = f_lseek(&s_file, e->layer_offset);
+    const FRESULT rr  = sr == FR_OK ? f_read(&s_file, dst, (UINT)e->layer_bytes, &got) : sr;
+    f_close(&s_file);
+    if(rr != FR_OK || got != e->layer_bytes)
+    {
+        s_status = Fail("layer", (int)rr);
+        return false;
+    }
+    if(Crc32(dst, e->layer_bytes) != e->layer_crc)
+    {
+        s_status = "layer crc";
+        return false;
+    }
+    *bytes   = e->layer_bytes;
     s_status = "ok";
     return true;
 }

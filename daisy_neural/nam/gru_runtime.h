@@ -148,10 +148,13 @@ inline float Tanh(float x) noexcept
 inline float Sigmoid(float x) noexcept { return 0.5f + 0.5f * Tanh(0.5f * x); }
 
 // The .grnb file (tools/grnb.py writes it; the two must agree). Little-endian:
-//     0  'GRNB'   4  version (u16, 1)   6  reserved   8  hidden (u16)   10  inputs (u16)
-//    12  output gain (f32)   16  name (12 bytes, NUL-padded)   28  CRC32 of the payload
-//    32  input kinds (4 x u8)   36  input scales (4 x f32)   52  reserved to 64
+//     0  'GRNB'   4  version (u16: 1, or 2 with a layer)   6  reserved   8  hidden (u16)
+//    10  inputs (u16)   12  output gain (f32)   16  name (12 bytes, NUL-padded)
+//    28  CRC32 of the payload   32  input kinds (4 x u8)   36  input scales (4 x f32)
+//    52  version 2: the layer section's size and CRC32 (2 x u32)   60  reserved to 64
 //    64  payload: WeightCount(hidden, inputs) x f32, in Load()'s order
+// then, in version 2, a granular layer section (nam/gran_layer.h), which Parse() leaves
+// to its caller: give it the header and payload only.
 inline constexpr int      kGrnbHeader  = 64;
 inline constexpr int      kGrnbNameLen = 12;
 inline constexpr uint32_t kGrnbMagic   = 0x424E5247u;  // "GRNB" read little-endian
@@ -175,7 +178,7 @@ inline bool Parse(const uint8_t* buf, size_t len, Net& n, float& gain, char* nam
 {
     auto u16 = [&](int o) { return (uint16_t)(buf[o] | (buf[o + 1] << 8)); };
     auto u32 = [&](int o) { return (uint32_t)buf[o] | ((uint32_t)buf[o + 1] << 8) | ((uint32_t)buf[o + 2] << 16) | ((uint32_t)buf[o + 3] << 24); };
-    if(len < (size_t)kGrnbHeader || u32(0) != kGrnbMagic || u16(4) != 1)
+    if(len < (size_t)kGrnbHeader || u32(0) != kGrnbMagic || (u16(4) != 1 && u16(4) != 2))
         return false;
     const int hidden = u16(8), inputs = u16(10);
     if(hidden <= 0 || hidden > kMaxHidden || (hidden % 4) != 0 || inputs <= 0 || inputs > kMaxInputs)

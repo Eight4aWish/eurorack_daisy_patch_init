@@ -420,6 +420,10 @@ Captures you convert yourself (`tools/nam_to_a2nb.py`, above) go on the same car
 from `tools/train_gru.py`, written by `tools/gru_export.py` (format in `tools/grnb.py`,
 engine in `nam/gru_runtime.h`, checked against PyTorch by `tools/gru_check.py`). Up to 16,
 in filename order, GRU-24 at most. The first are the Doepfer A-124 Wasp's (`CLAUDE.md`).
+A file may also carry a **granular layer** (`gru_export.py --layer 9,10`, a version-2
+`.grnb` of about 1.9 MB): the Wasp's take-to-take randomness above Res 8, played by
+`nam/gran_layer.h` and checked against `tools/wasp_layer.py` by `tools/gran_check.py`.
+That slot runs 46.7 ms late, dry and wet alike, and takes about half a second to load.
 Level them with the rest: `tools/level_captures.py --write` plays each file through the
 real engine and sets its gain so every capture sits at one **A-weighted** level
 (−27.0 dB on the not-amps' test phrase). Plain RMS was tried first and left the bass-heavy
