@@ -1,7 +1,7 @@
 # Swords — design for review (Part A)
 
-DRAFT, 2026-10-21, for David to review before anything is recorded or trained. Nothing
-here has been built or run yet.
+Reviewed by David and recorded 2026-10-21: step 0 and the session `sw-a` (steps 1 and 2)
+are done; training waits on the Mac mini.
 
 ## The question
 
@@ -103,6 +103,27 @@ self-oscillation included. **The judged region is fixed by a rule set now:** eac
 a cutoff step (one hold of the `test` take, as the Wasp's ladder measured per hold) and a
 Res CV value whose back-to-back take-to-take ESR over that hold is 0.02 or less (the Wasp,
 whole take: 0.0015 at Res 7, 0.073 at Res 8). Outside it, recorded but not judged.
+
+**Steps 1 and 2 recorded 2026-10-21** (`sw-a`, 44 takes, unattended, no warnings; Filter 1
+peaks −2.8 to −1.8 dBFS, so no clipping; every take aligned, lag 12,369–12,376 samples,
+loopback residual −53 to −60 dB). **Where Swords repeats itself** (`region`), take-to-take
+ESR per hold, V/OCT across, Res CV down:
+
+| Res CV | +2.5 V | +4.1 V | +5.7 V | +7.3 V | +8.9 V | +10.5 V |
+|---|---|---|---|---|---|---|
+| 0–3.5 V | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0000 |
+| 4.0 V | 0.0000 | 0.0000 | 0.0001 | 0.0002 | 0.0006 | 1.15 |
+| 4.5 V | 0.72 | 0.045 | 0.24 | 0.21 | 0.74 | 1.40 |
+| 5.5 V | 0.011 | 0.0015 | 0.020 | 0.20 | 1.19 | 2.03 |
+
+Below Res CV 4 V Swords repeats itself to the rig's floor, far closer than the Wasp ever
+did (0.0006–0.03 at Res 6–7). The edge is the self-oscillation onset step 0 measured: at
+4.0 V the top cutoff has already gone, at 4.5 V everything has (the onset with hysteresis,
+where it starts and stops). At 5.5 V the two lowest cutoffs repeat again (0.011, 0.0015):
+oscillating steadily, apparently held in step by the input; judged by the rule, though
+they are islands past the onset. **Held-out band: Res CV 1.8–2.2 V**, by the rule set
+before the recording (a tenth of the judged span, 0–4 V, at its middle); it holds the
+2.0 V test takes.
 
 **2. Part A (about 70 min, unattended).** About 60 minutes of training material in two
 halves of 30, each from its own seed, the same generator as the Wasp's sweeps
