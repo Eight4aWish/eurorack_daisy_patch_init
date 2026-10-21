@@ -66,9 +66,9 @@ apply; here from a noise or sweep input at held voltages); Res CV's working rang
 resonance starts to show, and where the filter self-oscillates with no input); the input
 level against the drive LED.
 
-**First play (David, 2026-10-21, by hand, Res CV unpatched):** where it starts to
-self-oscillate, Freq against Res in clock positions: Freq 9 o'clock, Res 4; Freq 12,
-Res 3; Freq 3, Res about 2:30. The onset moves with the cutoff: the higher the cutoff,
+**First play (David, 2026-10-21, by hand, Res CV unpatched, Response at 12 o'clock):**
+where it starts to self-oscillate, Freq against Res in clock positions: Freq 9 o'clock,
+Res 4; Freq 12, Res 3; Freq 3, Res about 2:30. The onset moves with the cutoff: the higher the cutoff,
 the less Res it takes. So the edge of the repeatable region is a line across cutoff and
 Res, not a single Res value.
 
