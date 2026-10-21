@@ -94,24 +94,26 @@ from torch.utils.tensorboard import SummaryWriter
 
 HERE = pathlib.Path(__file__).resolve().parent
 CAPTURES = HERE.parent / "captures" / "wasp"
+CAPTURES_SWORDS = HERE.parent / "captures" / "swords"
 SR = 48000
 NAM_TRAIN_START = 480_000  # NAM's v3 split: train from 10 s ...
 NAM_VALIDATE = 432_000     # ... to the last 9 s, which validate
 SETTLE = SR // 10          # unscored at the start of a whole take, the state settling from rest
 COLUMNS = ("x", "cv_v", "y_lphp", "y_bp")
-TARGET = {"lphp": 2, "bp": 3}
+COLUMNS_SWORDS = ("x", "cv_v", "y_f1", "res_v")  # swords_capture.py's split: Res per sample
+TARGET = {"lphp": 2, "bp": 3, "f1": 2}
 SCALE = {"audio": 1.0, "cv": 0.1, "res": 0.1}  # inputs to about ±1: CV in tens of volts, Res in tens
 
 
 # ------------------------------------------------------------------------- data
 
-def cached(npz, z):
+def cached(npz, z, columns=COLUMNS):
     """The take as one float32 array, columns COLUMNS, memory-mapped from <take>.npy.
     Built on first use, or when the .npz is newer; written whole and renamed into place,
     so a run never maps a half-written copy."""
     npy = npz.with_suffix(".npy")
     if not npy.exists() or npy.stat().st_mtime < npz.stat().st_mtime:
-        a = np.stack([z[c] for c in COLUMNS], axis=1).astype(np.float32)
+        a = np.stack([z[c] for c in columns], axis=1).astype(np.float32)
         tmp = npy.with_name(f"{npy.name}.{os.getpid()}.tmp")
         with open(tmp, "wb") as f:
             np.save(f, a)
@@ -121,26 +123,33 @@ def cached(npz, z):
 
 class Take:
     """One take from wasp_capture.py's split: the audio as played, CV 1 in volts, both
-    outputs, and the session's Res mark."""
+    outputs, and the session's Res mark. Or from swords_capture.py's: the audio, the cutoff
+    CV, Filter 1 Out, and Res CV in volts per sample (res is then the held Res of a test
+    take, -1 for a sweep, whose Res moves)."""
 
     def __init__(self, npz):
         self.path = pathlib.Path(npz)
         self.session = self.path.parent.parent.name
         self.name = self.path.stem
         z = np.load(self.path)
+        self.swords = "res_v" in z.files
         self.res = float(z["res"])
         self.role = str(z["role"])
-        self.data = cached(self.path, z)
+        self.half = int(z["half"]) if "half" in z.files else 0
+        self.rep = int(z["rep"]) if "rep" in z.files else 0
+        self.data = cached(self.path, z, COLUMNS_SWORDS if self.swords else COLUMNS)
         self.n = len(self.data)
         self.label = f"{self.session}/{self.name}"
 
     def features(self, a, b, inputs):
         d = self.data[a:b]
-        cols = {"audio": lambda: d[:, 0], "cv": lambda: d[:, 1],
-                "res": lambda: np.full(b - a, self.res, np.float32)}
+        res = (lambda: d[:, 3]) if self.swords else (lambda: np.full(b - a, self.res, np.float32))
+        cols = {"audio": lambda: d[:, 0], "cv": lambda: d[:, 1], "res": res}
         return np.stack([cols[k]() * SCALE[k] for k in inputs], axis=-1).astype(np.float32)
 
     def target(self, a, b, out):
+        if (out == "f1") != self.swords:
+            raise SystemExit(f"{self.label}: --output {out} does not fit this take")
         return np.array(self.data[a:b, TARGET[out]], dtype=np.float32)
 
 
@@ -211,6 +220,65 @@ def session_material(args, train, valid, test):
         raise SystemExit(f"no {args.series} sessions to train on in {args.captures}")
     leak = {t.label for t, *_ in train + valid if t.res in held}
     assert not leak, f"held-out takes in training or validation: {leak}"
+
+
+def outside(mask, a, b):
+    """The runs of [a, b) where mask is False."""
+    m = np.asarray(mask[a:b], bool)
+    edges = np.flatnonzero(np.diff(np.r_[1, m.astype(np.int8), 1]))
+    return [(a + int(s), a + int(e)) for s, e in zip(edges[::2], edges[1::2])]
+
+
+def swords_material(args, train, valid, test):
+    """The Swords split (SWORDS.md). Training: the sweep takes of --halves, less the
+    validation blocks (three per take, as for the Wasp) and less every sample whose Res CV
+    is inside --holdout-band; a validation block that touches the band is dropped. Test: the
+    first take of every Res value's repeat set (the others are step 1's), held out when its
+    Res is inside the band."""
+    halves = {int(v) for v in args.halves.split(",")} if args.halves else None
+    band = tuple(sorted(float(v) for v in args.holdout_band.split(","))) if args.holdout_band else None
+    block, run_in = int((args.run_in + args.val_seconds) * SR), int(args.run_in * SR)
+    missing, dropped = [], 0
+
+    def in_band(take):
+        r = np.asarray(take.data[:, 3])
+        return (r >= band[0]) & (r <= band[1]) if band else np.zeros(take.n, bool)
+
+    for f in sorted(pathlib.Path(args.captures).glob("*/session.json")):
+        s = json.loads(f.read_text())
+        if s.get("module") != "swords":
+            continue
+        for t in s["takes"]:
+            npz = f.parent / "gru" / f"{t['name']}.npz"
+            if not npz.exists():
+                if (f.parent / "rec" / f"{t['name']}.wav").exists():
+                    missing.append(f"{f.parent.name}/{t['name']}")
+                continue
+            if t["role"] == "test":
+                if t.get("rep", 1) != 1:
+                    continue
+                take = Take(npz)
+                test.append((take, 0, take.n, SETTLE, bool(band and band[0] <= take.res <= band[1])))
+            elif t["role"] == "sweep" and (halves is None or t.get("half") in halves):
+                take = Take(npz)
+                mask = in_band(take)
+                blocks, gaps = carve(take.n, args.val_blocks, block)
+                for a, b in blocks:
+                    if mask[a:b].any():
+                        dropped += 1
+                    else:
+                        valid.append((take, a, b, run_in, False))
+                for a, b in gaps:
+                    train += [(take, c, e) for c, e in outside(mask, a, b)]
+    if missing:
+        raise SystemExit("no GRU file for " + ", ".join(missing) + ": run swords_capture.py split first")
+    if not train:
+        raise SystemExit(f"no Swords sweep takes to train on in {args.captures}")
+    if band:
+        leak = [t.label for t, a, b, *_ in train + valid if in_band(t)[a:b].any()]
+        assert not leak, f"held-out Res in training or validation: {leak[:3]}"
+        print(f"held-out band {band[0]:g}-{band[1]:g} V cut out of training; {dropped} validation blocks "
+              "touching it dropped")
 
 
 def file_material(args, train, valid, test):
@@ -424,10 +492,11 @@ def pooled(sums):
 
 
 def by_res(items, sums, only=None):
-    """Pooled ESR per Res mark, over the items whose take is named `only` if given."""
+    """Pooled ESR per Res mark, over the items whose take is named `only` if given (a
+    Swords test take is named test_r<Res>_<rep>, so the name's first word counts)."""
     res = {}
     for item, s in zip(items, sums):
-        if only is None or item[0].name == only:
+        if only is None or item[0].name.split("_r")[0] == only:
             res.setdefault(item[0].res, []).append(s)
     return {f"{r:g}": pooled(v) for r, v in sorted(res.items())}
 
@@ -467,8 +536,13 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--name", help="run name, a folder under captures/wasp/gru_runs")
     ap.add_argument("--inputs", default="audio", help="audio[,cv][,res]")
-    ap.add_argument("--output", default="lphp", choices=("lphp", "bp"))
-    ap.add_argument("--captures", default=str(CAPTURES), help="where the sessions are")
+    ap.add_argument("--output", default="lphp", choices=("lphp", "bp", "f1"))
+    ap.add_argument("--captures", default=None, help="where the sessions are (default: captures/wasp, "
+                                                     "or captures/swords with --swords)")
+    ap.add_argument("--swords", action="store_true",
+                    help="train on the Swords sessions (SWORDS.md): Res per sample, --halves, --holdout-band")
+    ap.add_argument("--halves", default="", help="Swords: which halves of the sweep material, e.g. 1 or 1,2")
+    ap.add_argument("--holdout-band", default="", help="Swords: Res CV volts lo,hi never trained or validated on")
     ap.add_argument("--series", choices=("lp", "hp"), help="train on that series' sessions")
     ap.add_argument("--res", default="", help="the Res marks to use, e.g. 6 (default: all)")
     ap.add_argument("--holdout-res", default="", help="Res marks never trained or validated on; tested whole")
@@ -515,9 +589,15 @@ def main():
     ap.add_argument("--device", default="cpu", help="cpu or mps")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
+    if args.captures is None:
+        args.captures = str(CAPTURES_SWORDS if args.swords else CAPTURES)
+    if args.swords and args.output != "f1":
+        args.output = "f1"
 
     train, valid, test = [], [], []
-    if args.series:
+    if args.swords:
+        swords_material(args, train, valid, test)
+    elif args.series:
         session_material(args, train, valid, test)
     file_material(args, train, valid, test)
     seg = int(args.seg * SR)

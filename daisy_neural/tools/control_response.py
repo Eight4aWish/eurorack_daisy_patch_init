@@ -32,6 +32,13 @@ Run in .venv-nam:
 
     .venv-nam/bin/python tools/control_response.py captures/wasp/gru_runs/lp2_* \\
         captures/wasp/gru_runs/lp_cr_gru16_s1
+
+Swords runs (trained with --swords; SWORDS.md) are measured the same way on their own
+test takes: one take per Res CV value, identical input and cutoff path, so each drives the
+network as it is. A cell counts only where step 1 found Swords repeating itself, at that
+Res and hold and at the reference's (region.json, beside the session); Res changes are
+against --ref-res, cutoff changes against the middle hold. The verdict SWORDS.md fixed
+before recording (right way 0.9, amount 0.7, spurious 0.15) is printed beside each run.
 """
 
 import argparse
@@ -100,6 +107,64 @@ def measure(run, captures):
                       "cut": {k: [np.round(a, 2).tolist(), np.round(b, 2).tolist()] for k, (a, b) in cut_cells.items()}}}
 
 
+SWORDS_VERDICT = {"right_way": 0.9, "amount": 0.7, "spurious": 0.15}
+
+
+def swords_holds(holds_v):
+    """{hold volts: (seconds)} for the Swords test take: 4 s holds from the payload's start
+    (swords_capture.test_take_cv), the first 0.3 s and last 0.1 s left out."""
+    return {v: (4 * i + 0.3, 4 * i + 3.9) for i, v in enumerate(holds_v)}
+
+
+def band_levels_at(y, holds):
+    out = {}
+    for v, (a, b) in holds.items():
+        f, p = welch(y[int(a * SR):int(b * SR)], SR, nperseg=4096)
+        p = 10 * np.log10(p + 1e-20)
+        out[v] = np.array([np.mean(p[(f >= lo) & (f < hi)]) for lo, hi in BANDS])
+    return out
+
+
+def measure_swords(run, captures, ref_res):
+    model, inputs, out, scale = load_model(run)
+    if "res" not in inputs:
+        return None
+    sess = [f.parent for f in sorted(captures.glob("*/session.json"))
+            if json.loads(f.read_text()).get("module") == "swords"]
+    if len(sess) != 1:
+        raise SystemExit(f"expected one Swords session in {captures}, found {len(sess)}")
+    d = sess[0]
+    s = json.loads((d / "session.json").read_text())
+    region = json.loads((d / "region.json").read_text())
+    holds = swords_holds(s["test_holds_v"])
+    judged = {(row["res_v"], v) for row in region["rows"] for v, ok in zip(region["holds_v"], row["judged"]) if ok}
+    real, net = {}, {}
+    for r in s["test_res_v"]:
+        t = T.Take(d / "gru" / f"test_r{r:+.2f}_1.npz")
+        real[r] = band_levels_at(t.target(0, t.n, out), holds)
+        _, o = T.evaluate(model, [(t, 0, t.n, T.SETTLE, False)], inputs, out, "cpu", keep=True, out_scale=scale)
+        net[r] = band_levels_at(o[0], holds)
+    hv = list(holds)
+    mid = hv[len(hv) // 2]
+    res_cells = {f"R{r:g} {v:g}V": (net[r][v] - net[ref_res][v], real[r][v] - real[ref_res][v])
+                 for r in s["test_res_v"] if r != ref_res for v in hv
+                 if (r, v) in judged and (ref_res, v) in judged}
+    cut_cells = {f"R{r:g} {v:g}V": (net[r][v] - net[r][mid], real[r][v] - real[r][mid])
+                 for r in s["test_res_v"] for v in hv if v != mid
+                 if (r, v) in judged and (r, mid) in judged}
+    if not res_cells or not cut_cells:
+        raise SystemExit("no judged cells: check region.json and --ref-res")
+    m = {"res": score(res_cells), "cut": score(cut_cells), "ref_res_v": ref_res, "mid_hold_v": mid,
+         "cells": {"bands_hz": BANDS,
+                   "res": {k: [np.round(a, 2).tolist(), np.round(b, 2).tolist()] for k, (a, b) in res_cells.items()},
+                   "cut": {k: [np.round(a, 2).tolist(), np.round(b, 2).tolist()] for k, (a, b) in cut_cells.items()}}}
+    r = m["res"]
+    m["res_learned"] = bool(r["right_way"] is not None and r["right_way"] >= SWORDS_VERDICT["right_way"]
+                            and r["amount"] >= SWORDS_VERDICT["amount"]
+                            and (r["spurious"] or 0.0) <= SWORDS_VERDICT["spurious"])
+    return m
+
+
 def score(cells, audible=3.0, quiet=1.0):
     """The verdict on one control from its cells {name: (network change, Wasp change)}, each
     an array over the bands, in dB."""
@@ -119,20 +184,24 @@ def score(cells, audible=3.0, quiet=1.0):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("runs", nargs="+")
-    ap.add_argument("--captures", default=str(T.CAPTURES))
+    ap.add_argument("--captures", default=None, help="default captures/wasp, or captures/swords for Swords runs")
+    ap.add_argument("--ref-res", type=float, default=3.0, help="Swords: the Res CV the Res changes are measured from")
     args = ap.parse_args()
-    captures = pathlib.Path(args.captures)
     print(f"{'':24s} {'RES (audible cells)':^37s}  {'CUTOFF (audible cells)':^37s}")
     print(f"{'run':24s} " + "  ".join(f"{'right way':>9s} {'amount':>7s} {'err dB':>7s} {'spurious':>8s}" for _ in range(2)))
     for r in map(pathlib.Path, args.runs):
         if not (r / "best.pt").exists():
             continue
-        m = measure(r, captures)
+        swords = json.loads((r / "config.json").read_text()).get("swords", False)
+        captures = pathlib.Path(args.captures or (T.CAPTURES_SWORDS if swords else T.CAPTURES))
+        m = measure_swords(r, captures, args.ref_res) if swords else measure(r, captures)
         if m is None:
             continue
         (r / "control_response.json").write_text(json.dumps(m, indent=1) + "\n")
-        print(f"{r.name:24s} " + "  ".join(f"{m[k]['right_way']:9.2f} {m[k]['amount']:7.2f} {m[k]['err_db']:7.2f} "
-                                           f"{m[k]['spurious']:8.2f}" for k in ("res", "cut")), flush=True)
+        fmt = lambda v, w: f"{v:{w}.2f}" if v is not None else f"{'-':>{w}s}"  # noqa: E731
+        print(f"{r.name:24s} " + "  ".join(f"{fmt(m[k]['right_way'], 9)} {fmt(m[k]['amount'], 7)} "
+                                           f"{fmt(m[k]['err_db'], 7)} {fmt(m[k]['spurious'], 8)}" for k in ("res", "cut"))
+              + (f"   Res learned: {'yes' if m['res_learned'] else 'no'}" if swords else ""), flush=True)
 
 
 if __name__ == "__main__":
