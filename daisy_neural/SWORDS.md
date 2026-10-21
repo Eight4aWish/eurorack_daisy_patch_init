@@ -152,6 +152,15 @@ out and judged the same way:
 
 Twelve runs; the Mac mini takes six at a time, one thread each, so overnight.
 
+**Run on the laptop, 2026-10-21** (the mini refused the key; same M4, 4P+6E, 16 GB, but
+fanless), held-out band 1.8–2.2 V: 46 minutes of training for the two halves, 23 for
+one, about 50 s an epoch. **The validation curve is mostly self-oscillation:** of the
+matched arm's ten validation blocks, 59% of the time and 94% of the output energy is
+above Res CV 4 V, where Swords does not repeat. So `valid/ESR` (about 0.85 at epoch 41,
+against the Wasp's final 0.16) and the early stopping it drives say little about the
+judged region; only the control test does. Kept as designed (David): the recipe stays the
+Wasp's. If Res fails, early stopping on the judged region only is the first thing to try.
+
 **Res is learned** if, in the judged region, the GRU-16's control test on Res reaches what
 the Wasp's networks reached on the cutoff: right way 0.9 or more and amount 0.7 or more
 (the Wasp's cutoff: 0.92–0.99 and 0.73–0.95), spurious movement 0.15 or less, and David
