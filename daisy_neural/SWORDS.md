@@ -60,6 +60,21 @@ measures it.
 
 ## Steps
 
+**Step 0, done 2026-10-21** (`tools/swords_capture.py make cal`, `cal`; Freq knob fully
+anticlockwise, the rest as the panel table). Latency 12,370 samples. **Cutoff tracks V/OCT
+at 0.94–0.96 octaves per volt, 0 V about 9–10 Hz** (Blades' bottom is 8 Hz), checked up to
++10.5 V (8.9 kHz): +3 V 65 Hz, +5 V 247 Hz, +8 V 1,863 Hz, +10 V 6,640 Hz. (The first fit
+read 0.52: steps whose cutoff is under 20 Hz had pulled it down; it now uses only steps
+whose passband shows.) Passband -1.2 dB. **Self-oscillation, no input, Res CV rising then
+falling:** at V/OCT +1 V it starts at 5.43 V and stops at 3.44 V; at +4 V, 4.56 and 3.88;
+at +7 V, 4.22 and 4.04. It starts at less Res the higher the cutoff, and stops lower than
+it starts (most at low cutoffs). Oscillating, it reaches about 7–9 V peak, within the
+ES-10's range. The riff at 5 V peak, cutoff about 930 Hz: 3.71 V peak out. **Chosen for the
+session:** V/OCT +2.5 to +10.5 V (about 45 Hz to 9 kHz) with the knob at its end stop; Res
+CV 0 to 6 V (just past the onset everywhere, so most of the material is below it); repeat
+takes at Res 0, 1, 2, 3, 3.5, 4, 4.5 and 5.5 V. Session `sw-a`: 44 takes, 84.8 minutes,
+checked end to end (split, region) on simulated recordings first.
+
 **0. Calibrate (attended, about 15 min).** Measure, before any number below is fixed:
 the cutoff against V/OCT (the Wasp's fit, from where the random part peaks, does not
 apply; here from a noise or sweep input at held voltages); Res CV's working range (where

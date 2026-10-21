@@ -113,12 +113,14 @@ CAL_RAMP_S = 16.0
 CAL_NOISE_RMS_V = 1.0
 
 
-def cal_plan():
+def cal_plan(steps=None, transfer_only=False):
     """The calibration payload's parts, in seconds from the payload's start."""
     parts, t = [], 0.0
-    for v in CAL_STEPS:
+    for v in (steps if steps is not None else CAL_STEPS):
         parts.append({"kind": "transfer", "t0": t, "t1": t + CAL_STEP_S, "cut_v": float(v), "res_v": 0.0})
         t += CAL_STEP_S
+    if transfer_only:
+        return parts, t
     for v in CAL_OSC_CUTS:
         parts.append({"kind": "settle", "t0": t, "t1": t + 1.0, "cut_v": v, "res_v": 0.0})
         t += 1.0
@@ -132,7 +134,11 @@ def cal_plan():
 def make_cal(args):
     rig = load_rig()
     vfs = float(rig["out_vfs"])
-    parts, total = cal_plan()
+    steps = None
+    if args.steps:
+        a_, b_, d_ = (float(v) for v in args.steps.split(","))
+        steps = [round(float(v), 3) for v in np.arange(a_, b_ + 1e-9, d_)]
+    parts, total = cal_plan(steps, args.transfer_only)
     n = int(total * SR)
     audio, cut, res = np.zeros(n), np.zeros(n), np.zeros(n)
     rng = np.random.default_rng(2026)
@@ -159,8 +165,12 @@ def make_cal(args):
             arr[j:j + k] = lo + (arr[j:j + k] - lo) * np.arange(1, min(k, n - j) + 1) / k
     ROOT.mkdir(parents=True, exist_ok=True)
     out = take4(fs_of(audio, vfs, "cal audio"), fs_of(cut, vfs, "cal cutoff CV"), fs_of(res, vfs, "cal Res CV"))
-    sf.write(ROOT / "cal.wav", out, SR, subtype="FLOAT")
-    (ROOT / "cal.json").write_text(json.dumps({"out_vfs": vfs, "payload_at": W.PAYLOAD_AT, "parts": parts}, indent=2))
+    sf.write(ROOT / f"{args.name}.wav", out, SR, subtype="FLOAT")
+    (ROOT / f"{args.name}.json").write_text(json.dumps({"out_vfs": vfs, "payload_at": W.PAYLOAD_AT, "parts": parts}, indent=2))
+    if args.transfer_only:
+        print(f"wrote {rel(ROOT / (args.name + '.wav'))} ({len(out) / SR:.0f} s): noise, V/OCT "
+              + ", ".join(f"{p['cut_v']:+g}" for p in parts) + " V")
+        return
     riff_at = W.PAYLOAD_AT / SR + parts[-1]["t0"]
     print(f"wrote {rel(ROOT / 'cal.wav')} ({len(out) / SR:.0f} s)\n"
           f"  {W.PAYLOAD_AT / SR:.1f} s on: noise at {CAL_NOISE_RMS_V:g} V rms, V/OCT stepping "
@@ -174,8 +184,9 @@ def cmd_cal(args):
     """Read the calibration recording: the cutoff against V/OCT, where the filter starts and
     stops self-oscillating as Res CV rises and falls, and the riff's level."""
     rig = load_rig()
-    meta = json.loads((ROOT / "cal.json").read_text())
-    play, _ = sf.read(ROOT / "cal.wav", dtype="float64", always_2d=True)
+    stem = pathlib.Path(args.path).name.split(".")[0]
+    meta = json.loads((ROOT / f"{stem}.json").read_text())
+    play, _ = sf.read(ROOT / f"{stem}.wav", dtype="float64", always_2d=True)
     rec, fs = sf.read(args.path, dtype="float64", always_2d=True)
     assert fs == SR
     lag, strength = W.latency(play[:, LOOP_OUT], rec[:, LOOP], W.BURST_AT, W.BURST)
@@ -211,7 +222,12 @@ def cmd_cal(args):
                                    "peak_hz": round(centres[k], 1)})
         print(f"  V/OCT {p['cut_v']:+5.1f} V   -3 dB at {('%7.0f Hz' % fc) if fc else '  (none) '}"
               f"   passband {gain:+5.1f} dB at {centres[k]:6.0f} Hz")
-    pts = [(r["cut_v"], r["fc_hz"]) for r in result["transfer"] if r["fc_hz"] and 30 < r["fc_hz"] < 15000]
+    # Only steps whose passband shows (within 1 dB of the best): below that the cutoff is
+    # under 20 Hz, the lowest band is already in the roll-off, and its "-3 dB" is the
+    # method's floor, not the filter (2026-10-21: those points pulled the fit to 0.52).
+    best = max(r["peak_db"] for r in result["transfer"])
+    pts = [(r["cut_v"], r["fc_hz"]) for r in result["transfer"]
+           if r["fc_hz"] and r["peak_db"] >= best - 1.0 and 30 < r["fc_hz"] < 15000]
     if len(pts) >= 3:
         v, hz = np.array(pts).T
         slope, icpt = np.polyfit(v, np.log2(hz), 1)
@@ -248,6 +264,10 @@ def cmd_cal(args):
               f"   stops at {('%4.2f V' % off) if off is not None else '  -   '}"
               f"   at the top {('%6.0f Hz' % fosc) if fosc else '   -   '}, loudest {level:+5.1f} dBV")
     p = meta["parts"][-1]
+    if p["kind"] != "riff":
+        (ROOT / f"{stem}_result.json").write_text(json.dumps(result, indent=2) + "\n")
+        print(f"\nsaved {rel(ROOT / (stem + '_result.json'))}")
+        return
     a, b = s(p["t0"]), s(p["t1"])
     yo = rec[a + lag:b + lag, F1]
     pk = float(np.abs(yo).max())
@@ -256,8 +276,8 @@ def cmd_cal(args):
     print(f"\nThe riff, {p['peak_v']:g} V peak in, filter open: {pk * in_vfs:.2f} V peak out "
           f"({20 * math.log10(pk + 1e-12):+.1f} dBFS at the ES-10)"
           + ("  <- full scale reached: lower the level" if pk > 0.98 else ""))
-    (ROOT / "cal_result.json").write_text(json.dumps(result, indent=2) + "\n")
-    print(f"\nsaved {rel(ROOT / 'cal_result.json')}")
+    (ROOT / f"{stem}_result.json").write_text(json.dumps(result, indent=2) + "\n")
+    print(f"\nsaved {rel(ROOT / (stem + '_result.json'))}")
 
 
 # ----------------------------------------------------------------- the session
@@ -496,7 +516,11 @@ def main():
     p.add_argument("--overwrite", action="store_true")
     p.set_defaults(fn=cmd_rig)
     mk = sub.add_parser("make", help="write a play file").add_subparsers(dest="what", required=True)
-    mk.add_parser("cal", help="step 0: cutoff against V/OCT, self-oscillation, level").set_defaults(fn=make_cal)
+    p = mk.add_parser("cal", help="step 0: cutoff against V/OCT, self-oscillation, level")
+    p.add_argument("--name", default="cal", help="file name under captures/swords")
+    p.add_argument("--steps", help="V/OCT steps as from,to,step, volts (default -4..8 in 1)")
+    p.add_argument("--transfer-only", action="store_true", help="only the noise steps")
+    p.set_defaults(fn=make_cal)
     p = mk.add_parser("session", help="steps 1 and 2: the repeat takes and the training material")
     p.add_argument("name")
     p.add_argument("--cv-range", required=True, help="V/OCT range, volts: --cv-range=-2,6")
