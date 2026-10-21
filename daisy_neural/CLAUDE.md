@@ -623,7 +623,8 @@ to publish the Wasp captures. Step 3, merged into Mirth (`b5070b9`): a FILTERS b
 drive, steer in AMPS and NOT-AMPS; patch, mix, cutoff, resonance in FILTERS; B7 held
 cycles the three banks). The engine is capped at GRU-24 in Mirth, with a 2,049-point tanh
 table; Mirth's DTCMRAM is at 77%. The test firmware took the same FILTERS layout. Open:
-how Mirth Lite reaches FILTERS (its toggle has two positions); level compensation for
+how Mirth Lite reaches FILTERS (its toggle has two positions; answered 2026-10-21, B7's
+hold); level compensation for
 DRIVE; the patch.init's input full scale, so the filters can map volts to volts. Card
 files for the Wasp: `captures/wasp_mirth/f1_WASP_LP.grnb` (cutoff + Res) and
 `f2_WASP_LP_R6.grnb` (cutoff only). Not yet run on hardware.
@@ -973,8 +974,10 @@ Res GRU-16 (`lp_cr_gru16_s3`, 110 Hz sine, cutoff 10 V, Res 2): third harmonic �
 −47, −31, −16 dB at 0.5, 1, 2, 5, 9 V peak, gain −0.7 dB to 2 V then −3.6 dB at 9 V; Res
 8 the same shape. So one DRIVE, the same job in every bank; noon is unity, as the filters
 had before. Patch by CV is lost. The screen has six rows now: the patch line shows its
-place in the bank (`FLT 3/3`), the two knob lines sit two by two as the knobs do. Lite:
-B7 short the next patch, B8 the bank as before; FILTERS still out of its reach.
+place in the bank (`FLT 3/3`), the two knob lines sit two by two as the knobs do. Lite
+(David, same day): B7 as Mirth, held for the bank, so the B8 toggle is retired "for now"
+and FILTERS reaches Lite; the LED blinks the bank (one to three quick flickers) before
+the patch's number, and the 0.6 s re-blink has gone with the toggle.
 
 **Tooling:** `tools/wasp_capture.py`, bench sheet `WASP.md`. It plays and records in one
 stream, with a loopback cable for latency. Recordings live in `captures/wasp/`, which is

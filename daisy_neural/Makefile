@@ -1,6 +1,6 @@
 # Project Name. `make` builds Mirth (the OLED module); `make LITE=1` builds Mirth Lite,
-# for a stock patch.init with no screen: the B8 toggle picks the bank and the LED
-# blinks the slot number. One source (src/main.cpp, MIRTH_LITE), two builds, kept in
+# for a stock patch.init with no screen: the LED blinks the bank and the patch's
+# number. One source (src/main.cpp, MIRTH_LITE), two builds, kept in
 # separate build folders so their objects never mix.
 #
 # `make GRU_TEST=1` builds the GRU test firmware instead (src/gru_test.cpp): the Wasp

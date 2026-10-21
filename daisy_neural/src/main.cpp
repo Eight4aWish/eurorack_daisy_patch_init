@@ -26,22 +26,21 @@
  *   B7 held 1.5 s        next bank: AMPS -> NOT-AMPS -> FILTERS (when the card has any)
  *   CV_OUT_2 LED         lit
  *
- * MIRTH LITE (make LITE=1, for a stock patch.init with no OLED):
- *   B8 toggle            bank: up AMPS, down NOT-AMPS (checked on a stock unit, 2026-10-03)
- *   B7 short press       next patch in the bank
- *   B7 held 0.6 s        re-blink the current slot number
- *   CV_OUT_2 LED         the slot number blinks when the slot or bank changes —
- *                        a long blink is five, so 12 is long-long-short-short —
- *                        then lit. A fast flicker that never stops: no captures
- *                        on the card.
+ * MIRTH LITE (make LITE=1, for a stock patch.init with no OLED): knobs and B7 as above;
+ * the B8 toggle is unused (it was the bank until 2026-10-21).
+ *   CV_OUT_2 LED         on every change of patch or bank, the bank as one, two or
+ *                        three quick flickers (AMPS, NOT-AMPS, FILTERS), a pause,
+ *                        then the patch's number — a long blink is five, so 12 is
+ *                        long-long-short-short — then lit. A fast flicker that
+ *                        never stops: no captures on the card.
  *
  * Three banks. FILTERS: GRU networks off the card (.grnb), each a filter with its
  * cutoff and resonance as live controls (nam/gru_runtime.h; the first are the
  * Doepfer A-124 Wasp's, CLAUDE.md). A version-2 file also carries a granular layer
  * (nam/gran_layer.h): the Wasp's take-to-take randomness, phased in from Res 8 to 9,
- * at 53.7 ms of latency for that slot, wet and dry alike. Mirth Lite has no way to reach FILTERS yet: its
- * B8 toggle has two positions. AMPS: the captures on the card, played exactly as captured; the
- * steer knob does nothing there, on purpose. NOT-AMPS: twelve starter captures,
+ * at 53.7 ms of latency for that slot, wet and dry alike. AMPS: the captures on the card,
+ * played exactly as captured; the steer knob does nothing there, on purpose. NOT-AMPS:
+ * twelve starter captures,
  * each with one transform chosen by measurement to leave the region where real
  * amps sit — sine or linear neurons, a feedback loop, a frozen layer, the engine
  * at a fraction of the sample rate, or a capture pushed past another — and one
@@ -209,8 +208,6 @@ class EngineSlot
 DaisyPatchSM  patch;
 #if !MIRTH_LITE
 oled::SSD1306 display;
-#else
-Switch        bank_toggle;  // B8
 #endif
 Switch        nav_btn;
 CpuLoadMeter  cpu_meter;
@@ -247,8 +244,8 @@ static bool         g_display_dirty = true;
 // single reader, and a torn float here would only flicker one frame.
 static volatile float g_in_peak = 0.f;  // block peak, |x|, for the RUN meter
 
-// MIRTH LITE's LED: a blink request (the slot number), set from the callback or the
-// main loop and rendered by the main loop.
+// MIRTH LITE's LED: a blink request, set by the main loop and rendered by it: the slot
+// playing plus one (0 = the fallback), or -1 for none.
 static volatile int g_blink_request = -1;
 
 // What the knobs are set to, for the RUN page.
@@ -365,8 +362,7 @@ static inline void SetLed(bool on)
 // ================================================================
 // Controls
 // ================================================================
-static constexpr uint32_t kLongPressMs = 600;   // LITE: re-blink
-static constexpr uint32_t kBankPressMs = 1500;  // OLED build: change bank
+static constexpr uint32_t kBankPressMs = 1500;  // B7 held: change bank, both builds
 
 static bool     g_btn_held        = false;
 static uint32_t g_btn_press_start = 0;
@@ -375,16 +371,6 @@ static void ProcessNav()
 {
     nav_btn.Debounce();
     const uint32_t now = System::GetNow();
-#if MIRTH_LITE
-    // The bank follows the toggle, live.
-    bank_toggle.Debounce();
-    const Bank b = bank_toggle.Pressed() ? Bank::NotAmps : Bank::Amps;
-    if(b != g_bank)
-    {
-        g_bank = b;
-        Select(b);
-    }
-#endif
 
     if(nav_btn.Pressed())
     {
@@ -405,18 +391,12 @@ static void ProcessNav()
     const uint32_t dur = now - g_btn_press_start;
     g_btn_held         = false;
 
-#if MIRTH_LITE
-    if(dur >= kLongPressMs)
-        g_blink_request = SlotIndex(g_active) + 1;
-    else
-#else
     if(dur >= kBankPressMs)
     {
         g_bank = NextBank(g_bank);
         Select(g_bank);
     }
     else
-#endif
     {
         // The next patch in the bank. From a bank whose patch failed to load (the
         // display says so), this moves past the one that failed.
@@ -835,8 +815,9 @@ static void UpdateDisplay()
     display.Update();
 }
 #else
-// MIRTH LITE's only display. A blink request becomes a pattern — a long blink per
-// five, then a short per one — after which the LED is lit again.
+// MIRTH LITE's only display. A blink request becomes a pattern — the bank as one to
+// three quick flickers (AMPS, NOT-AMPS, FILTERS), a pause, then the patch's number, a
+// long blink per five and a short per one — after which the LED is lit again.
 static void RenderLed(uint32_t now)
 {
     static uint16_t pat[48];  // on/off durations, ms
@@ -853,9 +834,18 @@ static void RenderLed(uint32_t now)
     {
         g_blink_request = -1;
         n = 0;
-        for(int k = 0; k < req / 5 && n < 46; k++) { pat[n++] = 600; pat[n++] = 250; }
-        for(int k = 0; k < req % 5 && n < 46; k++) { pat[n++] = 140; pat[n++] = 160; }
-        if(n == 0) { pat[n++] = 40; pat[n++] = 400; }  // a 0 (none loaded): one blip
+        if(req == 0)  // the fallback (none loaded off the card): one blip
+        {
+            pat[n++] = 40;
+            pat[n++] = 400;
+        }
+        else
+        {
+            const int bank = (req - 1) / 100, num = (req - 1) % 100 + 1;
+            for(int k = 0; k <= bank; k++) { pat[n++] = 50; pat[n++] = k < bank ? 120 : 600; }
+            for(int k = 0; k < num / 5 && n < 46; k++) { pat[n++] = 600; pat[n++] = 250; }
+            for(int k = 0; k < num % 5 && n < 46; k++) { pat[n++] = 140; pat[n++] = 160; }
+        }
         pat[n++] = 0;  // end marker pair: pause before the steady state
         pat[n++] = 500;
         i    = 0;
@@ -885,16 +875,7 @@ int main(void)
     const float sr = patch.AudioSampleRate();
 
     nav_btn.Init(patch.B7, sr, Switch::TYPE_MOMENTARY, Switch::POLARITY_INVERTED);
-#if MIRTH_LITE
-    bank_toggle.Init(patch.B8, patch.AudioCallbackRate(), Switch::TYPE_TOGGLE, Switch::POLARITY_NORMAL);
-    for(int i = 0; i < 40; i++)  // settle the debounce, then start in the toggle's bank
-    {
-        patch.ProcessAllControls();
-        bank_toggle.Debounce();
-        System::Delay(1);
-    }
-    g_bank = bank_toggle.Pressed() ? Bank::NotAmps : Bank::Amps;
-#endif
+    // B8, the toggle, is unused: Lite took its bank from it until 2026-10-21.
 
     patch.StartDac();
 
@@ -906,16 +887,17 @@ int main(void)
     // Card before audio starts, so the first capture is in place by the time
     // anything is heard. A missing or unreadable card is not fatal: the
     // compiled-in fallback is already loaded and captures::Status() says why.
-    // Mirth starts on the first amp, Lite on the first patch of the toggle's bank (the
-    // first amp if that will not load).
+    // Both start on the first amp; Lite blinks it.
     captures::Init();
     if(captures::Count() > 0)
     {
         Select(g_bank);
-        if(!SwapSlot(g_want))
-            SwapSlot(Slot(Bank::Amps, 0));
+        SwapSlot(g_want);
         g_want = g_active;
     }
+#if MIRTH_LITE
+    g_blink_request = g_active + 1;
+#endif
 
 #if !MIRTH_LITE
     display.Init(patch.A2, patch.A3);
@@ -953,7 +935,7 @@ int main(void)
             g_xf            = Xf::FadeIn;
             g_display_dirty = true;
 #if MIRTH_LITE
-            g_blink_request = g_active >= 0 ? SlotIndex(g_active) + 1 : 0;  // the new slot's number
+            g_blink_request = g_active + 1;  // the bank and number now playing
 #endif
         }
 

@@ -80,20 +80,20 @@ the input *before* the drive. Free for later: Gate In 1 and 2, Gate Out, CV_OUT_
 ### Mirth Lite — a stock patch.init, no screen
 
 `make LITE=1` → `build_lite/mirth_lite.bin`. Same source (`MIRTH_LITE`), same engine,
-captures, not-amps and knobs; no OLED code at all. The B8 toggle is still fitted on a
-stock unit, so it takes the bank, which frees B7's long hold. **FILTERS cannot be reached
-on Lite yet**: the toggle has two positions, and how Lite should reach a third bank is
-still to be decided.
+captures, not-amps, filters, knobs and B7; no OLED code at all. The B8 toggle is unused:
+it was the bank until 2026-10-21 (David), when B7's hold took the bank on both builds,
+which also brings FILTERS to Lite. v1.0.0 Lite still has the toggle for the bank and B7
+for bypass.
 
 | Control | Mirth Lite |
 |---|---|
-| **B8** toggle | bank — up AMPS, down NOT-AMPS |
 | **B7** short press | next patch in the bank |
-| **B7** held 0.6 s | re-blink the current slot number |
-| **LED** | blinks the slot number on a slot or bank change, then lit. A **long blink is five**: 3 is short-short-short, 12 is long-long-short-short. A fast flicker that never stops: no captures on the card |
+| **B7** held 1.5 s | next bank: AMPS → NOT-AMPS → FILTERS (skipped on a card with none) |
+| **B8** toggle | unused |
+| **LED** | on every change of patch or bank: the bank as one, two or three quick flickers (AMPS, NOT-AMPS, FILTERS), a pause, then the patch's number, a **long blink per five**: 3 is short-short-short, 12 is long-long-short-short; then lit. One blip instead: the compiled-in fallback is playing. A fast flicker that never stops: no captures on the card |
 
-Run on a stock patch.init on 2026-10-03, from a card made from the release files: everything
-as described here, with the toggle up for AMPS.
+v1.0.0 Lite was run on a stock patch.init on 2026-10-03, from a card made from the
+release files: everything as its release notes describe, with the toggle up for AMPS.
 
 ## Pages
 
