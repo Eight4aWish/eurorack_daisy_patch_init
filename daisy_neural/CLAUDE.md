@@ -965,6 +965,17 @@ input full scale (for any "at the Wasp's own level" claim); the peak guard and t
 latency-free graphic EQ; why the layer lifts bands at Res 6–8 that the Wasp holds still;
 GRU-24 on the Teensy.
 
+**Controls rearranged (David, 2026-10-21).** Bypass gone; B7 short steps to the next patch
+in the bank (each bank keeps its place), held 1.5 s the next bank; knobs 1 MIX, 2 FREQ
+(STEER on a not-amp), 3 RES, 4 DRIVE in every bank. "Two different drives is confusing!"
+settled it by measurement: input level is a drive on the filters too. The Wasp's cutoff +
+Res GRU-16 (`lp_cr_gru16_s3`, 110 Hz sine, cutoff 10 V, Res 2): third harmonic −71, −59,
+−47, −31, −16 dB at 0.5, 1, 2, 5, 9 V peak, gain −0.7 dB to 2 V then −3.6 dB at 9 V; Res
+8 the same shape. So one DRIVE, the same job in every bank; noon is unity, as the filters
+had before. Patch by CV is lost. The screen has six rows now: the patch line shows its
+place in the bank (`FLT 3/3`), the two knob lines sit two by two as the knobs do. Lite:
+B7 short the next patch, B8 the bank as before; FILTERS still out of its reach.
+
 **Tooling:** `tools/wasp_capture.py`, bench sheet `WASP.md`. It plays and records in one
 stream, with a loopback cable for latency. Recordings live in `captures/wasp/`, which is
 gitignored. Tested offline against a simulated filter first, then used for both series

@@ -23,50 +23,59 @@ stock patch.init on 2026-10-03.
 
 ## What it does
 
-1. **Runs NAM A2-Lite captures off the card** (AMPS), chosen with CV_3, with input trim,
-   a dry/wet mix, bypass for A/B against the dry input, an input peak meter for setting
-   the trim, and a CPU load readout.
+1. **Runs NAM A2-Lite captures off the card** (AMPS), with input trim, a dry/wet mix,
+   bypass for A/B against the dry input, an input peak meter for setting the trim, and a
+   CPU load readout. (v1.0.0; the development layout below has no bypass.)
 2. **Twelve not-amps** (NOT-AMPS): the starter captures, each with one transform measured
    to leave the region where real amps sound, and one steer control — see "The not-amps".
 
 ## Signal path
 
 ```
-IN_L ─┬─► trim (CV_1) ──► [ engine slot ] ──► wet ─┐
-      └─► dry (delayed to match a not-amp's latency) ┴─► mix (CV_2) ──► DC block ──► OUT_L, OUT_R
+IN_L ─┬─► drive (CV_4) ──► [ engine slot ] ──► wet ─┐
+      └─► dry (delayed to match the engine's latency) ┴─► mix (CV_1) ──► DC block ──► OUT_L, OUT_R
 ```
 
 IN_R is normalled to IN_L on the carrier, so only IN_L is read. Patching IN_R breaks
 that normal, which is what makes it available later as the per-sample input for
 audio-rate CV — the CV jacks are only read once per block, about 1 kHz.
 
-The dry side is the input before the trim. Bypass is the dry side alone, so an A/B
-compares the engine with its input. The engine runs within the same block as its input,
-so dry and wet line up sample for sample — except the RATE not-amps, which stream 48·R
-samples late; the dry side is delayed by the same amount while one plays.
+The dry side is the input before the drive. MIX fully down is the dry side alone, so an
+A/B compares the engine with its input. The engine runs within the same block as its
+input, so dry and wet line up sample for sample — except the RATE not-amps, which stream
+48·R samples late, and a filter with the granular layer, 53.7 ms late; the dry side is
+delayed by the same amount while one plays. (v1.0.0 has the trim on CV_1, the mix on
+CV_2, and a bypass on B7.)
 
 ## Controls
 
-**In development (after v1.0.0): a FILTERS bank, and the knobs rearranged** (David,
-2026-10-19). The v1.0.0 release still has the old layout: knob 1 trim, 2 mix, 3 slot,
-4 steer, and two banks. Each knob is summed with the CV jack under it.
+**In development (after v1.0.0): a FILTERS bank, B7 for patches, and the knobs
+rearranged** (David, 2026-10-21). The v1.0.0 release still has the old layout: knob 1
+trim, 2 mix, 3 slot, 4 steer, B7 bypass, and two banks. Each knob is summed with the CV
+jack under it; the four knobs sit two by two, 1 and 2 on top.
 
-| Control | AMPS and NOT-AMPS | FILTERS |
-|---|---|---|
-| **CV_1** (+ CV_5 jack) | **PATCH**: which capture or not-amp | **PATCH**: which filter |
-| **CV_2** (+ CV_6 jack) | **MIX**, dry (0) to wet (1) | **MIX** |
-| **CV_3** (+ CV_7 jack) | **DRIVE** into the engine, −20…+20 dB, unity at noon | **CUTOFF**: the knob 0–10 V, the jack adds its volts, like the Wasp's CV 1 |
-| **CV_4** (+ CV_8 jack) | **STEER**, the not-amp's one control; nothing in AMPS, on purpose | **RESONANCE**, 0–10 on the Wasp's dial |
-| **B7** short press | bypass on/off | bypass on/off |
-| **B7** held 1.5 s | next bank: AMPS → NOT-AMPS → FILTERS (skipped on a card with none) | |
-| **CV_OUT_2** LED | lit when the engine is in circuit, dark when bypassed | |
+| Control | AMPS | NOT-AMPS | FILTERS |
+|---|---|---|---|
+| **CV_1** (+ CV_5 jack) | **MIX**, dry (0) to wet (1) | **MIX** | **MIX** |
+| **CV_2** (+ CV_6 jack) | — | **STEER**, the not-amp's one control | **FREQ**: the knob 0–10 V, the jack adds its volts, like the Wasp's CV 1 |
+| **CV_3** (+ CV_7 jack) | — | — | **RES**, 0–10 on the Wasp's dial |
+| **CV_4** (+ CV_8 jack) | **DRIVE** into the network, −20…+20 dB, unity at noon | **DRIVE** | **DRIVE** |
+| **B7** short press | next patch in the bank, wrapping round | | |
+| **B7** held 1.5 s | next bank: AMPS → NOT-AMPS → FILTERS (skipped on a card with none) | | |
+| **CV_OUT_2** LED | lit | | |
 
-DRIVE sets the level into the capture, and for most captures it changes the sound far
-more than the volume: measured with the real engine on the twelve starter captures
-(2026-10-19), only the SVT bass amp behaves like a volume control; for seven of them the
-output level hardly moves while the character changes. The peak meter reads the input
-*before* the drive. FILTERS has no drive: the input goes into the network as it arrives.
-Free for later: Gate In 1 and 2, Gate Out, CV_OUT_1.
+Each bank keeps its own place, so going round the banks comes back to the patch you
+left. Choosing a patch by CV, which the v1.0.0 slot knob allowed, has gone.
+
+DRIVE sets the level into the network, and it changes the sound far more than the
+volume. On the twelve starter captures (the real engine, 2026-10-19) only the SVT bass
+amp behaves like a volume control; for seven the output level hardly moves while the
+character changes. A filter network does the same: the Wasp's cutoff + Res GRU-16, fed
+a 110 Hz sine at cutoff 10 V, has its third harmonic at −71 dB at 0.5 V peak, −47 dB at
+2 V, −31 dB at 5 V and −16 dB at 9 V, where it also compresses by 3.6 dB (2026-10-21). So
+there is one drive, in every bank. Noon is unity on the patch.init, not yet the level
+the captures were recorded at: the input's full scale is unmeasured. The peak meter reads
+the input *before* the drive. Free for later: Gate In 1 and 2, Gate Out, CV_OUT_1.
 
 ### Mirth Lite — a stock patch.init, no screen
 
@@ -79,30 +88,33 @@ still to be decided.
 | Control | Mirth Lite |
 |---|---|
 | **B8** toggle | bank — up AMPS, down NOT-AMPS |
-| **B7** short press | bypass on/off |
+| **B7** short press | next patch in the bank |
 | **B7** held 0.6 s | re-blink the current slot number |
-| **LED** | blinks the slot number on a slot or bank change, then lit (engine in) or dark (bypassed). A **long blink is five**: 3 is short-short-short, 12 is long-long-short-short. A fast flicker that never stops: no captures on the card |
+| **LED** | blinks the slot number on a slot or bank change, then lit. A **long blink is five**: 3 is short-short-short, 12 is long-long-short-short. A fast flicker that never stops: no captures on the card |
 
 Run on a stock patch.init on 2026-10-03, from a card made from the release files: everything
 as described here, with the toggle up for AMPS.
 
 ## Pages
 
-**RUN**, top to bottom (layout from David, 2026-10-02):
+**RUN**, top to bottom (layout from David, 2026-10-02; six rows since 2026-10-21):
 
 | Line | Shows |
 |---|---|
-| name | the capture or not-amp, drawn inverted while bypassed |
-| meter | the input peak, before the trim |
-| `CPU 64(99)` | average CPU load, with the peak in brackets (no `%`: the panel holds ten characters) |
-| `AMP2 M80` | knobs 1 and 2, the panel's top row: which patch (`AMP2`, `NT03`, `FLT1`) and the mix in percent |
-| `D+6 S0.42` | knobs 3 and 4, the bottom row: the drive in dB and, on a not-amp, its steer; on a filter `F5.0 R6.5`, the cutoff in volts and the Res dial (`R6*` for a network trained at one Res only) |
+| name | the capture, not-amp or filter |
+| meter | the input peak, before the drive |
+| `CPU 64(99)` | average CPU load, with the peak in brackets (no `%`: the panel holds ten characters); on a filter `70%  7637c`, the load and the network's worst block in cycles a sample |
+| `AMP 2/12` | which patch, and how many in its bank (`AMP`, `NT`, `FLT`), since B7 steps round them |
+| `M80  F5.0` | knobs 1 and 2, the panel's top row: the mix in percent; on a filter the cutoff in volts, on a not-amp the steer (`S0.42`) |
+| `R6.5  D+6` | knobs 3 and 4, the bottom row: on a filter the Res dial (`R6*` for a network trained at one Res only); the drive in dB |
 
-The lines run on without a gap, and the two knob lines sit as the knobs do on the panel.
-With no card readable, the patch line shows the reason instead — `mount`, `no captures`,
-`bad crc` — so a card problem reads as a card problem rather than a dead engine. The v1.0.0
-screen showed the raw reads of knobs 1 and 2 there, while the pot scaling was unconfirmed;
-the knobs read 0 to 1 across their travel on the bench, so the raw line has gone.
+The lines run on without a gap, and the two knob lines sit as the knobs do on the panel,
+the right-hand knob's value in its own column. A knob that does nothing in the bank shows
+nothing. With no card readable, the patch line shows the reason instead — `mount`, `no
+captures`, `bad crc` — so a card problem reads as a card problem rather than a dead
+engine. The v1.0.0 screen showed the raw reads of knobs 1 and 2 there, while the pot
+scaling was unconfirmed; the knobs read 0 to 1 across their travel on the bench, so the
+raw line has gone.
 
 ## Hardware
 
@@ -241,8 +253,8 @@ with integer maths is the largest single saving (Mirth Lite formats nothing).
 ## The not-amps
 
 Twelve slots in the NOT-AMPS bank since 2026-10-02, each a starter capture with one
-transform and one control on the steer knob (CV_4 + the CV_8 jack) that can move while
-it plays. Chosen by measurement to sit outside the region where real amps sound, then by
+transform and one control on the steer knob (CV_2 + the CV_6 jack; CV_4 + CV_8 in v1.0.0)
+that can move while it plays. Chosen by measurement to sit outside the region where real amps sound, then by
 ear — "The measured search" below has the numbers.
 
 | OLED | Built from | Transform | Steer controls |
@@ -561,8 +573,9 @@ is the digital source's own — the hash of its processor and clocks riding on i
 the same character as OLED bus traffic but from a source with no OLED. Far below hearing
 through a clean path, it comes up through a capture that lifts low-level signal hardest,
 which is why only the distorted amps show it. So the module's own input is not the main
-contributor, and a gate's threshold has to be adjustable to the source. CV_4 (+ CV_8),
-which does nothing in AMPS by design, is free to set it there and keep STEER in NOT-AMPS.
+contributor, and a gate's threshold has to be adjustable to the source. CV_2 (+ CV_6),
+which does nothing in AMPS by design, is free to set it there and keep STEER in NOT-AMPS;
+so is CV_3 (+ CV_7).
 
 **Not in this repo.** No capture is committed: `.gitignore` keeps out
 `captures/` and any `.nam` or `.a2nb`. A fresh clone builds

@@ -15,25 +15,25 @@
  * Hardware: Electrosmith Patch.Init(), 64x48 SSD1306 on soft I2C (A2=SDA,
  * A3=SCL). IN_R is normalled to IN_L on the carrier, so only IN_L is read.
  *
- * Controls (knobs 1-4 set by David, 2026-10-19; each knob summed with the CV jack under it)
+ * Controls (David, 2026-10-21; each knob summed with the CV jack under it)
  *                        AMPS / NOT-AMPS                  FILTERS
- *   CV_1 (+ CV_5 jack)   PATCH: which capture or not-amp  PATCH: which filter
- *   CV_2 (+ CV_6 jack)   MIX, dry (0) to wet (1)          MIX
- *   CV_3 (+ CV_7 jack)   DRIVE, -20..+20 dB into the      CUTOFF: the knob 0..10 V, the jack
- *                        engine, unity at noon            adds its volts (like the Wasp's CV 1)
- *   CV_4 (+ CV_8 jack)   STEER (not-amps only)            RESONANCE, 0..10 on the Wasp's dial
- *   B7 short press       bypass on/off, to A/B the engine against the dry input
+ *   CV_1 (+ CV_5 jack)   MIX, dry (0) to wet (1)          MIX
+ *   CV_2 (+ CV_6 jack)   STEER (not-amps only)            FREQ: the knob 0..10 V, the jack
+ *                                                         adds its volts (like the Wasp's CV 1)
+ *   CV_3 (+ CV_7 jack)   -                                RES, 0..10 on the Wasp's dial
+ *   CV_4 (+ CV_8 jack)   DRIVE, -20..+20 dB into the network, unity at noon, every bank
+ *   B7 short press       next patch in the bank, wrapping; each bank keeps its own place
  *   B7 held 1.5 s        next bank: AMPS -> NOT-AMPS -> FILTERS (when the card has any)
- *   CV_OUT_2 LED         lit when the engine is in circuit, dark when bypassed
+ *   CV_OUT_2 LED         lit
  *
  * MIRTH LITE (make LITE=1, for a stock patch.init with no OLED):
  *   B8 toggle            bank: up AMPS, down NOT-AMPS (checked on a stock unit, 2026-10-03)
- *   B7 short press       bypass on/off
+ *   B7 short press       next patch in the bank
  *   B7 held 0.6 s        re-blink the current slot number
  *   CV_OUT_2 LED         the slot number blinks when the slot or bank changes —
  *                        a long blink is five, so 12 is long-long-short-short —
- *                        then lit (engine in) or dark (bypassed). A fast flicker
- *                        that never stops: no captures on the card.
+ *                        then lit. A fast flicker that never stops: no captures
+ *                        on the card.
  *
  * Three banks. FILTERS: GRU networks off the card (.grnb), each a filter with its
  * cutoff and resonance as live controls (nam/gru_runtime.h; the first are the
@@ -50,8 +50,8 @@
  * tables generated into src/notamps.h by tools/notamp_design.py.
  *
  * Audio: IN_L -> drive -> engine slot -> wet; IN_L -> dry (delayed to match any
- * not-amp latency); dry/wet mix (CV_2) -> DC block -> OUT_L and OUT_R.
- * Bypass is the dry side alone, so an A/B compares the engine with its input.
+ * not-amp latency); dry/wet mix (CV_1) -> DC block -> OUT_L and OUT_R.
+ * MIX fully down is the dry side alone, so an A/B compares the engine with its input.
  *
  * Vocabulary follows CLAUDE.md: "engine" is the inference code, "capture" is one
  * trained weights file, and "patch" is never used for either.
@@ -241,7 +241,6 @@ alignas(32) static uint8_t DSY_SDRAM_BSS g_layer_buf[kLayerCap];
 static gran::Layer                      g_layer_def;
 static volatile bool                    g_layer_on = false;
 
-static bool         g_bypass        = false;
 static bool         g_display_dirty = true;
 
 // Metering, written in the audio ISR and read by the UI loop. Single writer,
@@ -265,7 +264,7 @@ static volatile float g_gru_cycles = 0.f;
 // ---------------------------------------------------------------------------
 // Capture switching
 // ---------------------------------------------------------------------------
-// CV_3 picks a capture off the card. Swapping one in calls load_weights(),
+// B7 steps to the next capture. Swapping one in calls load_weights(),
 // which runs prewarm() over the whole network — far too slow for the audio
 // callback — so the callback only fades out and raises a flag, the main loop
 // does the load, and the callback fades back in. Same shape as the crossfade
@@ -281,9 +280,8 @@ enum class Xf
 static volatile Xf  g_xf      = Xf::Run;
 // A slot is a bank and an index, packed as bank*100 + index. -1 = the
 // compiled-in fallback.
-static volatile int g_want    = 0;   // slot CV_3 is asking for
+static volatile int g_want    = -1;  // slot B7 is asking for
 static volatile int g_active  = -1;  // slot currently loaded
-static volatile int g_bad     = -2;  // a slot that failed to load; not retried until the knob moves off it
 static float        g_xf_gain = 1.f;
 
 enum class Bank
@@ -318,7 +316,21 @@ static Bank NextBank(Bank b)
     return Bank::Amps;
 }
 
-// The steer control, 0..1: knob 4 plus the CV_8 jack, summed like the other
+// Where B7 has stepped to in each bank, so going round the banks comes back to the same
+// patch. Ask for that patch; nothing to ask for in an empty bank.
+static int g_cursor[3] = {0, 0, 0};
+static void Select(Bank b)
+{
+    const int n = BankSize(b);
+    if(n <= 0)
+        return;
+    int& c = g_cursor[(int)b];
+    if(c >= n)
+        c = 0;
+    g_want = Slot(b, c);
+}
+
+// The steer control, 0..1: knob 2 plus the CV_6 jack, summed like the other
 // pairs. Smoothed over ~20 ms so a knob or CV does not step audibly.
 static volatile float g_steer = 0.f;
 
@@ -366,7 +378,12 @@ static void ProcessNav()
 #if MIRTH_LITE
     // The bank follows the toggle, live.
     bank_toggle.Debounce();
-    g_bank = bank_toggle.Pressed() ? Bank::NotAmps : Bank::Amps;
+    const Bank b = bank_toggle.Pressed() ? Bank::NotAmps : Bank::Amps;
+    if(b != g_bank)
+    {
+        g_bank = b;
+        Select(b);
+    }
 #endif
 
     if(nav_btn.Pressed())
@@ -394,12 +411,22 @@ static void ProcessNav()
     else
 #else
     if(dur >= kBankPressMs)
+    {
         g_bank = NextBank(g_bank);
+        Select(g_bank);
+    }
     else
 #endif
     {
-        g_bypass = !g_bypass;
-        SetLed(!g_bypass);
+        // The next patch in the bank. From a bank whose patch failed to load (the
+        // display says so), this moves past the one that failed.
+        const int n = BankSize(g_bank);
+        if(n > 0)
+        {
+            int& c = g_cursor[(int)g_bank];
+            c      = (c + 1) % n;
+            Select(g_bank);
+        }
     }
     g_display_dirty = true;
 }
@@ -418,8 +445,8 @@ static void ApplySteer(float u)
 // One block through the FILTERS network, in place: the cutoff ramped across the block
 // from where the last one ended, Res smoothed over about 20 ms. Then the layer, if the
 // filter has one: its output is the network's, 53.7 ms late (the dry side is delayed to
-// match in the mix). restart: the network has not run since the last call (bypass, a
-// swap), so the layer drops what it was holding. Audio callback only.
+// match in the mix). restart: the network has not run since the last call (a swap, or
+// another bank playing), so the layer drops what it was holding. Audio callback only.
 static void ProcessFilter(float* buf, size_t n, float cut_to, float res_to, bool restart)
 {
     static float cut = 0.f, res = 0.f;
@@ -464,54 +491,31 @@ void AudioCallback(AudioHandle::InputBuffer  in,
 
     // Pot + CV jack summed and clamped, the house attenuverter behaviour, as in
     // daisy_multifx_oled. The knobs read 0..1 across their travel (confirmed on the
-    // v1.0 bench); the jacks read -1..1 for -5..+5 V. Knobs 3 and 4 mean different
+    // v1.0 bench); the jacks read -1..1 for -5..+5 V. Knobs 2 and 3 mean different
     // things by bank, so they follow what is playing, not what is asked for.
     const bool  filt = SlotBank(g_active) == Bank::Filters;
+    const float k2 = patch.GetAdcValue(CV_2), j2 = patch.GetAdcValue(CV_6);
     const float k3 = patch.GetAdcValue(CV_3), j3 = patch.GetAdcValue(CV_7);
     const float k4 = patch.GetAdcValue(CV_4), j4 = patch.GetAdcValue(CV_8);
-    const float mix = g_bypass ? 0.f : fclamp(patch.GetAdcValue(CV_2) + patch.GetAdcValue(CV_6), 0.f, 1.f);
+    const float mix = fclamp(patch.GetAdcValue(CV_1) + patch.GetAdcValue(CV_5), 0.f, 1.f);
 
-    // DRIVE (AMPS, NOT-AMPS): -20..+20 dB into the engine with unity at noon, so the
-    // signal can be set to the level the capture was trained at, and past it. For
-    // most captures this changes the sound far more than the level (measured
-    // 2026-10-19). FILTERS has no drive: the input goes in as it arrives.
-    const float drive_k = fclamp(k3 + j3, 0.f, 1.f);
-    const float drive   = filt ? 1.f : powf(10.f, (drive_k * 2.f - 1.f));
-    // CUTOFF and RESONANCE (FILTERS), clamped to the ranges the networks learned.
-    const float cut_to = fclamp(10.f * k3 + 5.f * j3, 0.f, 10.f);
-    const float res_to = 10.f * fclamp(k4 + j4, 0.f, 1.f);
+    // DRIVE, every bank: -20..+20 dB into the network with unity at noon, so the signal
+    // can be set to the level the capture was trained at, and past it. For most
+    // captures this changes the sound far more than the level (measured 2026-10-19),
+    // and for the filters too: the Wasp's GRU-16 goes from clean (third harmonic -71 dB
+    // at 0.5 V peak) to saturating (-16 dB at 9 V) as the input rises (2026-10-21).
+    const float drive_k = fclamp(k4 + j4, 0.f, 1.f);
+    const float drive   = powf(10.f, (drive_k * 2.f - 1.f));
+    // FREQ and RES (FILTERS), clamped to the ranges the networks learned.
+    const float cut_to = fclamp(10.f * k2 + 5.f * j2, 0.f, 10.f);
+    const float res_to = 10.f * fclamp(k3 + j3, 0.f, 1.f);
     g_mix      = mix;
     g_drive_db = 20.f * (drive_k * 2.f - 1.f);
     g_cut      = cut_to;
     g_res      = res_to;
 
-    // --- slot selection ---------------------------------------------------
-    // PATCH (knob 1, CV_1 + CV_5) across the current bank. Hysteresis of a quarter step past the
-    // boundary, so a knob sitting on one does not reload the network every
-    // block. Changing bank picks whatever the knob points at in the new bank.
-    const Bank bank = g_bank;
-    const int  n_bank = BankSize(bank);
-    if(n_bank > 0)
-    {
-        const float sel  = fclamp(patch.GetAdcValue(CV_1) + patch.GetAdcValue(CV_5), 0.f, 1.f);
-        const float span = 1.f / (float)n_bank;
-        int         idx  = (int)(sel * (float)n_bank);
-        if(idx >= n_bank)
-            idx = n_bank - 1;
-        const int cur = (SlotBank(g_want) == bank) ? SlotIndex(g_want) : -1;
-        int want = g_want;
-        if(cur < 0)
-            want = Slot(bank, idx);
-        else if(idx != cur && fabsf(sel - ((float)cur + 0.5f) * span) > span * 0.75f)
-            want = Slot(bank, idx);
-        if(want != g_bad)
-            g_want = want;
-        else if(SlotIndex(want) != idx)
-            g_bad = -2;  // the knob has moved on; allow a retry next time
-    }
-
     // --- steer ------------------------------------------------------------
-    const float steer_raw = fclamp(k4 + j4, 0.f, 1.f);
+    const float steer_raw = fclamp(k2 + j2, 0.f, 1.f);
     g_steer += 0.05f * (steer_raw - g_steer);
     if(g_na >= 0 && g_xf != Xf::Swap)
         ApplySteer(g_steer);
@@ -545,7 +549,7 @@ void AudioCallback(AudioHandle::InputBuffer  in,
 
     float peak = 0.f;
 
-    // Metering and trim first, over the whole block, because the engine wants
+    // Metering and drive first, over the whole block, because the engine wants
     // a contiguous 48 samples rather than one at a time.
     // 32-byte aligned to match the engine's own buffers (NAM_A2_ALIGN32).
     // It reads input scalar-wise so this is belt-and-braces, but a misaligned
@@ -570,7 +574,7 @@ void AudioCallback(AudioHandle::InputBuffer  in,
     // output is muted during Swap anyway. Found 2026-09-28: a seed could go NaN
     // this way, and the DC blocker below then held the NaN forever.
     static bool filter_ran = false;  // last block, for the layer's restart
-    if(!g_bypass && g_xf != Xf::Swap)
+    if(g_xf != Xf::Swap)
     {
         if(filt)
             ProcessFilter(scratch, n, cut_to, res_to, !filter_ran);
@@ -581,7 +585,7 @@ void AudioCallback(AudioHandle::InputBuffer  in,
     else
     {
         for(size_t i = 0; i < n; i++)
-            scratch[i] = 0.f;  // no wet while bypassed or swapping
+            scratch[i] = 0.f;  // no wet while swapping
         filter_ran = false;
     }
 
@@ -593,10 +597,10 @@ void AudioCallback(AudioHandle::InputBuffer  in,
     static float dcb_x1 = 0.f, dcb_y1 = 0.f;
     constexpr float kDcR = 0.99738f;  // exp(-2*pi*20/48000)
 
-    // Dry/wet. The dry side is the input before the trim, delayed to line up with
+    // Dry/wet. The dry side is the input before the drive, delayed to line up with
     // a not-amp that has latency (RATE runs 48·R samples behind), or with a filter's
-    // granular layer (kDelay, 2,576 samples, bypassed or not, so A/B keeps its timing);
-    // the swap fade mutes the wet side only.
+    // granular layer (kDelay, 2,576 samples, at any mix, so A/B on the mix keeps its
+    // timing); the swap fade mutes the wet side only.
     static notamps::DryDelay dry_delay;
     const int   lat     = g_na >= 0 ? g_proc.Latency() : 0;
     const bool  lay_dry = filt && g_layer_on;
@@ -741,19 +745,18 @@ static void DrawRunPage()
 {
     char line[32];
 
-    // Capture name, drawn inverted while bypassed — the panel has ten
-    // characters and no room for a separate BYP flag once the capture index
-    // is on screen. The LED says the same thing.
+    // Six rows of 8 px (the font is 7 high): name, meter, CPU, patch, then the two knob
+    // lines. Ten characters a row.
     const bool filt = SlotBank(g_active) == Bank::Filters;
-    display.DrawString(0, 0, filt ? g_filter_name : engine.Name(), g_bypass);
+    display.DrawString(0, 0, filt ? g_filter_name : engine.Name(), false);
 
-    // Input peak meter. The point of it is setting the trim, so it reads the
-    // input before the trim rather than after.
+    // Input peak meter. The point of it is setting the drive, so it reads the
+    // input before the drive rather than after.
     const float peak = fclamp(g_in_peak, 0.f, 1.f);
     const uint8_t w  = (uint8_t)(peak * 62.f + 0.5f);
-    display.DrawRect(0, 9, 64, 7, true);
+    display.DrawRect(0, 9, 64, 6, true);
     if(w > 0)
-        display.FillRect(1, 10, w > 62 ? 62 : w, 5, true);
+        display.FillRect(1, 10, w > 62 ? 62 : w, 4, true);
 
     // CPU load, average with the peak in brackets: "CPU 64(99)". David asked for
     // "CPU 64% (99%)", but at six pixels a character the panel holds ten, so the
@@ -764,19 +767,17 @@ static void DrawRunPage()
         snprintf(line, sizeof(line), "%2d%% %5dc", cpu_avg > 99 ? 99 : cpu_avg, (int)g_gru_cycles);
     else
         snprintf(line, sizeof(line), "CPU %2d(%2d)", cpu_avg > 99 ? 99 : cpu_avg, cpu_max > 99 ? 99 : cpu_max);
-    display.DrawString(0, 18, line, false);
+    display.DrawString(0, 16, line, false);
 
-    // The two knob lines sit as the knobs do on the panel: knobs 1 and 2 (patch, mix) on
-    // the top row, so their line comes first; knobs 3 and 4 (drive and steer, or cutoff
-    // and resonance) on the bottom row. Ten characters a line.
-    const int mix_pc = (int)(g_mix * 100.f + 0.5f);
+    // Which patch, and how many in its bank, since B7 steps round them: "FLT 3/3".
     const int raw_n  = captures::Count();
     const int n_caps = raw_n > 99 ? 99 : raw_n;
     const int k      = SlotIndex(g_active) + 1 > 99 ? 99 : SlotIndex(g_active) + 1;
+    const int n_act  = BankSize(SlotBank(g_active)) > 99 ? 99 : BankSize(SlotBank(g_active));
     if(filt)
-        snprintf(line, sizeof(line), "FLT%d M%d", k, mix_pc);
+        snprintf(line, sizeof(line), "FLT %d/%d", k, n_act);
     else if(g_active >= 100)
-        snprintf(line, sizeof(line), "NT%02d M%d", k, mix_pc);
+        snprintf(line, sizeof(line), "NT %d/%d", k, n_act);
     else if(g_bank == Bank::NotAmps && n_caps > 0)
         // Asked for the not-amps but still on an amp: a not-amp failed to load,
         // usually because a capture it is built from is missing from the card.
@@ -784,36 +785,47 @@ static void DrawRunPage()
     else if(g_bank == Bank::Filters)
         snprintf(line, sizeof(line), "F bad file");  // asked for a filter, none loaded
     else if(n_caps > 0 && g_active >= 0)
-        snprintf(line, sizeof(line), "AMP%d M%d", k, mix_pc);
+        snprintf(line, sizeof(line), "AMP %d/%d", k, n_act);
     else if(n_caps > 0)
         // Card present but the fallback is playing: a load failed. The name line
         // already carries the trailing * that marks the compiled-in one.
-        snprintf(line, sizeof(line), "AMP- M%d", mix_pc);
+        snprintf(line, sizeof(line), "AMP -");
     else
         // With no card this shows the reason, so "mount" or "no captures" reads as a
         // card problem rather than a dead engine.
         snprintf(line, sizeof(line), "%.10s", captures::Status());
-    display.DrawString(0, 26, line, false);
+    display.DrawString(0, 24, line, false);
 
-    const int drive = (int)lroundf(g_drive_db);
+    // The knobs as they sit on the panel, two rows of two: knob 1 (mix) and 2 (freq or
+    // steer) on the top line, knob 3 (res) and 4 (drive) on the bottom, the right-hand
+    // knob's value at x = 34 so the two columns line up. A knob that does nothing in
+    // this bank shows nothing.
+    char right[12];
+    snprintf(line, sizeof(line), "M%d", (int)(g_mix * 100.f + 0.5f));
+    if(filt)
+        snprintf(right, sizeof(right), "F%.1f", (double)g_cut);
+    else if(g_active >= 100)
+        // A not-amp: where its steer sits, since the steer is its whole character.
+        snprintf(right, sizeof(right), "S%.2f", (double)g_steer);
+    else
+        right[0] = '\0';
+    display.DrawString(0, 32, line, false);
+    display.DrawString(34, 32, right, false);
+
+    line[0] = '\0';
     if(filt)
     {
         bool has_res = false;
         for(int i = 0; i < g_filter.inputs; i++)
             has_res |= g_filter.kind[i] == gru::kRes;
         if(has_res)
-            snprintf(line, sizeof(line), "F%.1f R%.1f", (double)g_cut, (double)g_res);
+            snprintf(line, sizeof(line), "R%.1f", (double)g_res);
         else
-            snprintf(line, sizeof(line), "F%.1f R6*", (double)g_cut);  // trained at one Res only
-        if(strlen(line) > 10)
-            snprintf(line, sizeof(line), "F%.1fR%.1f", (double)g_cut, (double)g_res);
+            snprintf(line, sizeof(line), "R6*");  // trained at one Res only
     }
-    else if(g_active >= 100)
-        // A not-amp: where its steer sits, since the steer is its whole character.
-        snprintf(line, sizeof(line), "D%+d S%.2f", drive, (double)g_steer);
-    else
-        snprintf(line, sizeof(line), "D%+ddB", drive);
-    display.DrawString(0, 34, line, false);
+    snprintf(right, sizeof(right), "D%+d", (int)lroundf(g_drive_db));
+    display.DrawString(0, 40, line, false);
+    display.DrawString(34, 40, right, false);
 }
 
 static void UpdateDisplay()
@@ -824,7 +836,7 @@ static void UpdateDisplay()
 }
 #else
 // MIRTH LITE's only display. A blink request becomes a pattern — a long blink per
-// five, then a short per one — after which the LED shows the engine state again.
+// five, then a short per one — after which the LED is lit again.
 static void RenderLed(uint32_t now)
 {
     static uint16_t pat[48];  // on/off durations, ms
@@ -860,7 +872,7 @@ static void RenderLed(uint32_t now)
         }
         return;
     }
-    SetLed(!g_bypass);
+    SetLed(true);
 }
 #endif
 
@@ -894,10 +906,14 @@ int main(void)
     // Card before audio starts, so the first capture is in place by the time
     // anything is heard. A missing or unreadable card is not fatal: the
     // compiled-in fallback is already loaded and captures::Status() says why.
+    // Mirth starts on the first amp, Lite on the first patch of the toggle's bank (the
+    // first amp if that will not load).
     captures::Init();
     if(captures::Count() > 0)
     {
-        SwapSlot(Slot(Bank::Amps, 0));
+        Select(g_bank);
+        if(!SwapSlot(g_want))
+            SwapSlot(Slot(Bank::Amps, 0));
         g_want = g_active;
     }
 
@@ -916,7 +932,7 @@ int main(void)
     System::Delay(1000);
 #endif
 
-    SetLed(!g_bypass);
+    SetLed(true);
 
     patch.StartAdc();
     patch.StartAudio(AudioCallback);
@@ -928,14 +944,12 @@ int main(void)
         // work here — file read plus prewarm() — then hand it back to fade in.
         if(g_xf == Xf::Swap)
         {
-            if(!SwapSlot(g_want))
-            {
-                // Failed: keep whatever is loaded, and mark the slot so the
-                // selection does not ask for it again every block. Usually a
-                // not-amp whose source capture is not on the card.
-                g_bad  = g_want;
+            // Failed: keep whatever is loaded, and stop asking, unless B7 has
+            // already asked for another. Usually a not-amp whose source capture
+            // is not on the card.
+            const int want = g_want;
+            if(!SwapSlot(want) && g_want == want)
                 g_want = g_active;
-            }
             g_xf            = Xf::FadeIn;
             g_display_dirty = true;
 #if MIRTH_LITE
