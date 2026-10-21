@@ -11,14 +11,14 @@ the Wasp repeats itself almost exactly (take to take ESR 0.0006–0.03, the netw
 mark was a separate session set by hand. On Swords, Res is under CV.
 
 **With Res swept by CV, continuously and together with the cutoff, in one session, does a
-cutoff + Res GRU learn Res, in the range where Swords repeats itself?**
+cutoff + Res GRU learn Res, in the region where Swords repeats itself?**
 
 - If it does: the Wasp's weak Res most likely came from the recording method (marks set by
   hand, one session each), not from the network.
 - If it does not: the limit is the network or the training, even with continuous Res.
 - Either way only suggestive for the Wasp: Swords is a different filter. Where Swords
   goes wild (self-oscillation) a network is expected to fail, as the Wasp did at Res 9–10,
-  so that range is recorded but not judged.
+  so that region is recorded but not judged.
 
 Part B (mode and drive under CV as well) waits for this answer.
 
@@ -66,11 +66,18 @@ apply; here from a noise or sweep input at held voltages); Res CV's working rang
 resonance starts to show, and where the filter self-oscillates with no input); the input
 level against the drive LED.
 
+**First play (David, 2026-10-21, by hand, Res CV unpatched):** where it starts to
+self-oscillate, Freq against Res in clock positions: Freq 9 o'clock, Res 4; Freq 12,
+Res 3; Freq 3, Res about 2:30. The onset moves with the cutoff: the higher the cutoff,
+the less Res it takes. So the edge of the repeatable region is a line across cutoff and
+Res, not a single Res value.
+
 **1. Where it stops repeating (about 20 min).** The `test` take (the riff, cutoff
 stepping) recorded three times back to back at each of 6–8 Res CV values across the range,
-self-oscillation included. **The judged range is fixed by a rule set now:** the Res CV
-values where the back-to-back take-to-take ESR over the take is 0.02 or less (the Wasp:
-0.0015 at Res 7, 0.073 at Res 8). Above it, recorded but not judged.
+self-oscillation included. **The judged region is fixed by a rule set now:** each pair of
+a cutoff step (one hold of the `test` take, as the Wasp's ladder measured per hold) and a
+Res CV value whose back-to-back take-to-take ESR over that hold is 0.02 or less (the Wasp,
+whole take: 0.0015 at Res 7, 0.073 at Res 8). Outside it, recorded but not judged.
 
 **2. Part A (about 35 min, unattended).** About 30 minutes of training material, the same
 generator as the Wasp's sweeps (`sweep_audio`: notes, glides, noise bursts, phrases,
@@ -78,8 +85,8 @@ rests, at several levels), so the material is like for like; the cutoff and Res 
 a slow independent walk across their whole ranges. Then the `test` take at a few fixed Res
 values, and three takes of it back to back at one judged value, for the stability check.
 
-**Held out**, as Res 5 was for the Wasp: one band of Res CV inside the judged range, about
-a tenth of it near its middle, chosen after step 1 and cut out of the training material
+**Held out**, as Res 5 was for the Wasp: one band of Res CV inside the judged region, about
+a tenth of its Res span near the middle, chosen after step 1 and cut out of the training material
 wherever Res passes through it. Validation as for the Wasp (blocks at the beginning,
 middle and end of each take), early stopping on it; the `test` takes never trained on.
 
@@ -89,7 +96,7 @@ The Wasp's first recipe unchanged, so only the data differs: GRU-16 and GRU-24, 
 ESR, the same schedule and early stopping, clip at 10. Inputs: audio, cutoff volts, Res
 volts, each per sample.
 
-**Res is learned** if, in the judged range, the GRU-16's control test on Res reaches what
+**Res is learned** if, in the judged region, the GRU-16's control test on Res reaches what
 the Wasp's networks reached on the cutoff: right way 0.9 or more and amount 0.7 or more
 (the Wasp's cutoff: 0.92–0.99 and 0.73–0.95), spurious movement 0.15 or less, and David
 hears Res move. For comparison, the Wasp's Res, medians of `lp_cr_*`: right way 0.72,
@@ -101,12 +108,13 @@ amount 0.48, spurious 0.11.
   the training material, the repeat takes, the held-out band, recordings under
   `captures/swords/` (the laptop's own disk: about 1–3 GB, then copied to the mini).
 - `tools/train_gru.py`: Res as a per-sample input (`res_v`) instead of one number per take.
-- `tools/control_response.py`: Res cells in volts, restricted to the judged range.
+- `tools/control_response.py`: Res cells in volts, restricted to the judged region (per
+  cutoff step).
 - Mirth's FILTERS bank needs no change: the file's input scales carry volts.
 
 ## Open for David
 
-1. The judging thresholds: take-to-take ESR 0.02 for the judged range; right way 0.9,
+1. The judging thresholds: take-to-take ESR 0.02 per cutoff step for the judged region; right way 0.9,
    amount 0.7 and spurious 0.15 for "learned".
 2. Thirty minutes of training material, as the Wasp had: enough, or more now that the
    recording is unattended?
