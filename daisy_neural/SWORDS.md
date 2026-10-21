@@ -167,6 +167,42 @@ the Wasp's networks reached on the cutoff: right way 0.9 or more and amount 0.7 
 hears Res move. For comparison, the Wasp's Res, medians of `lp_cr_*`: right way 0.72,
 amount 0.48, spurious 0.11.
 
+## Above the threshold (measured 2026-10-21, `tools/swords_osc.py`)
+
+For Part B or later: what Swords does past the onset, from step 0's Res ramps (no input)
+and the `sw-a` test takes (the riff, three takes back to back).
+
+- **One clean, stable tone at the filter's own frequency.** At V/OCT +4 V it oscillates at
+  166.5–169 Hz, at +7 V at 1,260–1,277 Hz: about 1.33 times the −3 dB point at Res 0
+  (128 and 940 Hz), tracking V/OCT like the cutoff. Res moves the pitch only 23–26 cents
+  from the onset to Res CV 8 V. The peak is narrower than a 2 s window can show (−3 dB
+  width 0.69 Hz, the window alone 0.72); the pitch wanders 0.1 cents rms in 50 ms frames.
+- **Its level and harmonics grow with Res.** From 1.9–2.9 V peak at the onset to 7.4–7.5 V
+  at Res CV 8 V. At the onset almost a pure sine (H2 −68 to −71 dB, H3 −77 to −80); at the
+  top odd harmonics, the mark of a symmetric saturation in the loop: H3 −29, H5 −38, H2
+  −50, H4 −67 dB, the same at both cutoffs.
+- **With the riff, only the phase is random.** Where the waveform does not repeat
+  (take-to-take ESR 0.2–2.0 at Res 4.5 and 5.5 V), the magnitude of a 43 ms STFT does:
+  ESR 0.000–0.026; band levels over the whole hold differ by 0.0–0.5 dB; the strongest
+  peak is the same frequency in all three takes to 1 Hz (1,564, 4,515, 12,557 Hz at the
+  top three holds). What is heard repeats; where each take's oscillation starts in its
+  cycle does not.
+
+**So it is learnable, but not by a sample-by-sample loss.** The options, none chosen:
+1. **Same GRU, a phase-blind loss** (multi-resolution STFT, mixed with ESR for below the
+   threshold). Smallest change, same data, same cost on Mirth. Risk: the GRU has to become
+   a sustained, clean oscillator over nine octaves, a known weak spot for RNNs.
+2. **Grey-box: the filter's own structure** (a state-variable filter, two integrators and
+   a feedback loop, with a learned saturation in the loop and learned cutoff and Res maps,
+   as in differentiable-filter work: Kuznetsov, Parker and Esqueda 2020). Oscillation, its
+   pitch, its level set by the saturation, the odd harmonics and plausibly the hysteresis
+   are what that structure does, rather than something to learn. Far cheaper on the
+   Daisy than a GRU. New training code; Blades' schematic gives the structure.
+3. **Hybrid, as the Wasp: the GRU below, a measured oscillator above.** A sine at the
+   measured pitch map, level and harmonics tabled against Res and cutoff, onset and stop
+   lines from step 0, a random start phase. Cheapest and most predictable; the weak point
+   is how it meets the input (the islands at 5.5 V where the input pulls it into step).
+
 ## To build after review
 
 - `tools/wasp_capture.py`: a fourth play channel (Res CV on ES-10 OUT 4), a Res walk for
