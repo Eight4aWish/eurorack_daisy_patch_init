@@ -966,6 +966,29 @@ input full scale (for any "at the Wasp's own level" claim); the peak guard and t
 latency-free graphic EQ; why the layer lifts bands at Res 6–8 that the Wasp holds still;
 GRU-24 on the Teensy.
 
+**What the Wasp's wildness is: three tests, not yet run** (2026-10-21, after Swords turned
+out to repeat everything but the phase of its oscillation, SWORDS.md "Above the
+threshold"). Each needs the Res 8–10 repeat takes, on the Crucial drive; `swords_osc.py`
+part B is the first test almost as it stands. The layer's bank cannot answer them: it
+measures each take against the *averaged waveform*, and averaging cancels whatever has a
+random phase, so a ring that repeated in everything but its phase would still read as a
+large lift.
+1. **Phase only, or the spectrum too?** STFT magnitude ESR and band levels across the four
+   takes. If the magnitudes repeat (Swords: ESR under 0.03, within 0.5 dB), the
+   wildness is deterministic but for phase, and a grey-box loop just short of the threshold
+   could stand in for the granular layer; if they differ by dB frame to frame, it is
+   genuinely random and a statistical layer is the right kind of model.
+2. **Noise or chaos?** The Wasp cannot self-oscillate, so after a rest it sits still and
+   every note starts from the same state. Takes that differ from a note's first
+   milliseconds: circuit noise amplified by a nearly undamped ring (a noise source in the
+   loop would model it). Takes that start together and part exponentially over the note:
+   chaos from the CD4069s (a grey-box with the right nonlinearity gets the character,
+   never the waveform).
+3. **Is the warble beating?** The ring at the filter's own frequency against the input's
+   partial nearest it, beating at their difference: the rate would follow each note and
+   the cutoff, and repeat take to take. Mirth's FLT2, a deterministic network, already
+   beats (David: F 5.9 R 9.0), so part of it at least is the input's doing.
+
 **Controls rearranged (David, 2026-10-21).** Bypass gone; B7 short steps to the next patch
 in the bank (each bank keeps its place), held 1.5 s the next bank; knobs 1 MIX, 2 FREQ
 (STEER on a not-amp), 3 RES, 4 DRIVE in every bank. "Two different drives is confusing!"

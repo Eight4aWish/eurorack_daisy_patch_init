@@ -188,7 +188,22 @@ and the `sw-a` test takes (the riff, three takes back to back).
   top three holds). What is heard repeats; where each take's oscillation starts in its
   cycle does not.
 
-**So it is learnable, but not by a sample-by-sample loss.** The options, none chosen:
+- **The input nudges the pitch; it does not snap it** (`tools/swords_pull.py`, 170 ms
+  frames, Res 4.5 and 5.5 V). David's hunch was that the input's pitches pull the
+  oscillation around a set of frequencies. The pitch does move: over 35–75 cents at a
+  home of 180 Hz, about 30 at 530 Hz, a few at 1.5 kHz, about 1 above. The movement is
+  the input's doing: the three takes trace the same pitch track to 0.2–6 cents. But it
+  lands on an input partial no more often than chance (11–13% of frames against 14% at
+  180 Hz; 34–37% against 34% at 530 Hz) and barely leans towards the strongest nearby
+  one (r about 0.2 at 180 Hz, 0 at 530 Hz). Louder input, slightly flatter: about
+  −2 cents per dB at 180 Hz (r −0.2 to −0.4), what a clip in the loop does, and only
+  part of it. One riff, whose partials rarely come close to the oscillation; a slow sine
+  glide through it at a few levels would show whether there is a capture range. David's
+  guess: it shifts rather than snaps, depending on the relative powers.
+
+**So it is learnable, but not by a sample-by-sample loss.** **David's call (2026-10-21):
+a grey-box addition** (option 2), helped by the oscillation not being purely random. The
+options as written:
 1. **Same GRU, a phase-blind loss** (multi-resolution STFT, mixed with ESR for below the
    threshold). Smallest change, same data, same cost on Mirth. Risk: the GRU has to become
    a sustained, clean oscillator over nine octaves, a known weak spot for RNNs.
