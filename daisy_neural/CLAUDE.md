@@ -986,8 +986,19 @@ large lift.
    never the waveform).
 3. **Is the warble beating?** The ring at the filter's own frequency against the input's
    partial nearest it, beating at their difference: the rate would follow each note and
-   the cutoff, and repeat take to take. Mirth's FLT2, a deterministic network, already
-   beats (David: F 5.9 R 9.0), so part of it at least is the input's doing.
+   the cutoff, and repeat take to take. **David's view: the warble comes from the
+   network's geometry. Checked on FLT2's network** (`lp_cr_gru16_s3`,
+   `tools/wasp_warble.py`, the same riff at its training level as the real Wasp's Res 9
+   take): from 2 to 8 V the network's gain at the resonance wobbles at 3–20 Hz *less* than
+   the Wasp's (6.3/8.8, 7.9/10.5, 3.0/5.5, 2.9/2.5 dB rms), at the same main rate at 4 and
+   6 V (6.8 and 10.7 Hz): there it learned part of the Wasp's warble, input-driven, rather
+   than making its own. At 10 V it wobbles five times the Wasp's (5.2 against 1.0 dB):
+   that one is the network's own. Linearised at rest, its main mode tracks the cutoff
+   (46, 204, 886, 2,607, 5,141 Hz at 2–10 V) and dies within milliseconds everywhere but
+   there: 3.6 ms at Res 9 and 10 V (Q about 58), against 0.4 ms at Res 6. So David is
+   right at the top of the range; lower down the warble he heard (F 5.9 and 4.2, R 9.0) is
+   the Wasp's, learned weaker. On Mirth's own input level, still unmeasured, the network
+   may be off its training ground, where its own behaviour could take over.
 
 **Controls rearranged (David, 2026-10-21).** Bypass gone; B7 short steps to the next patch
 in the bank (each bank keeps its place), held 1.5 s the next bank; knobs 1 MIX, 2 FREQ
