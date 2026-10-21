@@ -89,11 +89,13 @@ a cutoff step (one hold of the `test` take, as the Wasp's ladder measured per ho
 Res CV value whose back-to-back take-to-take ESR over that hold is 0.02 or less (the Wasp,
 whole take: 0.0015 at Res 7, 0.073 at Res 8). Outside it, recorded but not judged.
 
-**2. Part A (about 35 min, unattended).** About 30 minutes of training material, the same
-generator as the Wasp's sweeps (`sweep_audio`: notes, glides, noise bursts, phrases,
-rests, at several levels), so the material is like for like; the cutoff and Res CVs each
-a slow independent walk across their whole ranges. Then the `test` take at a few fixed Res
-values, and three takes of it back to back at one judged value, for the stability check.
+**2. Part A (about 70 min, unattended).** About 60 minutes of training material in two
+halves of 30, each from its own seed, the same generator as the Wasp's sweeps
+(`sweep_audio`: notes, glides, noise bursts, phrases, rests, at several levels), so the
+material is like for like; the cutoff and Res CVs each a slow independent walk across
+their whole ranges. Then the `test` take at a few fixed Res values, and three takes of it
+back to back at one judged value, for the stability check. More recording, but the
+comparison stays like for like (David, 2026-10-21): see the two arms below.
 
 **Held out**, as Res 5 was for the Wasp: one band of Res CV inside the judged region, about
 a tenth of its Res span near the middle, chosen after step 1 and cut out of the training material
@@ -104,7 +106,15 @@ middle and end of each take), early stopping on it; the `test` takes never train
 
 The Wasp's first recipe unchanged, so only the data differs: GRU-16 and GRU-24, seeds 1–3,
 ESR, the same schedule and early stopping, clip at 10. Inputs: audio, cutoff volts, Res
-volts, each per sample.
+volts, each per sample. Two arms from the same session, both with the held-out band cut
+out and judged the same way:
+
+- **Matched** (the filter-against-filter answer): one 30-minute half, about the amount of
+  sweep material the Wasp's cutoff + Res networks had (31 minutes).
+- **All**: both halves, 60 minutes. Whether more material helps Res, which the Wasp's
+  series could not say.
+
+Twelve runs; the Mac mini takes six at a time, one thread each, so overnight.
 
 **Res is learned** if, in the judged region, the GRU-16's control test on Res reaches what
 the Wasp's networks reached on the cutoff: right way 0.9 or more and amount 0.7 or more
@@ -126,5 +136,5 @@ amount 0.48, spurious 0.11.
 
 1. The judging thresholds: take-to-take ESR 0.02 per cutoff step for the judged region; right way 0.9,
    amount 0.7 and spurious 0.15 for "learned".
-2. Thirty minutes of training material, as the Wasp had: enough, or more now that the
-   recording is unattended?
+2. ~~Thirty minutes, as the Wasp had?~~ Decided (David, 2026-10-21): record more, keep
+   the comparison at the Wasp's amount; two arms, matched and all.
