@@ -72,6 +72,16 @@ Res 3; Freq 3, Res about 2:30. The onset moves with the cutoff: the higher the c
 the less Res it takes. So the edge of the repeatable region is a line across cutoff and
 Res, not a single Res value.
 
+**It moves with Response too** (David, same day). With Response fully anticlockwise, the
+soft-clip end and Part A's setting: Freq fully clockwise, no self-oscillation at all;
+Freq 3 o'clock, Res 3; Freq 12, Res 3; Freq 9, Res 4. So the drive stage is not only on
+the input, as the manuals read: with the input silent, Response still moves where the
+filter oscillates, which suggests the clip/fold stage interacts with the resonance loop.
+The schematic would settle how (Mutable's `blades_v40.sch` is a binary Eagle file, not
+read). For the design: Response is held fully anticlockwise throughout Part A and
+recorded with every capture, and Part B's drive matters for the resonance as well as the
+dirt.
+
 **1. Where it stops repeating (about 20 min).** The `test` take (the riff, cutoff
 stepping) recorded three times back to back at each of 6–8 Res CV values across the range,
 self-oscillation included. **The judged region is fixed by a rule set now:** each pair of
