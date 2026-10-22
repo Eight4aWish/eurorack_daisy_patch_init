@@ -84,8 +84,18 @@ def main():
         s = C.score(cells)
         print(f"   {label:12s} right way {s['right_way']:.2f}  amount {s['amount']:.2f}  "
               f"err {s['err_db']:.2f} dB  spurious {s['spurious']:.2f}   ({s['audible_cells']} audible cells)")
-    print("   for comparison, Part A's Res-input networks on sw-a: 30 min 0.75 / 0.69 / spurious 0.11,"
-          " 60 min 0.61 / 0.35 / 0.07 (medians)")
+    # The same cells for single networks with Res as an input, on these same takes, so the
+    # families are compared like for like: the parent, and Part A's Res 0-4 V runs.
+    singles = ["swf_parent_gru16_s1"] + sorted(p.name for p in RUNS.glob("sw4_*_gru*") if (p / "best.pt").exists())
+    for name in singles:
+        m = load(name)
+        net = {r: C.band_levels_at(run_net(*m, tests[r]["x"].astype(np.float64), tests[r]["cv_v"].astype(np.float64),
+                                           np.full(len(tests[r]["x"]), r)), holds) for r in RES}
+        cells = {f"R{r:g} {v:g}V": (net[r][v] - net[3.0][v], real[r][v] - real[3.0][v])
+                 for r in RES if r != 3.0 for v in holds_v if judged(r, v) and judged(3.0, v)}
+        s = C.score(cells)
+        print(f"   {name:22s} right way {s['right_way']:.2f}  amount {s['amount']:.2f}  "
+              f"err {s['err_db']:.2f} dB  spurious {s['spurious']:.2f}")
 
     print("\n3. the held-out 2 V, against this morning's two 2 V takes (ESR vs d2, vs d3)")
     d2, d3 = take("sw-b-d2", "test_r+2.00_1"), take("sw-b-d3", "test_r+2.00_1")
