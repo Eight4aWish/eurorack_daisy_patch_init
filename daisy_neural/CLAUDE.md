@@ -966,6 +966,19 @@ input full scale (for any "at the Wasp's own level" claim); the peak guard and t
 latency-free graphic EQ; why the layer lifts bands at Res 6–8 that the Wasp holds still;
 GRU-24 on the Teensy.
 
+**Res 0–7, queued 2026-10-22 (David).** Swords learned its cutoff but not Res, and three
+quarters of its training energy was the unrepeatable oscillation (SWORDS.md, the
+verdict). The Wasp's `lp_cr_*` likewise trained on every mark but 5, wild 8–10 included.
+The equivalent of Swords' Res 0–4 V is Res 0–7 (take to take 0.0015 at Res 7, 0.073 at
+8). `tools/queue_wasp_res07.sh` on the mini, after the Swords Res 0–4 V runs: `lp07_cr_*`
+(marks 0–7, Res 5 held out, `lp_cr_*`'s recipe otherwise), the control test over marks
+0–7 on both, then HP. **Rule fixed before any result:** LP 0–7 is promising if, over marks
+0–7, its median Res right way is at least 0.10 above `lp_cr_*`'s and its median amount no
+lower; then HP is trained on 0–7 (`hp07_cr_*`), otherwise on the whole range
+(`hp_cr_*`). No network had ever been trained on HP. Its sessions at Res 0, 2 and 4 had
+been recorded but never split (empty `gru/` and `nam/`); split on 2026-10-22, all
+aligned.
+
 **What the Wasp's wildness is: three tests, not yet run** (2026-10-21, after Swords turned
 out to repeat everything but the phase of its oscillation, SWORDS.md "Above the
 threshold"). Each needs the Res 8–10 repeat takes, on the Crucial drive; `swords_osc.py`

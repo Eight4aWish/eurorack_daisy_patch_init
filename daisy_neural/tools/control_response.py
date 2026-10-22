@@ -87,20 +87,23 @@ def load_model(run):
     return m, inputs, cfg.get("output", "lphp"), scale
 
 
-def measure(run, captures):
+def measure(run, captures, marks=MARKS):
+    """The Wasp: Res changes against Res 6 at each of marks, on the run's own series (an HP
+    run reads hp-res*; HOLDS keys are LP's volts, the holds' times are the same for HP)."""
     model, inputs, out, scale = load_model(run)
     if "res" not in inputs and not hasattr(model, "set_res"):
         return None  # a cutoff-only network: no Res to test
-    reference = T.Take(captures / "lp-res6" / "gru" / "test.npz")
+    series = json.loads((run / "config.json").read_text()).get("series") or "lp"
+    reference = T.Take(captures / f"{series}-res6" / "gru" / "test.npz")
     real, net = {}, {}
-    for r in MARKS:
-        real[r] = band_levels(T.Take(captures / f"lp-res{r}" / "gru" / "test.npz").target(0, reference.n, out))
+    for r in marks:
+        real[r] = band_levels(T.Take(captures / f"{series}-res{r}" / "gru" / "test.npz").target(0, reference.n, out))
         t = copy.copy(reference)
         t.res = float(r)  # the same input; only the Res input changes
         _, o = T.evaluate(model, [(t, 0, t.n, T.SETTLE, False)], inputs, out, "cpu", keep=True, out_scale=scale)
         net[r] = band_levels(o[0])
-    res_cells = {f"R{r} {v}V": (net[r][v] - net[6][v], real[r][v] - real[6][v]) for r in MARKS if r != 6 for v in HOLDS}
-    cut_cells = {f"R{r} {v}V": (net[r][v] - net[r][6], real[r][v] - real[r][6]) for r in MARKS for v in HOLDS if v != 6}
+    res_cells = {f"R{r} {v}V": (net[r][v] - net[6][v], real[r][v] - real[6][v]) for r in marks if r != 6 for v in HOLDS}
+    cut_cells = {f"R{r} {v}V": (net[r][v] - net[r][6], real[r][v] - real[r][6]) for r in marks for v in HOLDS if v != 6}
     return {"res": score(res_cells), "cut": score(cut_cells),
             "cells": {"bands_hz": BANDS,
                       "res": {k: [np.round(a, 2).tolist(), np.round(b, 2).tolist()] for k, (a, b) in res_cells.items()},
@@ -186,6 +189,10 @@ def main():
     ap.add_argument("runs", nargs="+")
     ap.add_argument("--captures", default=None, help="default captures/wasp, or captures/swords for Swords runs")
     ap.add_argument("--ref-res", type=float, default=3.0, help="Swords: the Res CV the Res changes are measured from")
+    ap.add_argument("--marks", default=",".join(str(m) for m in MARKS),
+                    help="the Wasp: the Res marks to score (6 is the reference and must be among them)")
+    ap.add_argument("--json", default="control_response.json",
+                    help="the file written into each run, so a rescoring need not overwrite the first")
     args = ap.parse_args()
     print(f"{'':24s} {'RES (audible cells)':^37s}  {'CUTOFF (audible cells)':^37s}")
     print(f"{'run':24s} " + "  ".join(f"{'right way':>9s} {'amount':>7s} {'err dB':>7s} {'spurious':>8s}" for _ in range(2)))
@@ -194,10 +201,11 @@ def main():
             continue
         swords = json.loads((r / "config.json").read_text()).get("swords", False)
         captures = pathlib.Path(args.captures or (T.CAPTURES_SWORDS if swords else T.CAPTURES))
-        m = measure_swords(r, captures, args.ref_res) if swords else measure(r, captures)
+        marks = tuple(int(v) for v in args.marks.split(","))
+        m = measure_swords(r, captures, args.ref_res) if swords else measure(r, captures, marks)
         if m is None:
             continue
-        (r / "control_response.json").write_text(json.dumps(m, indent=1) + "\n")
+        (r / args.json).write_text(json.dumps(m, indent=1) + "\n")
         fmt = lambda v, w: f"{v:{w}.2f}" if v is not None else f"{'-':>{w}s}"  # noqa: E731
         print(f"{r.name:24s} " + "  ".join(f"{fmt(m[k]['right_way'], 9)} {fmt(m[k]['amount'], 7)} "
                                            f"{fmt(m[k]['err_db'], 7)} {fmt(m[k]['spurious'], 8)}" for k in ("res", "cut"))
