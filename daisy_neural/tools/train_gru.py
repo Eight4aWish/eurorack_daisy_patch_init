@@ -233,8 +233,9 @@ def outside(mask, a, b):
 def swords_material(args, train, valid, test):
     """The Swords split (SWORDS.md). Training: the sweep takes of --halves, less the
     validation blocks (three per take, as for the Wasp) and less every sample whose Res CV
-    is inside --holdout-band or above --res-max; a validation block that touches either is
-    dropped. --sessions picks the sessions by name (fnmatch patterns), all by default. Test:
+    is inside --holdout-band or above --res-max. A validation block that touches either is
+    dropped; with --res-max, which would leave too little, its clean stretches of at least
+    the run-in plus 2 s are kept instead (each scored after its own run-in). --sessions picks the sessions by name (fnmatch patterns), all by default. Test:
     the first take of every Res value's repeat set (the others are step 1's), held out when
     its Res is inside the band."""
     halves = {int(v) for v in args.halves.split(",")} if args.halves else None
@@ -269,10 +270,14 @@ def swords_material(args, train, valid, test):
                 mask = in_band(take)
                 blocks, gaps = carve(take.n, args.val_blocks, block)
                 for a, b in blocks:
-                    if mask[a:b].any():
-                        dropped += 1
-                    else:
+                    if not mask[a:b].any():
                         valid.append((take, a, b, run_in, False))
+                    elif res_max is not None:
+                        kept = [(c, e) for c, e in outside(mask, a, b) if e - c >= run_in + 2 * SR]
+                        valid += [(take, c, e, run_in, False) for c, e in kept]
+                        dropped += not kept
+                    else:
+                        dropped += 1
                 for a, b in gaps:
                     train += [(take, c, e) for c, e in outside(mask, a, b)]
     if missing:
