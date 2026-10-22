@@ -85,8 +85,11 @@ amp behaves like a volume control; for seven the output level hardly moves while
 character changes. A filter network does the same: the Wasp's cutoff + Res GRU-16, fed
 a 110 Hz sine at cutoff 10 V, has its third harmonic at −71 dB at 0.5 V peak, −47 dB at
 2 V, −31 dB at 5 V and −16 dB at 9 V, where it also compresses by 3.6 dB (2026-10-21). So
-there is one drive, in every bank. Noon is unity on the patch.init, not yet the level
-the captures were recorded at: the input's full scale is unmeasured. The peak meter reads
+there is one drive, in every bank. Noon is unity on the patch.init. **Its input reaches full
+scale at about 7.3 V peak** (measured 2026-10-22 through Mirth, MIX down: the dry path's gain
++1.67 dB to 7.0 V, clipping from 7.75 V, the output flat at 8.84 V; `tools/mirth_input_fs.py`),
+against the ES-10's 10.96 V that the FILTERS networks were trained in: at noon they get the
+same voltage 3.5 dB hotter than the real module did. The peak meter reads
 the input *before* the drive. Free for later: Gate In 1 and 2, Gate Out, CV_OUT_1.
 
 ### Mirth Lite — a stock patch.init, no screen
