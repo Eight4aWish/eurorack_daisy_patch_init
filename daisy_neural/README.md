@@ -440,8 +440,10 @@ if it is not an A2 capture (the screen gives the reason: `not A2`, `bad file`, `
 big`), so nothing is imported twice and nothing is deleted. Where two files would get the
 same name (a pack's `…_01_01` and `…_01_02` both become `Ampeg SVT-2`), the second is
 numbered, `Ampeg SVT 2`, instead of overwriting the first, as the desktop tool would.
-Mirth Lite imports the same way, with no screen to say so: look in the two folders. Not
-yet run on the module.
+Mirth Lite imports the same way, with no screen to say so: look in the two folders.
+**Run on the module (David, 2026-10-22, firmware `76eb6b0`):** two copies of a starter
+download and a non-A2 file imported as described, the screens, the numbering of the clash
+and the refusal all as above.
 
 **Filters** (FILTERS bank, in development) are `.grnb` files on the same card: GRU networks
 from `tools/train_gru.py`, written by `tools/gru_export.py` (format in `tools/grnb.py`,
