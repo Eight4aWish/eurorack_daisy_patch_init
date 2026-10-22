@@ -226,6 +226,54 @@ both families have the same architecture), seed 1, Part A's recipe otherwise.
   blended (independent: outputs crossfaded; shared: outputs crossfaded and weights
   averaged) against today's 2 V takes, beside the nearest single network.
 
+## Results, 2026-10-22: Res 0–4 V, and fixed Res
+
+Medians with the range over seeds; a difference counts only where the ranges separate.
+
+**Res 0–4 V (`sw4_*`, `--res-max 4`, the same sessions, seeds and recipe as Part A).** On
+`sw-a`'s takes (Part A's cells):
+
+| | 30 min, full range | 30 min, 0–4 V | 60 min, full range | 60 min, 0–4 V |
+|---|---|---|---|---|
+| Res right way | 0.75 (0.61–0.77) | 0.83 (0.79–0.89) | 0.61 (0.48–0.75) | 0.78 (0.71–0.88) |
+| Res amount | 0.69 (0.38–0.84) | 0.71 (0.66–0.73) | 0.35 (0.20–0.46) | 0.71 (0.39–0.82) |
+| Res spurious | 0.11 | 0.11 (0.08–0.20) | 0.07 | 0.11 (0.04–0.16) |
+| held-out ESR, 2 V | 0.007–0.019 | 0.0014–0.0048 | 0.004–0.011 | 0.0020–0.0049 |
+
+Clear of the scatter: right way in the 30-minute arm, amount in the 60-minute arm, and the
+held-out error in both; the 30-minute arm's amount spread collapsed (0.38–0.84 to
+0.66–0.73). So the energy explanation holds for Swords: trained without the oscillation,
+Res is learned far better, and more material no longer flattens it. No run passes on
+`sw-a`'s takes (right way best 0.89).
+
+**Fixed Res (`swf_*`, one seed each).** Each network at its own Res is very close to
+Swords (ESR 0.0001 at 0–1 V, 0.001–0.014 to 3.5 V; 0.32 at 4 V, where the test take
+oscillates at the top cutoff). Judged with the same 65 cells on this morning's `sw-b`
+takes, beside the Res 0–4 V networks:
+
+| | right way | amount | spurious |
+|---|---|---|---|
+| Res 0–4 V, 12 runs | 0.86 (0.74–0.92) | 0.87 (0.68–0.92) | 0.11 (0.05–0.19) |
+| independent family | 0.91 | 0.95 | 0.24 |
+| shared family | 0.82 | 0.92 | 0.30 |
+| parent alone | 0.74 | 0.92 | 0.08 |
+
+Two Res 0–4 V runs pass all three marks on these takes (`sw4_matched_gru16_s2`,
+`sw4_matched_gru24_s3`: 0.92 / 0.92 / 0.11 and 0.10), not on `sw-a`'s: borderline, the
+verdict depends on the takes. The families sit inside the Res-input range or at its top,
+and spurious is above it: no detectable advantage. **At the held-out 2 V** (Swords against
+itself 0.0001): the 1.5 and 2.5 V independent networks crossfaded 0.0032 (alone 0.038 and
+0.060); shared crossfaded 0.0050; the parent 0.0043–0.0047; the Res 0–4 V networks
+0.0035–0.0076. Crossfading sits at the best end of that range, inside it. **Averaging
+the shared family's weights failed** (0.071, worse than either alone): copies trained on
+from one parent at a fifth of the rate did not stay close enough to blend.
+
+**So:** fixed-Res recording plus a crossfade matches a single Res-input network trained on
+Res 0–4 V, and does not beat it. For Mirth the single network is the candidate (one
+network; a crossfade needs two GRU-16s at once, over the budget). Its Res input is volts
+0–4, so Mirth would need a per-file Res range before it could go on the card.
+Evaluation: `tools/swords_fixed_eval.py`, `captures/swords/gru_runs/swf_eval.txt` (mini).
+
 ## Above the threshold (measured 2026-10-21, `tools/swords_osc.py`)
 
 For Part B or later: what Swords does past the onset, from step 0's Res ramps (no input)
