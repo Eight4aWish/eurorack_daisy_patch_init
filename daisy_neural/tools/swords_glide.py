@@ -98,6 +98,8 @@ def read(args):
     print("take                  free Hz  osc dBV  sine dBV |  up: locked, cents from free   down: locked"
           "        most pull outside the lock, cents")
     for t in s["takes"]:
+        if not (d / "rec" / f"{t['name']}.wav").exists():
+            continue  # not recorded yet
         play, _ = sf.read(d / "play" / f"{t['name']}.wav", dtype="float64", always_2d=True)
         rec, _ = sf.read(d / "rec" / f"{t['name']}.wav", dtype="float64", always_2d=True)
         lag, _ = W.latency(play[:, S.LOOP_OUT], rec[:, S.LOOP], t["burst_at"], W.BURST)
