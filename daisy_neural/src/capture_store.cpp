@@ -117,7 +117,11 @@ bool ReadFilterHeader(const char* path, FilterEntry& entry)
     entry.layer_offset = (uint32_t)(kGrnbHeaderBytes + GrnbPayload(entry.hidden, entry.inputs));
     entry.layer_bytes  = version == 2 ? Rd32(hdr + 52) : 0;
     entry.layer_crc    = version == 2 ? Rd32(hdr + 56) : 0;
-    if(version == 2 && (entry.layer_bytes == 0 || (FSIZE_t)entry.layer_offset + entry.layer_bytes != size))
+    entry.ctl_bytes    = Rd16(hdr + 6);  // the controls section, after everything else
+    entry.ctl_crc      = Rd32(hdr + 60);
+    if(version == 2 && entry.layer_bytes == 0)
+        return false;
+    if((FSIZE_t)entry.layer_offset + entry.layer_bytes + entry.ctl_bytes != size)
         return false;
     uint32_t gain_bits = Rd32(hdr + 12);
     memcpy(&entry.gain, &gain_bits, sizeof(float));
@@ -495,8 +499,8 @@ bool LoadFilterFile(int index, const uint8_t** data, size_t* bytes)
         s_status = "open fail";
         return false;
     }
-    // A version-2 file's layer follows the network; only the header and network come here.
-    const FSIZE_t size = e->layer_bytes ? (FSIZE_t)e->layer_offset : f_size(&s_file);
+    // A layer or controls section may follow the network; only the header and network come here.
+    const FSIZE_t size = (FSIZE_t)e->layer_offset;
     if(size < kGrnbHeaderBytes || size > kBounceBytes)
     {
         f_close(&s_file);
@@ -515,6 +519,41 @@ bool LoadFilterFile(int index, const uint8_t** data, size_t* bytes)
     *bytes   = (size_t)size;
     s_status = "ok";
     return true;
+}
+
+bool LoadFilterControls(int index, FilterControls& c)
+{
+    const FilterEntry* e = GetFilter(index);
+    if(!e || e->ctl_bytes < 16 || e->ctl_bytes > 16 + 12 * kMaxDialPoints)
+        return false;
+    if(f_open(&s_file, e->path, FA_READ) != FR_OK)
+        return false;
+    UINT       got = 0;
+    const bool ok  = f_lseek(&s_file, e->layer_offset + e->layer_bytes) == FR_OK
+                    && f_read(&s_file, s_bounce, e->ctl_bytes, &got) == FR_OK && got == e->ctl_bytes;
+    f_close(&s_file);
+    const uint8_t* p = s_bounce;
+    if(!ok || memcmp(p, "CTRL", 4) != 0 || Rd16(p + 4) != 1 || Crc32(p, e->ctl_bytes) != e->ctl_crc)
+        return false;
+    const int n = Rd16(p + 6);
+    if(n < 1 || n > kMaxDialPoints || e->ctl_bytes != (uint32_t)(16 + 12 * n))
+        return false;
+    auto f32 = [&](size_t o) {
+        float    v;
+        uint32_t b = Rd32(p + o);
+        memcpy(&v, &b, 4);
+        return v;
+    };
+    c.cut_lo = f32(8);
+    c.cut_hi = f32(12);
+    c.points = n;
+    for(int i = 0; i < n; i++)
+    {
+        c.dial[i] = f32(16 + 4 * i);
+        c.res[i]  = f32(16 + 4 * (n + i));
+        c.fb[i]   = f32(16 + 4 * (2 * n + i));
+    }
+    return c.cut_hi != c.cut_lo;
 }
 
 bool LoadFilterLayer(int index, uint8_t* dst, size_t capacity, size_t* bytes)

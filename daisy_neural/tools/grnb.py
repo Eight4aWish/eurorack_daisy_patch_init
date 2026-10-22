@@ -8,7 +8,7 @@ nam/gru_runtime.h, and the two must agree. Little-endian, 64-byte header + paylo
     off  size  field
     0    4     magic 'GRNB'
     4    2     format version: 1, or 2 with a layer section after the payload
-    6    2     reserved (0)
+    6    2     the controls section's size in bytes, 0 for none (2026-10-22)
     8    2     hidden units (multiple of 4, at most 32)
     10   2     inputs (at most 4)
     12   4     output gain (float32)
@@ -18,11 +18,18 @@ nam/gru_runtime.h, and the two must agree. Little-endian, 64-byte header + paylo
     36   16    input scales, float32 each: what each raw input is multiplied by
     52   4     version 2: the layer section's size in bytes (version 1: 0)
     56   4     version 2: CRC32 of the layer section (version 1: 0)
-    60   4     reserved (0)
+    60   4     CRC32 of the controls section (0 for none)
     64   ...   payload, float32, PyTorch's nn.GRU layout: weight_ih (3H x I),
                weight_hh (3H x H), bias_ih (3H), bias_hh (3H), then the dense
                layer's weight (H) and bias (1)
     then       version 2: the layer section (tools/wasp_layer.py, nam/gran_layer.h)
+    then       the controls section, when bytes 6-7 are not 0: how Mirth's knobs drive this
+               network (tools/grnb_controls.py writes it):
+                 'CTRL', version (u16, 1), points N (u16, at most 8),
+                 cut_lo, cut_hi (f32): the network's cutoff volts at the FREQ knob's ends,
+                 dial[N], res[N], feedback[N] (f32): the Res dial (0-11) mapped, piecewise
+                 linear, to the network's Res input and the feedback of its output into
+                 its input (main.cpp ProcessFilter). Without one, Mirth uses the Wasp LP's.
 """
 
 import struct
@@ -74,7 +81,8 @@ def unpack(data, with_layer=False):
     size = 4 * weight_count(hidden, inputs)
     payload = data[HEADER_SIZE:HEADER_SIZE + size]
     lsize, lcrc = struct.unpack_from("<II", data, 52) if version == 2 else (0, 0)
-    layer = data[HEADER_SIZE + size:]
+    (csize,) = struct.unpack_from("<H", data, 6)
+    layer = data[HEADER_SIZE + size:len(data) - csize]
     if len(payload) != size or zlib.crc32(payload) & 0xFFFFFFFF != crc:
         raise ValueError("payload size or CRC mismatch")
     if len(layer) != lsize or (lsize and zlib.crc32(layer) & 0xFFFFFFFF != lcrc):
@@ -83,3 +91,40 @@ def unpack(data, with_layer=False):
     scales = list(struct.unpack_from(f"<{inputs}f", data, 36))
     out = (name, gain, hidden, kinds, scales, list(struct.unpack(f"<{size // 4}f", payload)))
     return out + ((layer or None),) if with_layer else out
+
+
+CTRL_MAGIC = b"CTRL"
+CTRL_MAX_POINTS = 8
+
+
+def pack_controls(cut_lo, cut_hi, dial, res, feedback):
+    """The controls section's bytes (see the docstring)."""
+    n = len(dial)
+    if not 0 < n <= CTRL_MAX_POINTS or len(res) != n or len(feedback) != n or list(dial) != sorted(dial):
+        raise ValueError("controls: 1 to 8 dial points, ascending, with a Res and a feedback each")
+    return (CTRL_MAGIC + struct.pack("<HH", 1, n) + struct.pack("<ff", cut_lo, cut_hi)
+            + struct.pack(f"<{n}f", *dial) + struct.pack(f"<{n}f", *res) + struct.pack(f"<{n}f", *feedback))
+
+
+def with_controls(data, controls):
+    """A .grnb's bytes with its controls section replaced (or removed, controls=None)."""
+    (old,) = struct.unpack_from("<H", data, 6)
+    body = bytearray(data[:len(data) - old] if old else data)
+    c = controls or b""
+    struct.pack_into("<H", body, 6, len(c))
+    struct.pack_into("<I", body, 60, zlib.crc32(c) & 0xFFFFFFFF if c else 0)
+    return bytes(body) + c
+
+
+def unpack_controls(data):
+    """(cut_lo, cut_hi, dial, res, feedback), or None for a file without them."""
+    (csize,) = struct.unpack_from("<H", data, 6)
+    if not csize:
+        return None
+    c = data[len(data) - csize:]
+    if c[:4] != CTRL_MAGIC or zlib.crc32(c) & 0xFFFFFFFF != struct.unpack_from("<I", data, 60)[0]:
+        raise ValueError("controls section magic or CRC mismatch")
+    _, n = struct.unpack_from("<HH", c, 4)
+    lo, hi = struct.unpack_from("<ff", c, 8)
+    vals = struct.unpack_from(f"<{3 * n}f", c, 16)
+    return lo, hi, list(vals[:n]), list(vals[n:2 * n]), list(vals[2 * n:])

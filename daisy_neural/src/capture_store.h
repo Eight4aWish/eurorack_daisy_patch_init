@@ -94,8 +94,21 @@ struct FilterEntry
     int      hidden;
     int      inputs;
     uint32_t layer_bytes;   // version 2: the granular layer's section, after the payload; else 0
-    uint32_t layer_offset;  // where it starts in the file
+    uint32_t layer_offset;  // where it starts in the file (the network's end)
     uint32_t layer_crc;
+    uint32_t ctl_bytes;     // the controls section at the file's end (tools/grnb.py), or 0
+    uint32_t ctl_crc;
+};
+
+/** How Mirth's knobs drive a filter network (tools/grnb.py's controls section): the
+ *  network's cutoff volts at the FREQ knob's ends, and the Res dial (0-11) mapped piecewise
+ *  linearly to its Res input and the feedback of its output into its input. */
+constexpr int kMaxDialPoints = 8;
+struct FilterControls
+{
+    float cut_lo, cut_hi;
+    int   points;
+    float dial[kMaxDialPoints], res[kMaxDialPoints], fb[kMaxDialPoints];
 };
 
 int                FilterCount();
@@ -106,6 +119,10 @@ int                FindFilter(const char* name);
  *  data at it, for gru::Parse() to check (magic, sizes, CRC32) and copy into a network.
  *  The buffer is reused by the next load. Main loop only, with the network silent. */
 bool LoadFilterFile(int index, const uint8_t** data, size_t* bytes);
+
+/** Read a .grnb's controls section into c. False if it has none (the caller keeps its
+ *  default) or it fails its magic, size or CRC32. Main loop only. */
+bool LoadFilterControls(int index, FilterControls& c);
 
 /** Read a version-2 .grnb's layer section (nam/gran_layer.h) into dst, a 32-byte-aligned
  *  SDRAM buffer of at least the entry's layer_bytes, and check its CRC32. False on any

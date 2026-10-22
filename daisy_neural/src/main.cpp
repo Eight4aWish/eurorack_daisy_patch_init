@@ -253,7 +253,7 @@ static volatile int g_blink_request = -1;
 // What the knobs are set to, for the RUN page.
 static volatile float g_mix      = 0.f;
 static volatile float g_drive_db = 0.f;
-static volatile float g_cut      = 0.f;  // FILTERS: volts
+static volatile float g_cut      = 0.f;  // FILTERS: the FREQ position, 0-10
 static volatile float g_res      = 0.f;  // FILTERS: the Res dial
 // FILTERS: the network's cost (and its layer's), CPU cycles per sample: the worst block,
 // easing back over about a second. A layer does a third of a frame's work in some blocks
@@ -444,20 +444,26 @@ static void ApplySteer(float u)
 // network does, at some cutoffs. 10 to 11 is over-Res. A GRU's output is bounded, so the
 // loop cannot run away. A network trained at one Res (no Res input) gets the feedback
 // alone. Measured with tools/notamp_spectra.py and the Res calibration of 2026-10-22.
+//
+// That table is the Wasp LP's. Each filter file may carry its own, with its cutoff range
+// (the controls section, tools/grnb_controls.py; the Wasp HP's cutoff runs -10 to 0 V,
+// Swords' Res is volts 0-4), calibrated against its own module with
+// tools/filter_dial_calibrate.py; a file without one gets the Wasp LP's below.
 static constexpr float kResDial = 11.f;
-static constexpr int   kDialPts = 5;
-static constexpr float kDial[kDialPts] = {0.f, 7.f, 9.f, 10.f, 11.f};
-static constexpr float kNetRes[kDialPts] = {0.f, 7.f, 12.f, 12.f, 12.f};
-static constexpr float kFb[kDialPts] = {0.f, 0.f, 0.f, 0.15f, 0.5f};
+static constexpr captures::FilterControls kLpControls = {
+    0.f, 10.f, 5, {0.f, 7.f, 9.f, 10.f, 11.f}, {0.f, 7.f, 12.f, 12.f, 12.f}, {0.f, 0.f, 0.f, 0.15f, 0.5f}};
+// The loaded filter's: written by the main loop only while the filter is silent (Swap).
+static captures::FilterControls g_ctl = kLpControls;
 
 static float DialMap(const float* table, float dial)
 {
-    if(dial <= kDial[0])
+    const captures::FilterControls& c = g_ctl;
+    if(dial <= c.dial[0])
         return table[0];
-    for(int i = 1; i < kDialPts; i++)
-        if(dial <= kDial[i])
-            return table[i - 1] + (table[i] - table[i - 1]) * (dial - kDial[i - 1]) / (kDial[i] - kDial[i - 1]);
-    return table[kDialPts - 1];
+    for(int i = 1; i < c.points; i++)
+        if(dial <= c.dial[i])
+            return table[i - 1] + (table[i] - table[i - 1]) * (dial - c.dial[i - 1]) / (c.dial[i] - c.dial[i - 1]);
+    return table[c.points - 1];
 }
 
 static void ProcessFilter(float* buf, size_t n, float cut_to, float res_to, bool restart)
@@ -470,8 +476,8 @@ static void ProcessFilter(float* buf, size_t n, float cut_to, float res_to, bool
     if(layer && restart)
         g_layer.Restart();
     res += 0.05f * (res_to - res);
-    const float res_net = DialMap(kNetRes, res);
-    const float fb      = DialMap(kFb, res);
+    const float res_net = DialMap(g_ctl.res, res);
+    const float fb      = DialMap(g_ctl.fb, res);
     const float res_lay = res < 10.f ? res : 10.f;  // the layer follows the Wasp's own marks
     float raw[gru::kMaxInputs];
     for(size_t i = 0; i < n; i++)
@@ -528,11 +534,14 @@ void AudioCallback(AudioHandle::InputBuffer  in,
     const float drive_k = fclamp(k4 + j4, 0.f, 1.f);
     const float drive   = powf(10.f, (drive_k * 2.f - 1.f));
     // FREQ and RES (FILTERS), clamped to the ranges the networks learned.
-    const float cut_to = fclamp(10.f * k2 + 5.f * j2, 0.f, 10.f);
+    // The knob across the filter's own cutoff range, the jack adding its volts; clamped to
+    // the range the network learned.
+    const float lo = g_ctl.cut_lo, hi = g_ctl.cut_hi;
+    const float cut_to = fclamp(lo + (hi - lo) * k2 + 5.f * j2, lo < hi ? lo : hi, lo < hi ? hi : lo);
     const float res_to = kResDial * fclamp(k3 + j3, 0.f, 1.f);  // 0..11: past 10 is over-Res
     g_mix      = mix;
     g_drive_db = 20.f * (drive_k * 2.f - 1.f);
-    g_cut      = cut_to;
+    g_cut      = 10.f * (cut_to - lo) / (hi - lo);  // shown as the knob's 0-10, whatever the volts
     g_res      = res_to;
 
     // --- steer ------------------------------------------------------------
@@ -734,6 +743,10 @@ static bool SwapFilter(int index)
     }
     if(!captures::LoadFilterFile(index, &data, &bytes) || !gru::Parse(data, bytes, g_filter, gain, name))
         return false;
+    // Its controls (after the parse: both reads use the card code's one buffer); the Wasp
+    // LP's when it has none.
+    captures::FilterControls c;
+    g_ctl = captures::LoadFilterControls(index, c) ? c : kLpControls;
     g_na = -1;
     g_proc.End();
     g_filter_gain = gain;
@@ -839,7 +852,7 @@ static void DrawRunPage()
         bool has_res = false;
         for(int i = 0; i < g_filter.inputs; i++)
             has_res |= g_filter.kind[i] == gru::kRes;
-        if(has_res || g_res > kDial[2])  // the dial, to 11; past 9 even FLT1 takes the feedback
+        if(has_res || DialMap(g_ctl.fb, g_res) > 0.f)  // the dial, to 11; with feedback even FLT1
             snprintf(line, sizeof(line), "R%.1f", (double)g_res);
         else
             snprintf(line, sizeof(line), "R6*");  // trained at one Res only
