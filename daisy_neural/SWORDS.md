@@ -161,6 +161,37 @@ against the Wasp's final 0.16) and the early stopping it drives say little about
 judged region; only the control test does. Kept as designed (David): the recipe stays the
 Wasp's. If Res fails, early stopping on the judged region only is the first thing to try.
 
+**Verdict (2026-10-22): Res is not learned, in either arm.** The 60-minute arm ran on the
+Mac mini (same M4, same PyTorch and NumPy), alongside the laptop's 30. No run passes;
+the cutoff is learned in all twelve (right way 0.95–1.00, amount 0.88–1.00, no spurious
+movement).
+
+| Medians (range over 6 runs) | 30 min (matched) | 60 min (all) | Wasp `lp_cr_*` |
+|---|---|---|---|
+| held-out ESR, Res 2 V test take | 0.012 (0.007–0.019) | 0.006 (0.004–0.011) | 0.045 (Res 5) |
+| Res right way (pass 0.9) | 0.75 (0.61–0.77) | 0.61 (0.48–0.75) | 0.72 |
+| Res amount (pass 0.7) | 0.69 (0.38–0.84) | 0.35 (0.20–0.46) | 0.48 |
+| Res spurious (pass 0.15) | 0.11 (0.06–0.22) | 0.07 (0.04–0.24) | 0.11 |
+
+- **Filter against filter:** at the Wasp's amount of material, continuous Res CV gives the
+  same right way as the Wasp's marks set by hand, somewhat more amount. By the design's
+  reading, the Wasp's weak Res was not mainly the recording method: the limit is the
+  training or the network.
+- **More material made the waveform better and Res worse.** Doubling it halved the
+  held-out error but halved the amount, ranges barely overlapping: the networks match
+  Swords' sound more closely while moving less with Res.
+- **The seeds scatter on Res but not on the score trained on** (30 min: validation ESR
+  0.69–0.75, amount 0.38–0.84), and neither ESR predicts which seed gets Res right.
+- **The leading suspect: what training spends its effort on.** Above Res CV 4 V, where
+  Swords oscillates and repeats nothing, is a third of the training time and 75–77% of its
+  energy; the ESR loss is energy-weighted, so Res 0–4 V, the judged region, is a quarter
+  of what training sees, and early stopping watches a validation set that is 94%
+  oscillation. A hypothesis, not shown. Its test: re-weight (each segment scored on its
+  own, or training and early stopping on Res 0–4 V only), same data, same seeds; if it is
+  right, the seeds should agree on Res as well as pass. Not yet designed in detail or run.
+- Still to do for the verdict as written: David hears Res move (listening files per run
+  in `gru_runs/*/listen`).
+
 **Res is learned** if, in the judged region, the GRU-16's control test on Res reaches what
 the Wasp's networks reached on the cutoff: right way 0.9 or more and amount 0.7 or more
 (the Wasp's cutoff: 0.92–0.99 and 0.73–0.95), spurious movement 0.15 or less, and David
