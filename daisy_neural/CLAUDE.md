@@ -6,6 +6,32 @@ LPG rather than the folder, with that module's as-built details taken from the
 `eurorack_electronics` repo. Claude Code loads this file when working in
 `daisy_neural/`. The repo-root `CLAUDE.md` still applies.
 
+## Where Mirth stands, and what is next (David, 2026-10-22)
+
+**Recording for training is finished for this module.** Parked, not to be proposed again
+unless David reopens them: Swords Part B (mode, drive and Response under CV) and a granular
+layer for the Wasp HP (it would need HP repeat takes). The rig's ES-10 jumper can go back to
+AC; captures need it on DC.
+
+On the card (firmware `eceb308`): AMPS, 12 starters and 7 personal (`PERSONAL_CARD.md`,
+private); FILTERS, five GRU-16s each carrying its own controls, with the level match (README,
+"Five filters on the card"). Measurements in hand: SWORDS.md (Part A, Res 0–4 V, fixed Res,
+above the threshold, the glide), this brief (the Wasp, under-Res, HP).
+
+**Next, when picked up again (agreed):**
+1. **The Swords grey-box: a design for David's review first** (the filter's own structure:
+   two integrators, a feedback loop, a learned clip; fitted, not learned from scratch).
+   Targets, all measured: the stable region (`sw-a`, `sw-b`), the oscillation's onset, pitch,
+   level and harmonics (step 0), the locking (`sw-glide`). Either a sixth filter, a Swords that
+   really oscillates and locks, or FLT5's replacement if it matches the GRU below 4 V.
+2. **What the Wasp's wildness is:** the three tests written down in the Wasp section (phase
+   only or the spectrum too, noise or chaos, the warble as beating), on the repeat takes
+   already recorded. Analysis only; it says whether a grey-box could stand in for FLT3's
+   layer.
+3. **Random-weight not-amps:** put `r1_random_seed1_x2` on the card as an AMPS capture
+   (`tools/notamp_ideas.py`; NAM rebuilds the A2-Lite from the Klon's config, so no capture's
+   weights are used), and explore making more (David: "explore creating some more").
+
 ## Goal
 
 Run neural audio networks on Eurorack hardware, in phases:
