@@ -280,7 +280,9 @@ def swords_material(args, train, valid, test):
     if not train:
         raise SystemExit(f"no Swords sweep takes to train on in {args.captures}")
     if band or res_max is not None:
-        leak = [t.label for t, a, b, *_ in train + valid if in_band(t)[a:b].any()]
+        masks = {}  # one per take: there can be thousands of spans
+        leak = [t.label for t, a, b, *_ in train + valid
+                if masks.setdefault(id(t), in_band(t))[a:b].any()]
         assert not leak, f"held-out or excluded Res in training or validation: {leak[:3]}"
         cut = " and ".join(([f"held-out band {band[0]:g}-{band[1]:g} V"] if band else [])
                            + ([f"Res above {res_max:g} V"] if res_max is not None else []))
