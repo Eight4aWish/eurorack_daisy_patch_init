@@ -979,6 +979,23 @@ lower; then HP is trained on 0–7 (`hp07_cr_*`), otherwise on the whole range
 been recorded but never split (empty `gru/` and `nam/`); split on 2026-10-22, all
 aligned.
 
+**Results (2026-10-22; medians with the range over six runs).** LP 0–7: not promising by
+the rule. Over marks 0–7 right way 0.91 (0.73–1.00) → 0.93 (0.48–0.97), amount 0.68
+(0.58–0.74) → 0.65 (0.10–0.84): no detectable difference either way, the changes far
+inside the seed scatter (one 0–7 run failed outright, 0.48 / 0.10). The held-out Res 5
+error did improve beyond it: GRU-16s 0.032–0.045 → 0.029–0.030. So HP trained on the
+whole range (`hp_cr_*`), leaving out `hp-res6-first` (the superseded first recording of
+`hp-res6`, split only for its test take; `--skip-sessions`). **HP learns Res far better
+than LP with the same recipe and scoring** (marks 0, 2, 4, 5, 6, 8, 10): right way 0.91
+(0.83–0.94) against LP's 0.71 (0.57–0.78), ranges separate; amount 0.73 (0.62–0.92)
+against 0.47 (0.25–0.68), barely overlapping; spurious 0.04 against 0.10, overlapping.
+Three of six pass Swords' marks (best `hp_cr_gru16_s3`: 0.91 / 0.92 / 0.10, held-out
+0.032). Its validation error is higher than LP's (0.175–0.216 against 0.143–0.159), so
+the sweeps are harder to match sample by sample while Res is learned better; why is not
+tested. The held-out Res 5 error, 0.025–0.079 against 0.033–0.045, is inside the scatter.
+For Mirth, `hp_cr_gru16_s3` is the HP candidate, once the firmware takes each file's
+control ranges (HP's cutoff runs −10 to 0 V; the dial-to-11 mapping was calibrated on LP).
+
 **Under-Res, measured, and the dial to 11 (2026-10-22).** Pushed past its limits (feedback,
 or Res past 10) FLT2's network oscillates near the Wasp's own ring frequencies (listening
 round `2026-10-22-notamps`, `tools/notamp_spectra.py`), so David asked whether its Res
