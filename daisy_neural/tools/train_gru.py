@@ -193,6 +193,8 @@ def session_material(args, train, valid, test):
         res = s.get("res")
         if s.get("mix") != args.series or res is None or (keep and res not in keep | held):
             continue
+        if any(fnmatch.fnmatch(f.parent.name, p) for p in args.skip_sessions.split(",") if p):
+            continue  # e.g. hp-res6-first, the superseded first recording of hp-res6
         out = res in held
         for t in s["takes"]:
             role = t["role"]
@@ -556,6 +558,8 @@ def main():
                     help="train on the Swords sessions (SWORDS.md): Res per sample, --halves, --holdout-band")
     ap.add_argument("--halves", default="", help="Swords: which halves of the sweep material, e.g. 1 or 1,2")
     ap.add_argument("--holdout-band", default="", help="Swords: Res CV volts lo,hi never trained or validated on")
+    ap.add_argument("--skip-sessions", default="", help="series: session names to leave out (fnmatch patterns, "
+                    "comma separated)")
     ap.add_argument("--res-max", type=float, default=None,
                     help="Swords: Res CV volts above which nothing is trained or validated on")
     ap.add_argument("--sessions", default="", help="Swords: session names to use (fnmatch patterns, comma "

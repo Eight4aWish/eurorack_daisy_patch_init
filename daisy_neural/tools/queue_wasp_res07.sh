@@ -18,17 +18,17 @@ RUNS=captures/wasp/gru_runs
 M07=0,1,2,3,4,5,6,7
 KEEP07=0,1,2,3,4,6,7
 
-# SKIP_LP=1 goes straight to HP, taking the verdict lp07_verdict.txt already holds.
-if [ -z "${SKIP_LP:-}" ]; then
-until grep -q "^finished:" captures/swords/sw4_a.log 2>/dev/null; do sleep 120; done
-echo "Swords Res 0-4 V finished; Wasp LP 0-7 from $(date)"
-
 run() {  # a run name, then train_gru.py's options
     local name=$1
     shift
     mkdir -p "$RUNS/$name"
     $PY tools/train_gru.py --name "$name" --threads 1 --clip 10 --listen "$@" > "$RUNS/$name/log.txt" 2>&1 &
 }
+
+# SKIP_LP=1 goes straight to HP, taking the verdict lp07_verdict.txt already holds.
+if [ -z "${SKIP_LP:-}" ]; then
+until grep -q "^finished:" captures/swords/sw4_a.log 2>/dev/null; do sleep 120; done
+echo "Swords Res 0-4 V finished; Wasp LP 0-7 from $(date)"
 
 $PY tools/train_gru.py --series lp --res $KEEP07 --holdout-res 5 --prepare > "$RUNS/lp07_split.txt" || exit 1
 for h in 16 24; do
@@ -62,11 +62,14 @@ if [[ $verdict == promising* ]]; then
 else
     HPKEEP=""; HPNAME=hp_cr; HPMARKS=0,2,4,5,6,8,10
 fi
+# hp-res6-first is the superseded first recording of hp-res6 (its notes say hp-res6; only
+# its test take was split, for the drift check); LP has no such session.
+HPSKIP="--skip-sessions hp-res6-first"
 echo "HP: $HPNAME from $(date)"
-$PY tools/train_gru.py --series hp $HPKEEP --holdout-res 5 --prepare > "$RUNS/${HPNAME}_split.txt" || exit 1
+$PY tools/train_gru.py --series hp $HPKEEP $HPSKIP --holdout-res 5 --prepare > "$RUNS/${HPNAME}_split.txt" || exit 1
 for h in 16 24; do
     for s in 1 2 3; do
-        run "${HPNAME}_gru${h}_s$s" --series hp $HPKEEP --holdout-res 5 --inputs audio,cv,res --hidden "$h" --seed "$s"
+        run "${HPNAME}_gru${h}_s$s" --series hp $HPKEEP $HPSKIP --holdout-res 5 --inputs audio,cv,res --hidden "$h" --seed "$s"
     done
 done
 wait
