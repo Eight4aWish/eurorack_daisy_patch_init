@@ -20,7 +20,8 @@
  *   CV_1 (+ CV_5 jack)   MIX, dry (0) to wet (1)          MIX
  *   CV_2 (+ CV_6 jack)   STEER (not-amps only)            FREQ: the knob 0..10 V, the jack
  *                                                         adds its volts (like the Wasp's CV 1)
- *   CV_3 (+ CV_7 jack)   -                                RES, 0..10 on the Wasp's dial
+ *   CV_3 (+ CV_7 jack)   -                                RES, the Wasp's dial to 11 (see
+ *                                                         ProcessFilter: lifted from 7, over-Res)
  *   CV_4 (+ CV_8 jack)   DRIVE, -20..+20 dB into the network, unity at noon, every bank
  *   B7 short press       next patch in the bank, wrapping; each bank keeps its own place
  *   B7 held 1.5 s        next bank: AMPS -> NOT-AMPS -> FILTERS (when the card has any)
@@ -428,30 +429,69 @@ static void ApplySteer(float u)
 // filter has one: its output is the network's, 53.7 ms late (the dry side is delayed to
 // match in the mix). restart: the network has not run since the last call (a swap, or
 // another bank playing), so the layer drops what it was holding. Audio callback only.
+//
+// The Res dial goes to 11 (David, 2026-10-22). The Wasp's networks under-learned its
+// resonance from about 7 up, so the dial is mapped, measured against the real Wasp's marks
+// (the resonant band's rise from Res 6 on its test take: 7 +0.7, 8 +2.0, 9 +4.5, 10 +6.4
+// dB; the network unlifted +0.6, +1.1, +1.6, +1.9):
+//   - to 7 as marked; 7 to 9 the network's Res lifted 7 to 12, past which its resonance
+//     falls away instead of rising (+2.5 dB at 12, +1.0 at 16, -1.9 at 18);
+//   - from 9 its own output fed back into its input, 0.15 at 10 and kFb's 0.5 at 11: the
+//     loop gain it under-learned. Mapped, the rise is +0.6, +1.8, +2.5, +4.6 dB at 7 to 10.
+// The feedback makes it ring, then oscillate, first at the highest cutoffs and further
+// down as the dial rises (at 10 from about 4 V, mostly within a tenth of where the Wasp
+// rings up to 8 V, lower than it above). The real Wasp never oscillates: from about 9.5 the
+// network does, at some cutoffs. 10 to 11 is over-Res. A GRU's output is bounded, so the
+// loop cannot run away. A network trained at one Res (no Res input) gets the feedback
+// alone. Measured with tools/notamp_spectra.py and the Res calibration of 2026-10-22.
+static constexpr float kResDial = 11.f;
+static constexpr int   kDialPts = 5;
+static constexpr float kDial[kDialPts] = {0.f, 7.f, 9.f, 10.f, 11.f};
+static constexpr float kNetRes[kDialPts] = {0.f, 7.f, 12.f, 12.f, 12.f};
+static constexpr float kFb[kDialPts] = {0.f, 0.f, 0.f, 0.15f, 0.5f};
+
+static float DialMap(const float* table, float dial)
+{
+    if(dial <= kDial[0])
+        return table[0];
+    for(int i = 1; i < kDialPts; i++)
+        if(dial <= kDial[i])
+            return table[i - 1] + (table[i] - table[i - 1]) * (dial - kDial[i - 1]) / (kDial[i] - kDial[i - 1]);
+    return table[kDialPts - 1];
+}
+
 static void ProcessFilter(float* buf, size_t n, float cut_to, float res_to, bool restart)
 {
-    static float cut = 0.f, res = 0.f;
+    static float cut = 0.f, res = 0.f, prev = 0.f;
     const uint32_t t0 = System::GetTick();
     const bool     layer = g_layer_on;
+    if(restart)
+        prev = 0.f;
     if(layer && restart)
         g_layer.Restart();
     res += 0.05f * (res_to - res);
+    const float res_net = DialMap(kNetRes, res);
+    const float fb      = DialMap(kFb, res);
+    const float res_lay = res < 10.f ? res : 10.f;  // the layer follows the Wasp's own marks
     float raw[gru::kMaxInputs];
     for(size_t i = 0; i < n; i++)
     {
         const float c = cut + (cut_to - cut) * (float)(i + 1) / (float)n;
+        const float a = buf[i] + fb * prev;
         for(int k = 0; k < g_filter.inputs; k++)
-            raw[k] = g_filter.kind[k] == gru::kAudio ? buf[i] : (g_filter.kind[k] == gru::kCv ? c : res);
-        float y = gru::Step(g_filter, g_filter_state, raw) * g_filter_gain;
-        if(!std::isfinite(y))
+            raw[k] = g_filter.kind[k] == gru::kAudio ? a : (g_filter.kind[k] == gru::kCv ? c : res_net);
+        float s = gru::Step(g_filter, g_filter_state, raw);
+        if(!std::isfinite(s))
         {
-            y = 0.f;
+            s = 0.f;
             g_filter_state.Reset();
         }
+        prev        = s;  // fed back before the file's output gain, as on the desktop
+        const float y = s * g_filter_gain;
         buf[i] = layer ? g_layer.Process(y) : y;
     }
     if(layer)
-        g_layer.Advance(g_layer_def, cut_to, res);
+        g_layer.Advance(g_layer_def, cut_to, res_lay);
     cut = cut_to;
     // The cost, measured around it rather than estimated: the worst block, easing back.
     const float cycles = (float)(System::GetTick() - t0) * (480e6f / (float)System::GetTickFreq()) / (float)n;
@@ -489,7 +529,7 @@ void AudioCallback(AudioHandle::InputBuffer  in,
     const float drive   = powf(10.f, (drive_k * 2.f - 1.f));
     // FREQ and RES (FILTERS), clamped to the ranges the networks learned.
     const float cut_to = fclamp(10.f * k2 + 5.f * j2, 0.f, 10.f);
-    const float res_to = 10.f * fclamp(k3 + j3, 0.f, 1.f);
+    const float res_to = kResDial * fclamp(k3 + j3, 0.f, 1.f);  // 0..11: past 10 is over-Res
     g_mix      = mix;
     g_drive_db = 20.f * (drive_k * 2.f - 1.f);
     g_cut      = cut_to;
@@ -799,7 +839,7 @@ static void DrawRunPage()
         bool has_res = false;
         for(int i = 0; i < g_filter.inputs; i++)
             has_res |= g_filter.kind[i] == gru::kRes;
-        if(has_res)
+        if(has_res || g_res > kDial[2])  // the dial, to 11; past 9 even FLT1 takes the feedback
             snprintf(line, sizeof(line), "R%.1f", (double)g_res);
         else
             snprintf(line, sizeof(line), "R6*");  // trained at one Res only

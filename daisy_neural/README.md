@@ -58,11 +58,23 @@ jack under it; the four knobs sit two by two, 1 and 2 on top.
 |---|---|---|---|
 | **CV_1** (+ CV_5 jack) | **MIX**, dry (0) to wet (1) | **MIX** | **MIX** |
 | **CV_2** (+ CV_6 jack) | — | **STEER**, the not-amp's one control | **FREQ**: the knob 0–10 V, the jack adds its volts, like the Wasp's CV 1 |
-| **CV_3** (+ CV_7 jack) | — | — | **RES**, 0–10 on the Wasp's dial |
+| **CV_3** (+ CV_7 jack) | — | — | **RES**, the Wasp's dial, to **11**: lifted from 7, over-Res past 10 (below) |
 | **CV_4** (+ CV_8 jack) | **DRIVE** into the network, −20…+20 dB, unity at noon | **DRIVE** | **DRIVE** |
 | **B7** short press | next patch in the bank, wrapping round | | |
 | **B7** held 1.5 s | next bank: AMPS → NOT-AMPS → FILTERS (skipped on a card with none) | | |
 | **CV_OUT_2** LED | lit | | |
+
+**Res goes to 11** (David, 2026-10-22). The Wasp's networks learned its resonance too weakly
+from about 7 up: on the Wasp's test take its resonant band rises +0.7, +2.0, +4.5, +6.4 dB
+from Res 6 to Res 7, 8, 9, 10; the network's at the same Res +0.6, +1.1, +1.6, +1.9. So up to
+7 the dial is as marked; from 7 to 9 the network's Res is lifted to 12 (beyond that its
+resonance falls instead of rising); from 9 its own output is fed back into its input, 0.15
+at 10 and 0.5 at 11. Mapped, the rise is +0.6, +1.8, +2.5, +4.6 dB. The feedback makes it
+ring, then oscillate, first at the highest cutoffs and lower as the dial rises; at 10 from
+about cutoff 4 V, within a tenth of where the Wasp itself rings up to 8 V, lower above. The
+real Wasp never quite oscillates; the network does from about 9.5 at some cutoffs, and 10
+to 11 is over-Res. FLT1, trained at one Res, gets the feedback alone from 9. The granular
+layer on FLT3 follows the dial itself.
 
 Each bank keeps its own place, so going round the banks comes back to the patch you
 left. Choosing a patch by CV, which the v1.0.0 slot knob allowed, has gone.
