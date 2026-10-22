@@ -43,6 +43,7 @@ before recording (right way 0.9, amount 0.7, spurious 0.15) is printed beside ea
 
 import argparse
 import copy
+import fnmatch
 import json
 import pathlib
 import sys
@@ -132,10 +133,15 @@ def measure_swords(run, captures, ref_res):
     model, inputs, out, scale = load_model(run)
     if "res" not in inputs:
         return None
+    # The session the run trained on (its --sessions), so other sessions on the card's drive
+    # (the fixed-Res sw-b-*, 2026-10-22) do not get in the way. Runs from before --sessions
+    # existed trained on everything there, which was sw-a alone.
+    pick = [p for p in json.loads((run / "config.json").read_text()).get("sessions", "").split(",") if p] or ["sw-a"]
     sess = [f.parent for f in sorted(captures.glob("*/session.json"))
-            if json.loads(f.read_text()).get("module") == "swords"]
+            if json.loads(f.read_text()).get("module") == "swords"
+            and any(fnmatch.fnmatch(f.parent.name, p) for p in pick)]
     if len(sess) != 1:
-        raise SystemExit(f"expected one Swords session in {captures}, found {len(sess)}")
+        raise SystemExit(f"expected one Swords session matching {pick} in {captures}, found {len(sess)}")
     d = sess[0]
     s = json.loads((d / "session.json").read_text())
     region = json.loads((d / "region.json").read_text())
