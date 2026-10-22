@@ -8,13 +8,15 @@ the same method made general, for the Wasp HP and Swords.
 
 The resonance band: at each cutoff hold of the module's test take, the band (control
 test bands) where the module's own level rises most from the reference Res to its top
-repeatable Res. Its rise at each Res, averaged over the holds, is what the network must
+repeatable Res, among the bands within 15 dB of that hold's loudest (bands far below a
+filter's passband are nearly empty, and their levels swing most). Its rise at each Res, averaged over the holds, is what the network must
 match; the network runs on the reference take's input (the same riff in every session).
 
     .venv-nam/bin/python tools/filter_dial_calibrate.py hp     # Wasp HP, hp_cr_gru16_s3
     .venv-nam/bin/python tools/filter_dial_calibrate.py swords # Swords, sw4_all_gru16_s3
 """
 
+import copy
 import json
 import pathlib
 import sys
@@ -39,7 +41,7 @@ def load(run):
     with torch.no_grad():
         for n in ("weight_ih", "weight_hh", "bias_ih", "bias_hh"):
             getattr(cell, n).copy_(getattr(model.rnn, f"{n}_l0").double())
-    return model, cell, model.dense.double(), scale
+    return model, cell, copy.deepcopy(model.dense).double(), scale  # a copy: .double() is in place
 
 
 def run(net, x, cv, res, fb=0.0):
@@ -92,8 +94,15 @@ def main():
     s = setup(which)
     lev = {r: C.band_levels_at(y, s["holds"]) for r, y in s["y"].items()}
     r0, top = s["r0"], s["top"]
-    band = {v: int(np.argmax(lev[top][v] - lev[r0][v])) for v in s["holds"]}
-    print(f"{which}: resonance band per hold", {v: C.BANDS[b] for v, b in band.items()})
+    def pick(v):
+        rise_v = lev[top][v] - lev[r0][v]
+        loud = lev[top][v] >= lev[top][v].max() - 15.0
+        return int(np.argmax(np.where(loud, rise_v, -np.inf)))
+    band = {v: pick(v) for v in s["holds"]}
+    print(f"{which}: resonance band per hold", {round(v, 1): C.BANDS[b] for v, b in band.items()})
+    if which == "swords":  # its natural frequency (step 0), the band that should hold it
+        nat = {round(v, 1): round(168.9 * 2 ** (0.972 * (v - 4))) for v in s["holds"]}
+        print("  Swords' natural frequency at each hold, Hz:", nat)
     rise = lambda L, base: float(np.mean([L[v][band[v]] - base[v][band[v]] for v in s["holds"]]))  # noqa: E731
     mod = {r: rise(lev[r], lev[r0]) for r in s["marks"]}
     net0 = C.band_levels_at(run(s["net"], s["x"], s["cv"], r0), s["holds"])
