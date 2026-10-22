@@ -19,11 +19,18 @@ private); FILTERS, five GRU-16s each carrying its own controls, with the level m
 above the threshold, the glide), this brief (the Wasp, under-Res, HP).
 
 **Next, when picked up again (agreed):**
-1. **The Swords grey-box: a design for David's review first** (the filter's own structure:
-   two integrators, a feedback loop, a learned clip; fitted, not learned from scratch).
-   Targets, all measured: the stable region (`sw-a`, `sw-b`), the oscillation's onset, pitch,
-   level and harmonics (step 0), the locking (`sw-glide`). Either a sixth filter, a Swords that
-   really oscillates and locks, or FLT5's replacement if it matches the GRU below 4 V.
+1. **FLT6, a Swords that oscillates: a design for David's review first.** David's shape: an
+   extra filter built like FLT3, **the capture plus a layer, not a full circuit model**: FLT5's
+   GRU (Res 0–4 V) with an oscillator layer added above the onset, built from the
+   measurements. Its parts, all measured: where it starts and stops (step 0: Res CV 4.2–5.4 V,
+   lower at higher cutoffs, with hysteresis); its pitch (about 1.33 times the Res-0 cutoff,
+   0.97 octave per volt); its level (about 2 V peak at the onset to 7 V); its harmonics (near
+   pure at the onset, odd ones growing: H3 −29, H5 −38 dB at Res CV 8 V); and how it meets the
+   input (`sw-glide`: locks within a range that widens with the input's level, about ±20
+   cents at 0.2 V, ±150 at 1 V, −6 to +5 semitones at 3 V, the same in cents at every cutoff,
+   no hysteresis; pulled 16–39 cents outside it). A phase oscillator pulled by the input's
+   component near its pitch is the obvious core. The dial's 10–11 brings it in. Judged against
+   the 4.5 and 5.5 V test takes and the glide takes.
 2. **What the Wasp's wildness is:** the three tests written down in the Wasp section (phase
    only or the spectrum too, noise or chaos, the warble as beating), on the repeat takes
    already recorded. Analysis only; it says whether a grey-box could stand in for FLT3's
