@@ -129,7 +129,8 @@ def main():
     if which == "swords":
         # Where the feedback makes it oscillate, against Swords' own self-oscillation: pitch
         # 168.9 Hz at V/OCT +4 V rising 0.972 octave per volt (step 0), from Res CV 4.2-5.4 V.
-        from notamp_spectra import peak as tone
+        from swords_glide import peak_hz  # notamp_spectra runs its own demo on import
+        tone = lambda seg, lo: peak_hz(seg, lo, 20000)  # noqa: E731
         xp = phrase(); n = len(xp)
         cut = np.linspace(2.5, 10.5, n)
         for fb in (0.1, 0.2, 0.3, 0.5):
