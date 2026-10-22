@@ -550,6 +550,22 @@ def main():
     p = sub.add_parser("region", help="step 1: where Swords repeats itself, per hold and Res")
     p.add_argument("path")
     p.set_defaults(fn=region)
+
+    import swords_glide as G  # noqa: E402  (it imports this module)
+    p = mk.add_parser("glide", help="a sine gliding through the self-oscillation, at several levels")
+    p.add_argument("--name", default="sw-glide")
+    p.add_argument("--cuts", default="4,6,8", help="V/OCT volts")
+    p.add_argument("--levels", default="0.2,1,3", help="the sine's peak volts")
+    p.add_argument("--res", type=float, default=5.5, help="Res CV volts, past the onset at every cutoff")
+    p.add_argument("--glide-s", type=float, default=30.0, help="seconds each way")
+    p.add_argument("--panel", default="Mode LP (CCW), Drive 11 o'clock, Response CCW, Res knob CCW, "
+                   "Res att CW, Freq knob CCW, Freq att noon, Shift off, Routing CCW")
+    p.add_argument("--overwrite", action="store_true")
+    p.set_defaults(fn=G.make)
+
+    p = sub.add_parser("glide", help="read a glide session: lock and pull, per take (swords_glide.py)")
+    p.add_argument("path")
+    p.set_defaults(fn=G.read)
     args = ap.parse_args()
     args.fn(args)
 
