@@ -76,6 +76,26 @@ real Wasp never quite oscillates; the network does from about 9.5 at some cutoff
 to 11 is over-Res. FLT1, trained at one Res, gets the feedback alone from 9. The granular
 layer on FLT3 follows the dial itself.
 
+**Five filters on the card (2026-10-22), each file carrying its own controls** (a section at
+the end of the `.grnb`, set with `tools/grnb_controls.py`: the network's cutoff volts at the
+FREQ knob's ends, and its Res dial table, calibrated against its own module with
+`tools/filter_dial_calibrate.py`; a file without one gets the Wasp LP's):
+
+| | Network | FREQ knob | Res dial |
+|---|---|---|---|
+| FLT1 | Wasp LP, cutoff only, Res 6 | 0–10 V | feedback alone from 9 (0.15 at 10, 0.5 at 11) |
+| FLT2 | Wasp LP, cutoff + Res | 0–10 V | lifted 7 → 12 by 9, feedback 0.15 at 10, 0.5 at 11 |
+| FLT3 | FLT2 + the granular layer | 0–10 V | as FLT2; the layer follows the dial itself |
+| FLT4 | Wasp HP, cutoff + Res (`hp_cr_gru16_s3`) | −10 to 0 V | as marked to 8, lifted to 11.5 by 10; feedback 0.3 at 11 (its resonance shrinks with feedback, so it only whistles at the top cutoffs) |
+| FLT5 | Swords, cutoff + Res 0–4 V (`sw4_all_gru16_s3`) | V/OCT 2.5–10.5 V | 0–10 → Res CV 0–4 V, no lift needed; feedback 0.2 at 11 (it oscillates only at the lowest and highest cutoffs; Swords' own oscillation is for the grey-box) |
+
+All GRU-16. **Level match:** every file's audio input is scaled by 0.666 and its output by
+1.353 (the patch.init's 7.30 V input and 8.85 V output against the ES-10's 10.96 and 11.97 V
+the networks were trained in), so DRIVE at noon puts volts in and gets volts out as the
+module did; turn DRIVE up 3.5 dB for the level the filters played at before. The feedback is
+added in the network's own units, after that scale. The FREQ line shows the knob's 0–10
+whatever the volts. Firmware `eceb308`.
+
 Each bank keeps its own place, so going round the banks comes back to the patch you
 left. Choosing a patch by CV, which the v1.0.0 slot knob allowed, has gone.
 
