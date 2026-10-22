@@ -62,6 +62,7 @@
 #include "oled_soft_i2c.h"
 #endif
 #include "capture_store.h"
+#include "nam_import.h"
 #include "notamps.h"
 #include <cmath>
 #include <cstdio>
@@ -867,6 +868,50 @@ static void RenderLed(uint32_t now)
 #endif
 
 // ================================================================
+// .nam import at boot (captures::ImportNam, nam_import.h)
+// ================================================================
+// A .nam converted at boot is levelled as tools/level_captures.py levels it: the
+// not-amps' phrase through the engine itself, A-weighted. The engine is free then, before
+// audio starts; main() reloads the fallback afterwards. The phrase (768 KB) is made on
+// the first import only.
+alignas(32) static float DSY_SDRAM_BSS g_phrase[nam_import::kPhraseLen];
+static double DSY_SDRAM_BSS            g_phrase_table[nam_import::kTableLen];
+
+static float LevelCapture(const float* weights)
+{
+    static bool made = false;
+    if(!made)
+    {
+        nam_import::MakePhrase(g_phrase, g_phrase_table);
+        made = true;
+    }
+    if(!engine.Load(weights, nam_a2_daisy::kA2WeightCount, 1.f, "LEVEL"))
+        return NAN;
+    nam_import::ALevel level;
+    alignas(32) float  out[kA2BlockSize];
+    for(size_t i = 0; i < nam_import::kPhraseLen; i += kA2BlockSize)
+    {
+        engine.ProcessBlock(g_phrase + i, out, kA2BlockSize);
+        level.Add(out, kA2BlockSize);
+    }
+    return (float)level.Db();
+}
+
+#if !MIRTH_LITE
+static void ImportProgress(int done, int total, const char* file)
+{
+    char line[24];
+    display.Clear();
+    display.DrawStringCentered(4, "IMPORT", false);
+    snprintf(line, sizeof(line), "%d/%d", done < total ? done + 1 : total, total);
+    display.DrawStringCentered(18, line, false);
+    snprintf(line, sizeof(line), "%.10s", file);  // the file's name, as far as it fits
+    display.DrawStringCentered(32, line, false);
+    display.Update();
+}
+#endif
+
+// ================================================================
 // main
 // ================================================================
 int main(void)
@@ -884,11 +929,45 @@ int main(void)
     g_layer.Init();  // its FFT tables, once
     g_layer.Reset(1);
 
+#if !MIRTH_LITE
+    display.Init(patch.A2, patch.A3);  // first, for the import's progress
+    constexpr captures::ProgressFn kProgress = ImportProgress;
+#else
+    constexpr captures::ProgressFn kProgress = nullptr;
+#endif
+
     // Card before audio starts, so the first capture is in place by the time
     // anything is heard. A missing or unreadable card is not fatal: the
     // compiled-in fallback is already loaded and captures::Status() says why.
-    // Both start on the first amp; Lite blinks it.
-    captures::Init();
+    // Any .nam on the card is imported first, using the engine to level it, so
+    // the fallback is reloaded after. Both start on the first amp; Lite blinks it.
+    captures::ImportResult imported;
+    captures::Init(LevelCapture, kProgress, &imported);
+    if(imported.added + imported.refused > 0)
+        engine.InitFallback(sr);
+#if !MIRTH_LITE
+    if(imported.added + imported.refused > 0)
+    {
+        // What the import did, for long enough to read: how many added and refused,
+        // and the last refusal's file and reason. The .nam files are in nam_done/ and
+        // nam_refused/ on the card.
+        char line[24];
+        display.Clear();
+        snprintf(line, sizeof(line), "NAM +%d", imported.added);
+        display.DrawStringCentered(4, line, false);
+        if(imported.refused > 0)
+        {
+            snprintf(line, sizeof(line), "REFUSED %d", imported.refused);
+            display.DrawStringCentered(16, line, false);
+            snprintf(line, sizeof(line), "%.10s", imported.last_refused);
+            display.DrawStringCentered(28, line, false);
+            snprintf(line, sizeof(line), "%.10s", imported.last_why);
+            display.DrawStringCentered(40, line, false);
+        }
+        display.Update();
+        System::Delay(imported.refused > 0 ? 4000 : 1500);
+    }
+#endif
     if(captures::Count() > 0)
     {
         Select(g_bank);
@@ -900,7 +979,6 @@ int main(void)
 #endif
 
 #if !MIRTH_LITE
-    display.Init(patch.A2, patch.A3);
     display.Clear();
     display.DrawStringCentered(4, "MIRTH", false);
     display.DrawStringCentered(40, MIRTH_BUILD, false);  // the git commit this was built from

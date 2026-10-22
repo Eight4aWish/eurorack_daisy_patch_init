@@ -51,7 +51,8 @@ ifeq ($(GRU_TEST),1)
 CPP_SOURCES = src/gru_test.cpp $(_P_UP1)/common/oled_soft_i2c.cpp
 else
 CPP_SOURCES = src/main.cpp \
-              src/capture_store.cpp
+              src/capture_store.cpp \
+              src/nam_import.cpp
 ifeq ($(LITE),1)
 C_DEFS += -DMIRTH_LITE=1
 else

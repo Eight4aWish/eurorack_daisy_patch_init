@@ -1,6 +1,8 @@
 #include "capture_store.h"
 
 #include "fatfs.h"
+#include "nam_import.h"
+#include <cmath>
 #include <cstring>
 
 using namespace daisy;
@@ -179,7 +181,145 @@ int Find(const char* name)
     return -1;
 }
 
-bool Init()
+// ---------------------------------------------------------------------------
+// .nam import (nam_import.h)
+// ---------------------------------------------------------------------------
+namespace
+{
+constexpr int    kMaxNam   = 32;
+constexpr size_t kNamPath  = 300;       // FatFS long names run to 255
+constexpr size_t kNamBytes = 2u << 20;  // a downloaded A2 .nam is about 300 KB
+char DSY_SDRAM_BSS              s_nam_list[kMaxNam][256];
+alignas(32) char DSY_SDRAM_BSS  s_nam_text[kNamBytes];
+float DSY_SDRAM_BSS             s_nam_weights[nam_import::kWeights];
+
+bool Exists(const char* path)
+{
+    FILINFO info;
+    return f_stat(path, &info) == FR_OK;
+}
+
+// Move a .nam out of the root into folder/, numbering it if a file of that name is
+// already there. Nothing is deleted.
+void Retire(const char* name, const char* folder)
+{
+    char from[kNamPath], to[kNamPath];
+    snprintf(from, sizeof(from), "%s%s", s_fsi.GetSDPath(), name);
+    snprintf(to, sizeof(to), "%s%s/%s", s_fsi.GetSDPath(), folder, name);
+    for(int k = 2; Exists(to) && k < 100; k++)
+        snprintf(to, sizeof(to), "%s%s/%d_%s", s_fsi.GetSDPath(), folder, k, name);
+    f_rename(from, to);
+}
+
+void Refuse(ImportResult& r, const char* name, const char* why)
+{
+    r.refused++;
+    snprintf(r.last_refused, sizeof(r.last_refused), "%s", name);
+    r.last_why = why;
+    Retire(name, "nam_refused");
+}
+} // namespace
+
+ImportResult ImportNam(LevelFn level, ProgressFn progress)
+{
+    ImportResult r;
+    // List first: the root changes as files are written and moved.
+    int     n = 0;
+    DIR     dir;
+    FILINFO info;
+    if(f_opendir(&dir, s_fsi.GetSDPath()) != FR_OK)
+        return r;
+    while(n < kMaxNam && f_readdir(&dir, &info) == FR_OK && info.fname[0] != 0)
+        if(!(info.fattrib & AM_DIR) && EndsWith(info.fname, ".nam") && info.fname[0] != '.')
+            snprintf(s_nam_list[n++], sizeof(s_nam_list[0]), "%s", info.fname);
+    f_closedir(&dir);
+    if(n == 0)
+        return r;
+    char folder[kNamPath];
+    for(const char* sub : {"nam_done", "nam_refused"})
+    {
+        snprintf(folder, sizeof(folder), "%s%s", s_fsi.GetSDPath(), sub);
+        f_mkdir(folder);  // FR_EXIST when it is already there
+    }
+
+    for(int i = 0; i < n; i++)
+    {
+        const char* name = s_nam_list[i];
+        if(progress)
+            progress(i, n, name);
+        char path[kNamPath];
+        snprintf(path, sizeof(path), "%s%s", s_fsi.GetSDPath(), name);
+        if(f_open(&s_file, path, FA_READ) != FR_OK)
+        {
+            Refuse(r, name, "open fail");
+            continue;
+        }
+        const FSIZE_t size = f_size(&s_file);
+        UINT          got  = 0;
+        const bool    fits = size < kNamBytes;
+        const FRESULT rr   = fits ? f_read(&s_file, s_nam_text, (UINT)size, &got) : FR_OK;
+        f_close(&s_file);
+        if(!fits || rr != FR_OK || got != size)
+        {
+            Refuse(r, name, fits ? "read fail" : "too big");
+            continue;
+        }
+        s_nam_text[got] = '\0';
+
+        size_t      count = 0;
+        const char* why   = "";
+        if(!nam_import::ExtractLite(s_nam_text, got, s_nam_weights, nam_import::kWeights, &count, &why))
+        {
+            Refuse(r, name, why);
+            continue;
+        }
+
+        // The name nam_to_a2nb.py would give it, numbered if that is taken.
+        char shown[nam_import::kNameLen], file[64], out[kNamPath];
+        nam_import::DefaultName(name, shown);
+        nam_import::FileName(shown, file, sizeof(file));
+        snprintf(out, sizeof(out), "%s%s", s_fsi.GetSDPath(), file);
+        for(int k = 2; Exists(out) && k < 100; k++)
+        {
+            char base[nam_import::kNameLen];
+            snprintf(base, sizeof(base), "%.*s", k < 10 ? 9 : 8, shown);  // room for " 2" or " 12"
+            for(size_t e = strlen(base); e > 0 && base[e - 1] == ' ';)
+                base[--e] = '\0';
+            snprintf(shown, sizeof(shown), "%s %d", base, k);
+            nam_import::FileName(shown, file, sizeof(file));
+            snprintf(out, sizeof(out), "%s%s", s_fsi.GetSDPath(), file);
+        }
+
+        const float db = level(s_nam_weights);
+        if(!std::isfinite(db))
+        {
+            Refuse(r, name, "no level");
+            continue;
+        }
+        nam_import::Pack(shown, nam_import::GainFor(db), s_nam_weights, s_bounce);
+        UINT wrote = 0;
+        if(f_open(&s_file, out, FA_WRITE | FA_CREATE_NEW) != FR_OK)
+        {
+            Refuse(r, name, "write fail");
+            continue;
+        }
+        const FRESULT wr = f_write(&s_file, s_bounce, (UINT)nam_import::kFileBytes, &wrote);
+        const FRESULT cr = f_close(&s_file);
+        if(wr != FR_OK || cr != FR_OK || wrote != nam_import::kFileBytes)
+        {
+            f_unlink(out);  // our own half-written file, never the user's
+            Refuse(r, name, "write fail");
+            continue;
+        }
+        Retire(name, "nam_done");
+        r.added++;
+    }
+    if(progress)
+        progress(n, n, "");
+    return r;
+}
+
+bool Init(LevelFn level, ProgressFn progress, ImportResult* imported)
 {
     s_count    = 0;
     s_nfilters = 0;
@@ -250,6 +390,14 @@ bool Init()
     {
         s_status = Fail("mount", (int)mr);
         return false;
+    }
+
+    if(level)
+    {
+        s_status = "import";
+        const ImportResult r = ImportNam(level, progress);
+        if(imported)
+            *imported = r;
     }
 
     s_status = "scan";

@@ -38,9 +38,31 @@ struct Entry
     int   weight_count;
 };
 
-/** Mount the card and scan for captures. Safe to call when no card is present;
- *  returns false and Status() says how far it got. */
-bool Init();
+/** A capture's A-weighted level in dB at gain 1 on nam_import's phrase, run through the
+ *  engine (main.cpp), and the display's progress line; both for ImportNam. */
+using LevelFn    = float (*)(const float* weights);
+using ProgressFn = void (*)(int done, int total, const char* file);
+
+struct ImportResult
+{
+    int         added   = 0;
+    int         refused = 0;
+    char        last_refused[kNameLen + 1] = "";  // the start of its file name
+    const char* last_why                   = "";
+};
+
+/** Mount the card, import any .nam files on it (when level is given: see ImportNam) and
+ *  scan for captures. Safe to call when no card is present; returns false and Status()
+ *  says how far it got. */
+bool Init(LevelFn level = nullptr, ProgressFn progress = nullptr, ImportResult* imported = nullptr);
+
+/** Every .nam in the card's root becomes an .a2nb beside it, as nam_to_a2nb.py and
+ *  level_captures.py would have written it (nam_import.h), so a TONE3000 download can go
+ *  straight onto the card. The .nam then moves into nam_done/, or into nam_refused/ if it
+ *  is not an A2 capture, so each is imported once; nothing is deleted. A name already
+ *  taken gets a number ("Ampeg SVT 2") instead of overwriting. Called by Init between the
+ *  mount and the scan; slow (a few seconds a file, mostly the levelling). */
+ImportResult ImportNam(LevelFn level, ProgressFn progress);
 
 int          Count();
 const Entry* Get(int index);

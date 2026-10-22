@@ -428,6 +428,21 @@ card. Each is 7,516 bytes.
 
 Captures you convert yourself (`tools/nam_to_a2nb.py`, above) go on the same card.
 
+**Or copy the `.nam` itself (in development, after v1.0.0).** At boot Mirth imports any
+`.nam` in the card's root: it takes the A2-Lite weights, names the capture from the file
+name and levels it with the not-amps' test phrase run through its own engine, then writes
+the `.a2nb` beside it, the same file `nam_to_a2nb.py` and `level_captures.py` would have
+written: byte for byte, gain included, on the twelve starter downloads and four awkward
+names (`tools/nam_import_check.cpp`, `src/nam_import.*`). About three seconds a file, at
+the first boot after they are copied; the screen shows `IMPORT 2/5` and the file, then how
+many were added and refused. Each `.nam` then moves into `nam_done/`, or `nam_refused/`
+if it is not an A2 capture (the screen gives the reason: `not A2`, `bad file`, `too
+big`), so nothing is imported twice and nothing is deleted. Where two files would get the
+same name (a pack's `…_01_01` and `…_01_02` both become `Ampeg SVT-2`), the second is
+numbered, `Ampeg SVT 2`, instead of overwriting the first, as the desktop tool would.
+Mirth Lite imports the same way, with no screen to say so: look in the two folders. Not
+yet run on the module.
+
 **Filters** (FILTERS bank, in development) are `.grnb` files on the same card: GRU networks
 from `tools/train_gru.py`, written by `tools/gru_export.py` (format in `tools/grnb.py`,
 engine in `nam/gru_runtime.h`, checked against PyTorch by `tools/gru_check.py`). Up to 16,
