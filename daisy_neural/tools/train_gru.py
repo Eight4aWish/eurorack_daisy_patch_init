@@ -600,6 +600,7 @@ def main():
     ap.add_argument("--steps-per-epoch", type=int, default=20, help="batches per epoch")
     ap.add_argument("--epochs", type=int, default=300)
     ap.add_argument("--lr", type=float, default=5e-3)
+    ap.add_argument("--init-from", default="", help="a run folder whose best.pt is the starting network")
     ap.add_argument("--clip", type=float, default=0, help="largest gradient norm per step (0: no limit)")
     ap.add_argument("--patience", type=int, default=30,
                     help="epochs without improvement before stopping (0: run every epoch)")
@@ -660,6 +661,11 @@ def main():
     else:
         model = RNNModel(len(inputs), args.hidden, args.cell, args.layers, args.z_bias).to(device)
         what = f"{args.cell.upper()}-{args.hidden} x{args.layers}"
+    if args.init_from:
+        # Start from another run's network (same architecture and inputs), e.g. a shared
+        # parent fine-tuned per Res so that neighbours stay close enough to blend.
+        model.load_state_dict(torch.load(pathlib.Path(args.init_from) / "best.pt", map_location=device))
+        what += f", from {pathlib.Path(args.init_from).name}"
     n_params = sum(p.numel() for p in model.parameters())
     scale = target_scale(train, args.output, args.target_dbfs) if args.target_dbfs is not None else 1.0
     (run / "norm.json").write_text(json.dumps({"target_scale": scale}) + "\n")

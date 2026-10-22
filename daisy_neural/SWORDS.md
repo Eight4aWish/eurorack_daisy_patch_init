@@ -198,6 +198,34 @@ the Wasp's networks reached on the cutoff: right way 0.9 or more and amount 0.7 
 hears Res move. For comparison, the Wasp's Res, medians of `lp_cr_*`: right way 0.72,
 amount 0.48, spurious 0.11.
 
+## Fixed Res (recorded and queued 2026-10-22)
+
+David's idea after the verdict: train at each Res and morph between them, the Wasp's
+per-mark method plus a blend.
+
+**Recorded** (`sw-b-*`, 04:45–05:46 after a 30-minute warm-up, panel and riff as `sw-a`):
+eight sessions at fixed Res CV 0, 0.5, 1, 1.5, 2.5, 3, 3.5 and 4 V, each 6 minutes of
+sweeps from its own seed (5.1 minutes to train on after validation) and one test take at
+its Res, in a mixed order (0, 2.5, 1, 4, 3.5, 0.5, 3, 1.5) so drift cannot line up with
+Res. Res 2 V only as three 1-minute test takes, at the start, middle and end. All 27 takes
+clean, peaks −9.2 to −2.0 dBFS, aligned (lag 12,369–12,376). **Drift:** the 2 V takes,
+per hold against the middle one: the start 0.0002–0.0049 (0.0014 whole), the end
+0.0000–0.0003: Swords still settling for the first quarter hour, then steady. Yesterday's
+2 V take against today's: 0.0034 whole, 0.0115 at the lowest cutoff, below the networks'
+own error. The blend is judged against today's takes.
+
+**Queued on the mini** (`tools/queue_swords_fixed.sh`, after nothing, four places
+alongside the other queues): GRU-16, audio + cutoff + Res (constant within a session, so
+both families have the same architecture), seed 1, Part A's recipe otherwise.
+- **Independent:** `swf_ind_r*`, one per session from random weights.
+- **Shared:** `swf_parent` on all eight sessions together, then `swf_ft_r*`, a copy of it
+  trained on each session at a fifth of the learning rate (`--init-from`, `--lr 1e-3`),
+  so neighbours stay close enough to blend by weights.
+- **Judged on:** each network against Swords at its own Res; the family's Res response
+  with Part A's control test cells; and at the held-out 2 V, the 1.5 and 2.5 V networks
+  blended (independent: outputs crossfaded; shared: outputs crossfaded and weights
+  averaged) against today's 2 V takes, beside the nearest single network.
+
 ## Above the threshold (measured 2026-10-21, `tools/swords_osc.py`)
 
 For Part B or later: what Swords does past the onset, from step 0's Res ramps (no input)
