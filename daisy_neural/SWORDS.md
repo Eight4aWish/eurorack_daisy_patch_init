@@ -308,6 +308,27 @@ and the `sw-a` test takes (the riff, three takes back to back).
   glide through it at a few levels would show whether there is a capture range. David's
   guess: it shifts rather than snaps, depending on the relative powers.
 
+- **The glide test (2026-10-22, `tools/swords_glide.py`, session `sw-glide`): it locks, and
+  the lock widens with the tone's level.** Res CV 5.5 V, V/OCT 4, 6, 8 V (free pitch 165,
+  640, 2,468 Hz, 2–3% under step 0's map; 14.2 dBV, about 7 V peak); a sine gliding two
+  octaves around it, up and down over 30 s each, at 0.2, 1 and 3 V peak. Lock range, cents
+  from the free pitch, the same up and down:
+
+  | Sine (dB under the oscillation) | 4 V | 6 V | 8 V |
+  |---|---|---|---|
+  | 0.2 V (31 dB) | about ±20 | about ±20 | −21 to +23 |
+  | 1 V (17 dB) | −158 to +148 | −156 to +147 | −150 to +140 |
+  | 3 V (8 dB) | −624 to +476 | −626 to +472 | −603 to +452 |
+
+  Inside the range it snaps onto the tone; outside it is pulled 16–39 cents. The range grows
+  with the tone's level, is the same in cents at every cutoff (a fixed fraction of the
+  pitch), is a little wider downward at 3 V, and has no hysteresis (it grabs and lets go at
+  the same points either way). David's guess ("shift rather than snap, depending on the
+  relative powers") is half right: both, the balance set by the level. About four times
+  stickier than a driven van der Pol oscillator standing in for it (±37 cents at 1 V), on
+  which the reading was checked first. For the grey-box, the targets: the lock range against
+  the level, constant in cents, no hysteresis, the pull outside.
+
 **So it is learnable, but not by a sample-by-sample loss.** **David's call (2026-10-21):
 a grey-box addition** (option 2), helped by the oscillation not being purely random. The
 options as written:
