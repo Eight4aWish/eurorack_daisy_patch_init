@@ -979,6 +979,19 @@ lower; then HP is trained on 0–7 (`hp07_cr_*`), otherwise on the whole range
 been recorded but never split (empty `gru/` and `nam/`); split on 2026-10-22, all
 aligned.
 
+**Under-Res, measured, and the dial to 11 (2026-10-22).** Pushed past its limits (feedback,
+or Res past 10) FLT2's network oscillates near the Wasp's own ring frequencies (listening
+round `2026-10-22-notamps`, `tools/notamp_spectra.py`), so David asked whether its Res
+should be lifted "from 7 onwards". Measured (`tools/res_dial_calibrate.py`): over every band
+the best match for the Wasp's marks 8–10 is the network at Res 6.5–7, barely better than
+not moving: the network's Res changes bands the Wasp does not. But on the band that holds
+the resonance at each cutoff hold, the Wasp rises +0.7, +2.0, +4.5, +6.4 dB from Res 6 to
+7–10 and the network +0.6, +1.1, +1.6, +1.9: it keeps pace to 7, then falls behind. Lifting
+its Res input helps to about 12 (+2.5 dB); beyond, its resonance falls (+1.0 at 16, −1.9 at
+18). Feedback makes up the rest. Mirth's dial now goes to 11 (`main.cpp` kDial/kNetRes/kFb,
+checked with `tools/res_dial_check.py`): +0.6, +1.8, +2.5, +4.6 dB at 7–10. It rings from
+9.5, and from 10 sustains its own tone at most cutoffs, which the real Wasp never does.
+
 **What the Wasp's wildness is: three tests, not yet run** (2026-10-21, after Swords turned
 out to repeat everything but the phase of its oscillation, SWORDS.md "Above the
 threshold"). Each needs the Res 8–10 repeat takes, on the Crucial drive; `swords_osc.py`
