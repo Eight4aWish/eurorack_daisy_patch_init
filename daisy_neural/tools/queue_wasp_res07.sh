@@ -18,6 +18,8 @@ RUNS=captures/wasp/gru_runs
 M07=0,1,2,3,4,5,6,7
 KEEP07=0,1,2,3,4,6,7
 
+# SKIP_LP=1 goes straight to HP, taking the verdict lp07_verdict.txt already holds.
+if [ -z "${SKIP_LP:-}" ]; then
 until grep -q "^finished:" captures/swords/sw4_a.log 2>/dev/null; do sleep 120; done
 echo "Swords Res 0-4 V finished; Wasp LP 0-7 from $(date)"
 
@@ -52,17 +54,19 @@ print(f"{'promising' if ok else 'not promising'}: over marks 0-7, right way {rw_
 EOF
 )
 echo "$verdict" | tee "$RUNS/lp07_verdict.txt"
+fi
+verdict=$(cat "$RUNS/lp07_verdict.txt")
 
 if [[ $verdict == promising* ]]; then
-    HPKEEP=(--res $KEEP07); HPNAME=hp07_cr; HPMARKS=$M07
+    HPKEEP="--res $KEEP07"; HPNAME=hp07_cr; HPMARKS=$M07
 else
-    HPKEEP=(); HPNAME=hp_cr; HPMARKS=0,2,4,5,6,8,10
+    HPKEEP=""; HPNAME=hp_cr; HPMARKS=0,2,4,5,6,8,10
 fi
 echo "HP: $HPNAME from $(date)"
-$PY tools/train_gru.py --series hp "${HPKEEP[@]}" --holdout-res 5 --prepare > "$RUNS/${HPNAME}_split.txt" || exit 1
+$PY tools/train_gru.py --series hp $HPKEEP --holdout-res 5 --prepare > "$RUNS/${HPNAME}_split.txt" || exit 1
 for h in 16 24; do
     for s in 1 2 3; do
-        run "${HPNAME}_gru${h}_s$s" --series hp "${HPKEEP[@]}" --holdout-res 5 --inputs audio,cv,res --hidden "$h" --seed "$s"
+        run "${HPNAME}_gru${h}_s$s" --series hp $HPKEEP --holdout-res 5 --inputs audio,cv,res --hidden "$h" --seed "$s"
     done
 done
 wait
