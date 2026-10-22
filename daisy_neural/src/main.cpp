@@ -477,7 +477,14 @@ static void ProcessFilter(float* buf, size_t n, float cut_to, float res_to, bool
         g_layer.Restart();
     res += 0.05f * (res_to - res);
     const float res_net = DialMap(g_ctl.res, res);
-    const float fb      = DialMap(g_ctl.fb, res);
+    // The feedback in the network's own units, as calibrated: the file's audio scale (the
+    // level match, 0.666) multiplies the whole audio input, so the fed-back part is divided
+    // by it first.
+    float a_scale = 1.f;
+    for(int k = 0; k < g_filter.inputs; k++)
+        if(g_filter.kind[k] == gru::kAudio && g_filter.scale[k] > 0.f)
+            a_scale = g_filter.scale[k];
+    const float fb = DialMap(g_ctl.fb, res) / a_scale;
     const float res_lay = res < 10.f ? res : 10.f;  // the layer follows the Wasp's own marks
     float raw[gru::kMaxInputs];
     for(size_t i = 0; i < n; i++)
