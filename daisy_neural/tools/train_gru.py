@@ -81,6 +81,7 @@ Runs land in captures/wasp/gru_runs/<name>/, with TensorBoard logs:
 """
 
 import argparse
+import fnmatch
 import json
 import os
 import pathlib
@@ -232,21 +233,25 @@ def outside(mask, a, b):
 def swords_material(args, train, valid, test):
     """The Swords split (SWORDS.md). Training: the sweep takes of --halves, less the
     validation blocks (three per take, as for the Wasp) and less every sample whose Res CV
-    is inside --holdout-band; a validation block that touches the band is dropped. Test: the
-    first take of every Res value's repeat set (the others are step 1's), held out when its
-    Res is inside the band."""
+    is inside --holdout-band or above --res-max; a validation block that touches either is
+    dropped. --sessions picks the sessions by name (fnmatch patterns), all by default. Test:
+    the first take of every Res value's repeat set (the others are step 1's), held out when
+    its Res is inside the band."""
     halves = {int(v) for v in args.halves.split(",")} if args.halves else None
     band = tuple(sorted(float(v) for v in args.holdout_band.split(","))) if args.holdout_band else None
+    res_max = args.res_max
+    pick = [p for p in args.sessions.split(",") if p] if args.sessions else None
     block, run_in = int((args.run_in + args.val_seconds) * SR), int(args.run_in * SR)
     missing, dropped = [], 0
 
     def in_band(take):
         r = np.asarray(take.data[:, 3])
-        return (r >= band[0]) & (r <= band[1]) if band else np.zeros(take.n, bool)
+        out = (r >= band[0]) & (r <= band[1]) if band else np.zeros(take.n, bool)
+        return out | (r > res_max) if res_max is not None else out
 
     for f in sorted(pathlib.Path(args.captures).glob("*/session.json")):
         s = json.loads(f.read_text())
-        if s.get("module") != "swords":
+        if s.get("module") != "swords" or (pick and not any(fnmatch.fnmatch(f.parent.name, p) for p in pick)):
             continue
         for t in s["takes"]:
             npz = f.parent / "gru" / f"{t['name']}.npz"
@@ -274,11 +279,12 @@ def swords_material(args, train, valid, test):
         raise SystemExit("no GRU file for " + ", ".join(missing) + ": run swords_capture.py split first")
     if not train:
         raise SystemExit(f"no Swords sweep takes to train on in {args.captures}")
-    if band:
+    if band or res_max is not None:
         leak = [t.label for t, a, b, *_ in train + valid if in_band(t)[a:b].any()]
-        assert not leak, f"held-out Res in training or validation: {leak[:3]}"
-        print(f"held-out band {band[0]:g}-{band[1]:g} V cut out of training; {dropped} validation blocks "
-              "touching it dropped")
+        assert not leak, f"held-out or excluded Res in training or validation: {leak[:3]}"
+        cut = " and ".join(([f"held-out band {band[0]:g}-{band[1]:g} V"] if band else [])
+                           + ([f"Res above {res_max:g} V"] if res_max is not None else []))
+        print(f"{cut} cut out of training; {dropped} validation blocks touching it dropped")
 
 
 def file_material(args, train, valid, test):
@@ -543,6 +549,10 @@ def main():
                     help="train on the Swords sessions (SWORDS.md): Res per sample, --halves, --holdout-band")
     ap.add_argument("--halves", default="", help="Swords: which halves of the sweep material, e.g. 1 or 1,2")
     ap.add_argument("--holdout-band", default="", help="Swords: Res CV volts lo,hi never trained or validated on")
+    ap.add_argument("--res-max", type=float, default=None,
+                    help="Swords: Res CV volts above which nothing is trained or validated on")
+    ap.add_argument("--sessions", default="", help="Swords: session names to use (fnmatch patterns, comma "
+                    "separated); default all")
     ap.add_argument("--series", choices=("lp", "hp"), help="train on that series' sessions")
     ap.add_argument("--res", default="", help="the Res marks to use, e.g. 6 (default: all)")
     ap.add_argument("--holdout-res", default="", help="Res marks never trained or validated on; tested whole")

@@ -11,6 +11,9 @@
 # optional, the arms to run (default both), so the two can go on two machines:
 #   nohup caffeinate -sim tools/train_swords_a.sh 1.8,2.2 > captures/swords/sw_a.log 2>&1 < /dev/null &
 #   nohup caffeinate -sim tools/train_swords_a.sh 1.8,2.2 all > captures/swords/sw_a_all.log 2>&1 < /dev/null &
+# RES_MAX=4 in the environment trains and validates only on Res CV up to 4 V, the region
+# where Swords repeats itself (SWORDS.md, the verdict); its runs are named sw4_*:
+#   RES_MAX=4 nohup caffeinate -sim tools/train_swords_a.sh 1.8,2.2 > captures/swords/sw4_a.log 2>&1 < /dev/null &
 
 set -u
 cd "$(dirname "$0")/.."
@@ -18,17 +21,22 @@ BAND=${1:?usage: train_swords_a.sh LO,HI [ARMS] (the held-out Res band, volts; a
 ARMS=${2:-matched all}
 PY=.venv-nam/bin/python
 RUNS=captures/swords/gru_runs
-COMMON="--swords --holdout-band $BAND --inputs audio,cv,res --clip 10 --listen --threads 1"
+COMMON="--swords --sessions sw-a --holdout-band $BAND --inputs audio,cv,res --clip 10 --listen --threads 1"
+PREFIX=sw
+if [ -n "${RES_MAX:-}" ]; then
+    COMMON="$COMMON --res-max $RES_MAX"
+    PREFIX="sw${RES_MAX%%.*}"
+fi
 mkdir -p "$RUNS"
 
 # Build the memory-mapped takes once, before six runs try to at the same time.
-$PY tools/train_gru.py $COMMON --halves 1,2 --prepare > "$RUNS/sw_a_split.txt" || exit 1
+$PY tools/train_gru.py $COMMON --halves 1,2 --prepare > "$RUNS/${PREFIX}_a_split.txt" || exit 1
 
 for arm in $ARMS; do
     halves=$([ "$arm" = matched ] && echo 1 || echo 1,2)
     for h in 16 24; do
         for s in 1 2 3; do
-            name="sw_${arm}_gru${h}_s$s"
+            name="${PREFIX}_${arm}_gru${h}_s$s"
             mkdir -p "$RUNS/$name"
             $PY tools/train_gru.py --name "$name" $COMMON --halves "$halves" --hidden "$h" --seed "$s" \
                 > "$RUNS/$name/log.txt" 2>&1 &
@@ -38,5 +46,5 @@ for arm in $ARMS; do
 done
 # The control test on whatever runs this machine has; with the arms on two machines, run it
 # again over all twelve once they are together.
-$PY tools/control_response.py "$RUNS"/sw_* > "$RUNS/sw_a_control.txt" 2>&1
+$PY tools/control_response.py "$RUNS"/${PREFIX}_* > "$RUNS/${PREFIX}_a_control.txt" 2>&1
 echo "finished: $(date)"
