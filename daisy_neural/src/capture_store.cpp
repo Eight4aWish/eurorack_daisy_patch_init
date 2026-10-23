@@ -53,7 +53,8 @@ const char* FailHex(const char* stage, uint32_t bits)
 }
 
 Entry       s_entries[kMaxFiles];
-int         s_count  = 0;
+int         s_count  = 0;  // the card root's captures, the AMPS bank
+int         s_total  = 0;  // then notamps/'s, found by name only
 FilterEntry s_filters[kMaxFilters];
 int         s_nfilters = 0;
 bool        s_ready  = false;
@@ -170,7 +171,7 @@ int         Count() { return s_count; }
 
 const Entry* Get(int index)
 {
-    if(index < 0 || index >= s_count)
+    if(index < 0 || index >= s_total)
         return nullptr;
     return &s_entries[index];
 }
@@ -179,7 +180,7 @@ int Find(const char* name)
 {
     if(!name)
         return -1;
-    for(int i = 0; i < s_count; i++)
+    for(int i = 0; i < s_total; i++)
         if(strcmp(s_entries[i].name, name) == 0)
             return i;
     return -1;
@@ -326,6 +327,7 @@ ImportResult ImportNam(LevelFn level, ProgressFn progress)
 bool Init(LevelFn level, ProgressFn progress, ImportResult* imported)
 {
     s_count    = 0;
+    s_total    = 0;
     s_nfilters = 0;
     s_ready    = false;
 
@@ -467,6 +469,27 @@ bool Init(LevelFn level, ProgressFn progress, ImportResult* imported)
             j--;
         }
         s_filters[j + 1] = key;
+    }
+
+    // Not-amp sources (2026-10-23): captures that are not amps, such as the weight steers'
+    // random-weight bases, go in notamps/. The NOT-AMPS bank finds them by name; they
+    // follow the root's entries, so Count(), and with it AMPS, leaves them out.
+    s_total = s_count;
+    char npath[kPathLen];
+    snprintf(npath, sizeof(npath), "%snotamps", s_fsi.GetSDPath());
+    if(f_opendir(&dir, npath) == FR_OK)
+    {
+        while(s_total < kMaxFiles && f_readdir(&dir, &info) == FR_OK && info.fname[0] != 0)
+        {
+            if((info.fattrib & AM_DIR) || !EndsWithA2nb(info.fname))
+                continue;
+            char path[kPathLen];
+            snprintf(path, sizeof(path), "%s/%s", npath, info.fname);
+            Entry e;
+            if(ReadHeader(path, e))
+                s_entries[s_total++] = e;
+        }
+        f_closedir(&dir);
     }
 
     s_ready  = s_count > 0;

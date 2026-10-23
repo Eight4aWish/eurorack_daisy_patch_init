@@ -35,11 +35,11 @@ above the threshold, the glide), this brief (the Wasp, under-Res, HP).
    recordings, and recording for Mirth is closed.
 3. **Random-weight not-amps: chosen 2026-10-23.** From eight seeds at ×1.5, 2 and 3
    (`tools/random_captures.py`; NAM rebuilds the A2-Lite from the Klon's config, so no
-   capture's weights are used): RND1 X2 as an AMPS capture, and seeds 4, 6 and 7 as three
-   NOT-AMPS **weight steers** (RND4/6/7 SCALE: the ×2 capture with the steer scaling every
-   weight ×1.5 → ×3, log; `notamp_design.py`, Kind::Scale), David preferring one steer to
-   three files each. The ×2 files go on the card as the steers' base. Staged with FLT6 in
-   `captures/card_2026-10-23/`.
+   capture's weights are used): seeds 1, 4, 6 and 7 as four NOT-AMPS **weight steers**
+   (RND1/4/6/7 SCALE: the ×2 capture with the steer scaling every weight ×1.5 → ×3, log;
+   `notamp_design.py`, Kind::Scale), David preferring one steer to three files each. The
+   ×2 files are not amps (David), so they go in the card's `notamps/` folder, which the
+   NOT-AMPS bank searches by name and AMPS never lists.
 
 ## Goal
 

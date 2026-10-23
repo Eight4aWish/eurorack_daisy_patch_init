@@ -6,7 +6,7 @@
 
 **Mirth** runs neural amp captures on a Daisy Patch.Init, with a 64×48 OLED: NAM A2-Lite
 networks read off the microSD card (AMPS), and *not-amps* — captures bent inside the
-network, each with one control (NOT-AMPS: twelve in v1.0.0, fifteen in development).
+network, each with one control (NOT-AMPS: twelve in v1.0.0, sixteen in development).
 **Mirth Lite** (`make LITE=1`) is the same
 firmware for a stock patch.init with no screen. Page and downloads:
 <https://eight4awish.com/modules/mirth/>.
@@ -28,7 +28,7 @@ stock patch.init on 2026-10-03.
    bypass for A/B against the dry input, an input peak meter for setting the trim, and a
    CPU load readout. (v1.0.0; the development layout below has no bypass.)
 2. **Not-amps** (NOT-AMPS): the twelve starter captures, each with one transform measured
-   to leave the region where real amps sound, and one steer control; in development, three
+   to leave the region where real amps sound, and one steer control; in development, four
    random-weight captures whose steer scales every weight — see "The not-amps".
 
 ## Signal path
@@ -295,8 +295,8 @@ with integer maths is the largest single saving (Mirth Lite formats nothing).
 Twelve slots in the NOT-AMPS bank since 2026-10-02, each a starter capture with one
 transform and one control on the steer knob (CV_2 + the CV_6 jack; CV_4 + CV_8 in v1.0.0)
 that can move while it plays. Chosen by measurement to sit outside the region where real amps sound, then by
-ear — "The measured search" below has the numbers. Fifteen since 2026-10-23 (in
-development): three **weight steers**, random-weight captures chosen by ear whose steer
+ear — "The measured search" below has the numbers. Sixteen since 2026-10-23 (in
+development): four **weight steers**, random-weight captures chosen by ear whose steer
 scales every weight.
 
 | OLED | Built from | Transform | Steer controls |
@@ -313,13 +313,15 @@ scales every weight.
 | `RATE SVT` | SVT-2 Pro | the engine at 1/R of the sample rate, held back up | R = 1, 2, 3, 4, 6 (stepped) |
 | `PAST BLU` | Bluesbreaker | weights pushed past it, away from the Bugera G5 | how far past, 1.0 → 1.3× |
 | `PAST PLX` | pLEXI-LORE | weights pushed past it, away from the SVT-2 Pro | the same |
-| `RND4 SCALE` | RND4 X2: random weights in the Klon's layout, drawn from seed 4, doubled (`tools/random_captures.py`) | every weight scaled | the scale, ×1.5 → ×3 of the seed's draw (log; about ×2.1 at noon) |
+| `RND1 SCALE` | RND1 X2: random weights in the Klon's layout, drawn from seed 1, doubled (`tools/random_captures.py`) | every weight scaled | the scale, ×1.5 → ×3 of the seed's draw (log; about ×2.1 at noon) |
+| `RND4 SCALE` | RND4 X2 (seed 4) | the same | the same |
 | `RND6 SCALE` | RND6 X2 (seed 6) | the same | the same |
 | `RND7 SCALE` | RND7 X2 (seed 7) | the same | the same |
 
 They find their captures on the card by name — the starter set, which ships with Mirth
-(CC0 / CC-BY) — so a missing one shows `N need cap`. The weight steers need RND4, RND6 and
-RND7 X2 on the card, which also play in AMPS as they are; they are generated, not
+(CC0 / CC-BY) — so a missing one shows `N need cap`. The weight steers need RND1, RND4, RND6
+and RND7 X2 in a `notamps/` folder on the card: the NOT-AMPS bank finds captures there by
+name, and AMPS never lists them, since they are not amps. They are generated, not
 downloaded, and carry no capture's weights. The RUN page shows `N3 S0.42`: not-amp 3,
 steer at 0.42.
 
@@ -327,14 +329,14 @@ steer at 0.42.
 processing — the bend, feedback loop, rate streaming and level table — and the firmware
 and `tools/a2_notamp.cpp` both run it. `tools/notamp_design.py` renders each through it and
 through the search harness they were chosen with (`tools/a2_explore.cpp`) and refuses to
-write `src/notamps.h` unless they agree: thirteen bit for bit (the weight steers against
+write `src/notamps.h` unless they agree: fourteen bit for bit (the weight steers against
 their capture's weights scaled and played plainly, which the search harness cannot do),
 PAST BLU and PAST PLX to −102 and −114 dB (the harness's first-block transient). It then
 measures a nine-point level table for each, against its source capture played plainly,
 so the steer changes the sound and not the volume. For the twelve, corrections run from
-−27 dB (PAST PLX at full steer) to +39 dB (SINE BUG). Each weight steer's run from about
-+35 dB to between −88 and −102 dB: scaling every weight compounds through the network's
-layers, so its raw output rises 124–136 dB from ×1.5 to ×3.
+−27 dB (PAST PLX at full steer) to +39 dB (SINE BUG). Each weight steer's run from +25 to
++39 dB at the bottom to between −82 and −102 dB at the top: scaling every weight compounds
+through the network's layers, so its raw output rises 106–136 dB from ×1.5 to ×3.
 
 **First bench session, 2026-10-02.** SINE PLX and SINE BUG peaked at 99% CPU: the
 11th-order polynomial sine was a chain of six dependent multiply-adds and an FPU-stalling

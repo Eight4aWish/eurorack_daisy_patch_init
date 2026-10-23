@@ -64,10 +64,13 @@ bool Init(LevelFn level = nullptr, ProgressFn progress = nullptr, ImportResult* 
  *  mount and the scan; slow (a few seconds a file, mostly the levelling). */
 ImportResult ImportNam(LevelFn level, ProgressFn progress);
 
+/** The AMPS bank: the card root's captures, indices 0 .. Count()-1. Captures in the
+ *  notamps/ folder (not amps: the weight steers' bases) follow them, reachable through
+ *  Find(), Get() and Load() but never counted here. */
 int          Count();
 const Entry* Get(int index);
 
-/** Index of the capture with this name (the name in its header), or -1. */
+/** Index of the capture with this name (the name in its header), root or notamps/, or -1. */
 int Find(const char* name);
 
 /** Read one capture's weights into dst. Verifies magic, version, count and
