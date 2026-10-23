@@ -19,25 +19,22 @@ private); FILTERS, five GRU-16s each carrying its own controls, with the level m
 above the threshold, the glide), this brief (the Wasp, under-Res, HP).
 
 **Next, when picked up again (agreed):**
-1. **FLT6, a Swords that oscillates: a design for David's review first.** David's shape: an
-   extra filter built like FLT3, **the capture plus a layer, not a full circuit model**: FLT5's
-   GRU (Res 0–4 V) with an oscillator layer added above the onset, built from the
-   measurements. Its parts, all measured: where it starts and stops (step 0: Res CV 4.2–5.4 V,
-   lower at higher cutoffs, with hysteresis); its pitch (about 1.33 times the Res-0 cutoff,
-   0.97 octave per volt); its level (about 2 V peak at the onset to 7 V); its harmonics (near
-   pure at the onset, odd ones growing: H3 −29, H5 −38 dB at Res CV 8 V); and how it meets the
-   input (`sw-glide`: locks within a range that widens with the input's level, about ±20
-   cents at 0.2 V, ±150 at 1 V, −6 to +5 semitones at 3 V, the same in cents at every cutoff,
-   no hysteresis; pulled 16–39 cents outside it). A phase oscillator pulled by the input's
-   component near its pitch is the obvious core. The dial's 10–11 brings it in. Judged against
-   the 4.5 and 5.5 V test takes and the glide takes.
+1. **FLT6, a Swords that oscillates: built 2026-10-23, waiting for the card and David's
+   ear.** David's shape, **the capture plus a layer, not a full circuit model**: FLT5's GRU
+   (Res 0–4 V) plus an oscillator layer (`nam/osc_layer.h`) built part by part from the
+   measurements; the dial's 10–11 takes the layer's Res CV from 4 to 6 V (SWORDS.md, "FLT6").
+   Desktop checks: onset, stop, level, pitch and lock range pass (the free pitch at V/OCT 4
+   misses its 2% mark by half a percent); with the riff, the band levels are within 2 dB only
+   at the top two cutoff holds, the oscillation runs 2–8 dB quiet above V/OCT 5, and it pulls
+   harder than Swords outside the lock. Staged in `captures/card_2026-10-23/` with RND1 X2.
 2. **What the Wasp's wildness is:** the three tests written down in the Wasp section (phase
    only or the spectrum too, noise or chaos, the warble as beating), on the repeat takes
    already recorded. Analysis only; it says whether a grey-box could stand in for FLT3's
    layer.
-3. **Random-weight not-amps:** put `r1_random_seed1_x2` on the card as an AMPS capture
-   (`tools/notamp_ideas.py`; NAM rebuilds the A2-Lite from the Klon's config, so no capture's
-   weights are used), and explore making more (David: "explore creating some more").
+3. **Random-weight not-amps:** `r01_x2p0.a2nb` (RND1 X2, `tools/random_captures.py`; NAM
+   rebuilds the A2-Lite from the Klon's config, so no capture's weights are used) is staged
+   for the card as an AMPS capture; 24 more (eight seeds × 1.5, 2 and 3) are on the
+   listening page for David to choose from (David: "explore creating some more").
 
 ## Goal
 

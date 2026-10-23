@@ -39,7 +39,9 @@
  * cutoff and resonance as live controls (nam/gru_runtime.h; the first are the
  * Doepfer A-124 Wasp's, CLAUDE.md). A version-2 file also carries a granular layer
  * (nam/gran_layer.h): the Wasp's take-to-take randomness, phased in from Res 8 to 9,
- * at 53.7 ms of latency for that slot, wet and dry alike. AMPS: the captures on the card,
+ * at 53.7 ms of latency for that slot, wet and dry alike. A file whose controls section is
+ * version 2 carries an oscillator layer (nam/osc_layer.h): Swords' self-oscillation, added to
+ * its network past the dial's 10 (FLT6). AMPS: the captures on the card,
  * played exactly as captured; the steer knob does nothing there, on purpose. NOT-AMPS:
  * twelve starter captures,
  * each with one transform chosen by measurement to leave the region where real
@@ -125,6 +127,11 @@ using namespace patch_sm;
 #define GRAN_FAST_DATA __attribute__((section(".dtcmram_bss")))
 #endif
 #include "nam/gran_layer.h"
+// A FILTERS file's controls may carry an oscillator layer (the section's version 2): Swords'
+// self-oscillation, added to its network's output (nam/osc_layer.h; FLT6). A few hundred
+// bytes, so ordinary RAM.
+#include "nam/osc_layer.h"
+static_assert(osc::kParams == captures::kOscFloats, "the .grnb oscillator block and the layer disagree");
 static constexpr const char* kFallbackName    = fallback::kName;
 static const float* const    kFallbackWeights = fallback::kWeights;
 static constexpr float       kFallbackGain    = fallback::kGain;
@@ -239,6 +246,11 @@ static constexpr size_t                 kLayerCap = 4u << 20;
 alignas(32) static uint8_t DSY_SDRAM_BSS g_layer_buf[kLayerCap];
 static gran::Layer                      g_layer_def;
 static volatile bool                    g_layer_on = false;
+
+// The filter's oscillator layer, when its controls carry one (FLT6). Like g_layer_on,
+// g_osc_on is cleared before a load and set once the layer is set up.
+static osc::Layer    g_osc;
+static volatile bool g_osc_on = false;
 
 static bool         g_display_dirty = true;
 
@@ -448,10 +460,13 @@ static void ApplySteer(float u)
 // That table is the Wasp LP's. Each filter file may carry its own, with its cutoff range
 // (the controls section, tools/grnb_controls.py; the Wasp HP's cutoff runs -10 to 0 V,
 // Swords' Res is volts 0-4), calibrated against its own module with
-// tools/filter_dial_calibrate.py; a file without one gets the Wasp LP's below.
+// tools/filter_dial_calibrate.py; a file without one gets the Wasp LP's below. A version-2
+// section also maps the dial to an oscillator layer's Res CV (FLT6: 10-11 is 4-6 V, past
+// the network's 4).
 static constexpr float kResDial = 11.f;
 static constexpr captures::FilterControls kLpControls = {
-    0.f, 10.f, 5, {0.f, 7.f, 9.f, 10.f, 11.f}, {0.f, 7.f, 12.f, 12.f, 12.f}, {0.f, 0.f, 0.f, 0.15f, 0.5f}};
+    0.f, 10.f, 5, {0.f, 7.f, 9.f, 10.f, 11.f}, {0.f, 7.f, 12.f, 12.f, 12.f}, {0.f, 0.f, 0.f, 0.15f, 0.5f},
+    false, {}, {}};
 // The loaded filter's: written by the main loop only while the filter is silent (Swap).
 static captures::FilterControls g_ctl = kLpControls;
 
@@ -471,10 +486,13 @@ static void ProcessFilter(float* buf, size_t n, float cut_to, float res_to, bool
     static float cut = 0.f, res = 0.f, prev = 0.f;
     const uint32_t t0 = System::GetTick();
     const bool     layer = g_layer_on;
+    const bool     osc_on = g_osc_on;
     if(restart)
         prev = 0.f;
     if(layer && restart)
         g_layer.Restart();
+    if(osc_on && restart)
+        g_osc.Reset(t0 | 1u);
     res += 0.05f * (res_to - res);
     const float res_net = DialMap(g_ctl.res, res);
     // The feedback in the network's own units, as calibrated: the file's audio scale (the
@@ -486,6 +504,7 @@ static void ProcessFilter(float* buf, size_t n, float cut_to, float res_to, bool
             a_scale = g_filter.scale[k];
     const float fb = DialMap(g_ctl.fb, res) / a_scale;
     const float res_lay = res < 10.f ? res : 10.f;  // the layer follows the Wasp's own marks
+    const float res_osc = osc_on ? DialMap(g_ctl.osc_res, res) : 0.f;  // volts of Res CV
     float raw[gru::kMaxInputs];
     for(size_t i = 0; i < n; i++)
     {
@@ -500,6 +519,8 @@ static void ProcessFilter(float* buf, size_t n, float cut_to, float res_to, bool
             g_filter_state.Reset();
         }
         prev        = s;  // fed back before the file's output gain, as on the desktop
+        if(osc_on)  // in the network's units: its audio input after the file's scale, as on the desktop
+            s += g_osc.Process(a * a_scale, c, res_osc);
         const float y = s * g_filter_gain;
         buf[i] = layer ? g_layer.Process(y) : y;
     }
@@ -742,6 +763,7 @@ static bool SwapFilter(int index)
     // file whose layer will not load or parse is refused whole.
     const captures::FilterEntry* e = captures::GetFilter(index);
     g_layer_on = false;
+    g_osc_on   = false;
     if(e && e->layer_bytes > 0)
     {
         size_t got = 0;
@@ -754,6 +776,14 @@ static bool SwapFilter(int index)
     // LP's when it has none.
     captures::FilterControls c;
     g_ctl = captures::LoadFilterControls(index, c) ? c : kLpControls;
+    if(g_ctl.osc)
+    {
+        osc::Params p;
+        osc::FromFloats(g_ctl.osc_p, p);
+        g_osc.Init(p, patch.AudioSampleRate());
+        g_osc.Reset(System::GetTick() | 1u);
+        g_osc_on = true;
+    }
     g_na = -1;
     g_proc.End();
     g_filter_gain = gain;

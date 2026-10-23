@@ -25,11 +25,14 @@ nam/gru_runtime.h, and the two must agree. Little-endian, 64-byte header + paylo
     then       version 2: the layer section (tools/wasp_layer.py, nam/gran_layer.h)
     then       the controls section, when bytes 6-7 are not 0: how Mirth's knobs drive this
                network (tools/grnb_controls.py writes it):
-                 'CTRL', version (u16, 1), points N (u16, at most 8),
+                 'CTRL', version (u16, 1 or 2), points N (u16, at most 8),
                  cut_lo, cut_hi (f32): the network's cutoff volts at the FREQ knob's ends,
                  dial[N], res[N], feedback[N] (f32): the Res dial (0-11) mapped, piecewise
                  linear, to the network's Res input and the feedback of its output into
                  its input (main.cpp ProcessFilter). Without one, Mirth uses the Wasp LP's.
+                 Version 2 (2026-10-23) adds an oscillator layer (nam/osc_layer.h; FLT6,
+                 Swords with its oscillation): osc_res[N] (f32), the Res CV the layer sees
+                 at each dial point, then its 34 constants (f32, tools/osc_layer.py's order).
 """
 
 import struct
@@ -95,15 +98,21 @@ def unpack(data, with_layer=False):
 
 CTRL_MAGIC = b"CTRL"
 CTRL_MAX_POINTS = 8
+OSC_FLOATS = 34  # nam/osc_layer.h kParams
 
 
-def pack_controls(cut_lo, cut_hi, dial, res, feedback):
-    """The controls section's bytes (see the docstring)."""
+def pack_controls(cut_lo, cut_hi, dial, res, feedback, osc_res=None, osc=None):
+    """The controls section's bytes (see the docstring); version 2 with osc_res and osc."""
     n = len(dial)
     if not 0 < n <= CTRL_MAX_POINTS or len(res) != n or len(feedback) != n or list(dial) != sorted(dial):
         raise ValueError("controls: 1 to 8 dial points, ascending, with a Res and a feedback each")
-    return (CTRL_MAGIC + struct.pack("<HH", 1, n) + struct.pack("<ff", cut_lo, cut_hi)
-            + struct.pack(f"<{n}f", *dial) + struct.pack(f"<{n}f", *res) + struct.pack(f"<{n}f", *feedback))
+    if (osc is None) != (osc_res is None) or (osc is not None and (len(osc_res) != n or len(osc) != OSC_FLOATS)):
+        raise ValueError(f"controls: an oscillator layer needs a Res CV per dial point and {OSC_FLOATS} constants")
+    out = (CTRL_MAGIC + struct.pack("<HH", 2 if osc is not None else 1, n) + struct.pack("<ff", cut_lo, cut_hi)
+           + struct.pack(f"<{n}f", *dial) + struct.pack(f"<{n}f", *res) + struct.pack(f"<{n}f", *feedback))
+    if osc is not None:
+        out += struct.pack(f"<{n}f", *osc_res) + struct.pack(f"<{OSC_FLOATS}f", *osc)
+    return out
 
 
 def with_controls(data, controls):
@@ -116,15 +125,35 @@ def with_controls(data, controls):
     return bytes(body) + c
 
 
-def unpack_controls(data):
-    """(cut_lo, cut_hi, dial, res, feedback), or None for a file without them."""
+def _controls(data):
     (csize,) = struct.unpack_from("<H", data, 6)
     if not csize:
         return None
     c = data[len(data) - csize:]
     if c[:4] != CTRL_MAGIC or zlib.crc32(c) & 0xFFFFFFFF != struct.unpack_from("<I", data, 60)[0]:
         raise ValueError("controls section magic or CRC mismatch")
-    _, n = struct.unpack_from("<HH", c, 4)
+    version, n = struct.unpack_from("<HH", c, 4)
+    if version not in (1, 2) or len(c) != 16 + (16 * n + 4 * OSC_FLOATS if version == 2 else 12 * n):
+        raise ValueError(f"controls section version {version}, {len(c)} bytes for {n} points")
+    return c, version, n
+
+
+def unpack_controls(data):
+    """(cut_lo, cut_hi, dial, res, feedback), or None for a file without them."""
+    got = _controls(data)
+    if got is None:
+        return None
+    c, _, n = got
     lo, hi = struct.unpack_from("<ff", c, 8)
     vals = struct.unpack_from(f"<{3 * n}f", c, 16)
-    return lo, hi, list(vals[:n]), list(vals[n:2 * n]), list(vals[2 * n:])
+    return lo, hi, list(vals[:n]), list(vals[n:2 * n]), list(vals[2 * n:2 * n + n])
+
+
+def unpack_osc(data):
+    """(osc_res, osc constants) of a version-2 controls section, or None."""
+    got = _controls(data)
+    if got is None or got[1] != 2:
+        return None
+    c, _, n = got
+    return (list(struct.unpack_from(f"<{n}f", c, 16 + 12 * n)),
+            list(struct.unpack_from(f"<{OSC_FLOATS}f", c, 16 + 16 * n)))

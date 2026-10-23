@@ -102,13 +102,18 @@ struct FilterEntry
 
 /** How Mirth's knobs drive a filter network (tools/grnb.py's controls section): the
  *  network's cutoff volts at the FREQ knob's ends, and the Res dial (0-11) mapped piecewise
- *  linearly to its Res input and the feedback of its output into its input. */
+ *  linearly to its Res input and the feedback of its output into its input. Version 2 of
+ *  the section adds an oscillator layer (nam/osc_layer.h; FLT6): the Res CV it sees at each
+ *  dial point, and its constants. */
 constexpr int kMaxDialPoints = 8;
+constexpr int kOscFloats     = 34;  // osc::kParams
 struct FilterControls
 {
     float cut_lo, cut_hi;
     int   points;
     float dial[kMaxDialPoints], res[kMaxDialPoints], fb[kMaxDialPoints];
+    bool  osc;  // version 2: the two below are set
+    float osc_res[kMaxDialPoints], osc_p[kOscFloats];
 };
 
 int                FilterCount();

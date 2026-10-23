@@ -104,6 +104,13 @@ def read(args):
         rec, _ = sf.read(d / "rec" / f"{t['name']}.wav", dtype="float64", always_2d=True)
         lag, _ = W.latency(play[:, S.LOOP_OUT], rec[:, S.LOOP], t["burst_at"], W.BURST)
         y = rec[lag + t["payload_at"]:lag + t["payload_at"] + t["payload_len"], S.F1] * rig["in_vfs"]
+        print(analyse(y, t))
+
+
+def analyse(y, t):
+    """One take's line: y is the output in volts over the take's payload (osc_layer.py feeds
+    a model's here too)."""
+    if True:
         f0, n = t["osc_hz"], int(t["glide_s"] * SR)
         f_free, l_osc = peak_hz(y[int(0.5 * SR):int((FREE - 0.2) * SR)], f0 / 1.5, f0 * 1.5)
         _, f_in = glide_audio(f0, 1.0, t["glide_s"])
@@ -123,5 +130,5 @@ def read(args):
         pulls = [p for rs in rows.values() for _, l_, p in rs if not l_]
         pull = max(pulls, key=abs) if pulls else 0.0
         l_in = 20 * np.log10(t["level_v"] / np.sqrt(2))
-        print(f"{t['name']:20s} {f_free:7.1f}  {l_osc:6.1f}   {l_in:6.1f} |  {span(rows['up'])}"
-              f"          {span(rows['down'])}       {pull:+6.0f}")
+        return (f"{t['name']:20s} {f_free:7.1f}  {l_osc:6.1f}   {l_in:6.1f} |  {span(rows['up'])}"
+                f"          {span(rows['down'])}       {pull:+6.0f}")

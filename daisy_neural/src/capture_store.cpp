@@ -524,7 +524,7 @@ bool LoadFilterFile(int index, const uint8_t** data, size_t* bytes)
 bool LoadFilterControls(int index, FilterControls& c)
 {
     const FilterEntry* e = GetFilter(index);
-    if(!e || e->ctl_bytes < 16 || e->ctl_bytes > 16 + 12 * kMaxDialPoints)
+    if(!e || e->ctl_bytes < 16 || e->ctl_bytes > 16 + 16 * kMaxDialPoints + 4 * kOscFloats)
         return false;
     if(f_open(&s_file, e->path, FA_READ) != FR_OK)
         return false;
@@ -533,10 +533,12 @@ bool LoadFilterControls(int index, FilterControls& c)
                     && f_read(&s_file, s_bounce, e->ctl_bytes, &got) == FR_OK && got == e->ctl_bytes;
     f_close(&s_file);
     const uint8_t* p = s_bounce;
-    if(!ok || memcmp(p, "CTRL", 4) != 0 || Rd16(p + 4) != 1 || Crc32(p, e->ctl_bytes) != e->ctl_crc)
+    if(!ok || memcmp(p, "CTRL", 4) != 0 || (Rd16(p + 4) != 1 && Rd16(p + 4) != 2)
+       || Crc32(p, e->ctl_bytes) != e->ctl_crc)
         return false;
-    const int n = Rd16(p + 6);
-    if(n < 1 || n > kMaxDialPoints || e->ctl_bytes != (uint32_t)(16 + 12 * n))
+    const int  n   = Rd16(p + 6);
+    const bool osc = Rd16(p + 4) == 2;  // with an oscillator layer
+    if(n < 1 || n > kMaxDialPoints || e->ctl_bytes != (uint32_t)(16 + (osc ? 16 * n + 4 * kOscFloats : 12 * n)))
         return false;
     auto f32 = [&](size_t o) {
         float    v;
@@ -552,7 +554,12 @@ bool LoadFilterControls(int index, FilterControls& c)
         c.dial[i] = f32(16 + 4 * i);
         c.res[i]  = f32(16 + 4 * (n + i));
         c.fb[i]   = f32(16 + 4 * (2 * n + i));
+        if(osc)
+            c.osc_res[i] = f32(16 + 4 * (3 * n + i));
     }
+    c.osc = osc;
+    for(int k = 0; osc && k < kOscFloats; k++)
+        c.osc_p[k] = f32(16 + 16 * n + 4 * k);
     return c.cut_hi != c.cut_lo;
 }
 

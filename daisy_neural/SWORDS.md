@@ -346,43 +346,64 @@ options as written:
    lines from step 0, a random start phase. Cheapest and most predictable; the weak point
    is how it meets the input (the islands at 5.5 V where the input pulls it into step).
 
-## FLT6: Swords with its oscillation, design for review (2026-10-23)
+## FLT6: Swords with its oscillation (built 2026-10-23)
 
 David's shape: FLT5's capture plus a layer, as FLT3 is the Wasp plus its granular layer,
-not a circuit model. Nothing new is recorded; every number below is already measured.
+not a circuit model. Nothing new was recorded; every constant is from a measurement already
+made.
 
 **What it is.** FLT5's GRU (`sw4_all_gru16_s3`, Res CV 0–4 V, where Swords repeats itself)
-with an **oscillator layer** added to its output once the dial passes 10. The dial reads
-Swords' Res CV: 0–10 is 0–4 V as on FLT5, 10–11 is 4–6 V (`sw-a`'s range). The GRU's Res
-stays at 4 V; the layer supplies what the network never learned.
+with an **oscillator layer** (`nam/osc_layer.h`) added to its output. The dial reads Swords'
+Res CV: 0–10 is 0–4 V as on FLT5, 10–11 is 4–6 V (`sw-a`'s range). The GRU's Res stays at
+4 V past 10; the layer sees the Res CV itself, so at the top cutoffs, where Swords starts
+lower, it comes in just under 10 (the onset line reaches about 3.8 V at V/OCT 10.5,
+extended from the knots at 1, 4 and 7 V). No feedback.
 
-**The layer, part by part, each from a measurement:**
+**The layer, part by part:**
 
 | Part | Model | From |
 |---|---|---|
-| When it sounds | on when Res CV passes the onset line, off when it falls below the stop line; both lines fitted in cutoff (start 5.43 / 4.56 / 4.22 V and stop 3.44 / 3.88 / 4.04 V at V/OCT 1 / 4 / 7 V), so it starts lower at higher cutoffs and has hysteresis | step 0 |
-| Its pitch | 165 Hz at V/OCT 4 V, 0.976 octave per volt, rising a few cents with Res (23–26 cents from onset to 8 V) | `sw-glide` free pitch; step 0 |
-| Its level | rising with Res above the onset, about 2 V peak at the onset to 7.5 V at 8 V, fitted from the step 0 ramps | step 0 |
-| Its shape | a sine through a symmetric soft clip whose drive rises with Res: near pure at the onset, H3 −29 and H5 −38 dB at 8 V (odd only, as measured) | step 0 |
-| Locking | a phase oscillator pulled by the input (Adler's model: the input times the oscillator's quadrature, scaled by the oscillator's pitch so the lock range is the same in cents everywhere), the coupling fitted so the lock range against the input's level matches the glide (±20 cents at 0.2 V, ±150 at 1 V, −6/+5 semitones at 3 V); outside the lock it pulls, the model's own behaviour, checked against the measured 16–39 cents | `sw-glide` |
-| Start | a random phase each time it starts, as Swords | `sw-a` repeat takes |
+| When it sounds | on above the onset line, off below the stop line, both piecewise linear in V/OCT through the measured knots (start 5.43 / 4.56 / 4.22 V, stop 3.44 / 3.88 / 4.04 V at V/OCT 1 / 4 / 7), so it starts lower at higher cutoffs and has hysteresis; with the input sounding it starts by 4.45 V wherever the no-input onset is higher | step 0; `sw-a`'s riff takes (every take at 4.5 V oscillates, none at 4.0 V below the top cutoff) |
+| Its pitch | 169.1 Hz at V/OCT 4, 0.978 octave per volt bending slightly at the top: one quadratic through the glide's three free pitches and `sw-a`'s six, within 44 cents of each (about the drift between the two days); +5 cents per volt of Res CV | `sw-glide`; `sw-a`; step 0 |
+| Its level | 7.0 V peak just past the onset, rising to 7.45 V at 8 V; ducked by the input's level, 1 / (1 + 0.276 A) with A the input's peak volts, because the input and the oscillation share Swords' clip | step 0; `sw-a` (the oscillation 7.5 dB down with the riff at 5 V peak) |
+| Its shape | a sine with H2 at −51 dB and odd harmonics growing past the onset: H3 −34.5 → −29.6 dB, H5 −42.4 → −38.2 dB | step 0 |
+| Locking | Adler's model on the input's part near the pitch only: the input mixed down at the oscillator's phase and low-passed (within 0.6 of the pitch) gives that part's level A and phase; it locks when the detuning is under 0.075 A^1.2 of the pitch in Hz, the same up and down in Hz as measured (−624 / +476 cents at 3 V) | `sw-glide` |
+| Start | a random phase each time it starts | `sw-a` repeat takes |
 
-**Judged on, before it goes on the card** (a desktop host running the same C++ as the
-firmware, as the granular layer was checked):
-1. the glide takes, through `swords_glide.py`'s reading: free pitch within 2%, lock range
-   within a quarter of Swords' at each level, no hysteresis;
-2. step 0's Res ramps: onset and stop within 0.2 V of Swords', level within 2 dB;
-3. the 4.5 and 5.5 V test takes: the oscillation's pitch and level per hold, and band levels
-   (phase-blind, as the oscillation's phase is random) within 2 dB of Swords' where it
-   oscillates;
-4. on the module: CPU (it should cost little beside the GRU), and David's ear.
+**Checked on the desktop** against the marks set in the design: FLT5's network plus the
+layer, through `tools/osc_host` (the firmware's own C++), with `tools/osc_layer.py check`
+(output in `captures/swords/osc_check.txt`).
 
-**What it is not:** a model of how the oscillation and the filtered input share Swords'
-clip (the input's own tone is the GRU's; the layer only adds), nor the islands at 5.5 V
-where the input holds the oscillation's phase steady (the locking covers part of that).
+| Check | Mark | FLT6 | Swords | Verdict |
+|---|---|---|---|---|
+| Free pitch at V/OCT 4 / 6 / 8 | within 2% | 169.1 / 650.4 / 2,460 Hz | 164.9 / 640 / 2,468 | +2.5%, +1.6%, −0.3%: 4 V misses by half a percent (one curve through both days' points) |
+| Lock range, 1 V peak | within a quarter | −170 to +180 / −172 to +178 / −148 to +154 cents | about ±150 | 0–20% wide: passes |
+| Lock range, 3 V peak | within a quarter | −753 to +569 / −725 to +567 / −641 to +497 | −624 to +476 | up to 21% wide: passes |
+| Lock range, 0.2 V peak | — | — | about ±20 | not readable: inside the reading's ±15-cent margin for both |
+| Hysteresis | none | up and down sweeps within 13 cents | none | passes |
+| Pull outside the lock | no mark | 5–30 cents at 0.2 V, 62–159 at 1 and 3 V | 16–39 | pulls harder than Swords at 1 and 3 V |
+| Onset and stop, no input | within 0.2 V | starts exact, stops 0.05–0.06 V low | | passes |
+| Level, no input | within 2 dB | 0.1–0.2 dB under | | passes |
+| Pitch, riff takes at 4.5 and 5.5 V | no mark | within 0.3–1.6% at every hold | | |
+| Oscillation level, riff takes | no mark | within 2.5 dB at V/OCT 2.5 and 4.1; 2–8 dB under above | | ducked too hard at the higher cutoffs |
+| Band levels, riff takes | within 2 dB | 1.2–1.5 dB at V/OCT 8.9 and 10.5; 2.7–6.3 dB below | | passes at the top two holds only |
 
-**On the card:** `f6_SWORDS_OSC.grnb`, FLT5's network and controls plus an oscillator
-section (its fitted constants) at the file's end, read by the firmware like the controls.
+Against FLT5's network alone (Res capped at 4 V) on the same riff takes, the layer brings
+the band error down by 0.7–2.8 dB at every hold but the top one (4.5 V: 6.4 → 5.7, 4.6 →
+3.2, 5.3 → 4.0, 4.8 → 2.6, 2.6 → 1.2 dB; 5.5 V: 7.3 → 6.3, 5.7 → 3.9, 7.3 → 4.8, 5.9 →
+3.1, 3.1 → 1.1 dB). At V/OCT 10.5 the network alone was already within 1 dB and the layer
+adds 0.3–0.8 dB.
+
+**What it leaves out:** how the input and the oscillation share Swords' clip beyond one
+ducking factor (the level shortfall at the higher cutoffs is that), and the islands at
+5.5 V where the input holds the oscillation's phase steady (the locking covers part).
+Still to judge on the module: its CPU (the FILTERS page's cycle reading) and David's ear.
+
+**On the card:** `f6_SWORDS_OSC.grnb` (panel name SWORDS_OSC): FLT5's file with a version-2
+controls section, written by `tools/grnb_controls.py --osc`: dial 0 / 10 / 11 → network Res
+0 / 4 / 4 V and layer Res CV 0 / 4 / 6 V, no feedback, and the layer's 34 constants
+(`captures/swords/osc_params.f32`). It needs the firmware of 2026-10-23; older firmware
+cannot read that section and gives the file the Wasp LP's controls.
 
 ## To build after review
 
