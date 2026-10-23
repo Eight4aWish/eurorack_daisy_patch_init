@@ -397,7 +397,10 @@ adds 0.3–0.8 dB.
 **What it leaves out:** how the input and the oscillation share Swords' clip beyond one
 ducking factor (the level shortfall at the higher cutoffs is that), and the islands at
 5.5 V where the input holds the oscillation's phase steady (the locking covers part).
-Still to judge on the module: its CPU (the FILTERS page's cycle reading) and David's ear.
+**On the module (2026-10-23):** up to 76% CPU once the dial enters the oscillation zone
+(a GRU-16 alone runs about 61%); the oscillation is audible; an LFO sweeping the cutoff made
+it neither fall over nor glitch. David: "It sounds good." Not A/B'd against the real Swords:
+"its capture is quite fun to play".
 
 **On the card:** `f7_SWORDS_OSC.grnb` (panel name SWORDS_OSC): SWORDS_16's file with a version-2
 controls section, written by `tools/grnb_controls.py --osc`: dial 0 / 10 / 11 → network Res

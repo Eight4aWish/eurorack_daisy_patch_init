@@ -110,6 +110,10 @@ version 2 (the layer's Res CV per dial point and its constants). Both need the f
 controls. **Renumbered 2026-10-23:** the A2 capture became FLT1 and the GRU filters moved
 up one; notes from before then use the numbering of their day.
 
+**On the bench (2026-10-23):** all seven play. FLT7 runs up to 76% CPU once the dial
+enters its oscillation zone (a GRU-16 alone about 61%), and an LFO sweeping its cutoff
+neither upsets nor glitches it.
+
 Each bank keeps its own place, so going round the banks comes back to the patch you
 left. Choosing a patch by CV, which the v1.0.0 slot knob allowed, has gone.
 
