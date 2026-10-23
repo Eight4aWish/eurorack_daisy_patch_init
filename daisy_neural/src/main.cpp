@@ -47,7 +47,8 @@
  * each with one transform chosen by measurement to leave the region where real
  * amps sit — sine or linear neurons, a feedback loop, a frozen layer, the engine
  * at a fraction of the sample rate, or a capture pushed past another — and one
- * steer control that can move while playing. Processing in src/notamp_dsp.h
+ * steer control that can move while playing; and three random-weight captures whose
+ * steer scales every weight (2026-10-23). Processing in src/notamp_dsp.h
  * (shared with the Mac harness tools/a2_notamp.cpp); definitions and level
  * tables generated into src/notamps.h by tools/notamp_design.py.
  *

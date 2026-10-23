@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-notamp_design.py — the twelve not-amps, checked, measured, and written to src/notamps.h.
+notamp_design.py — the not-amps, checked, measured, and written to src/notamps.h.
 
 Chosen 2026-10-02 by tools/notamp_search.py (descriptors + CLAP, against 236 real
 captures) and approved by ear; the README's "The measured search" has the numbers.
@@ -13,6 +13,13 @@ FB PCH PLX (feedback that grated) gave way to PAST PLX. RATE SVT's "constant ton
 firmware bug, not the not-amp: the rate streamer wrote each output over its input before
 reading it, feeding output back as input; a2_notamp now processes in place, as the
 firmware does, so this check catches that class of bug.
+
+2026-10-23 (David): three more, the weight steers. A random-weight capture
+(tools/random_captures.py: the Klon's layout, every weight drawn from the seed) at x2,
+with the steer scaling every weight from x1.5 to x3 of the seed's draw, log, about x2.1 at
+noon: seeds 4, 6 and 7, chosen by ear from the listening round of 2026-10-23. The search
+harness has no scale, so these are checked against the capture's weights scaled and
+played plainly.
 
 For each not-amp this:
   1. renders it through the firmware's own processor (tools/a2_notamp, which runs
@@ -29,7 +36,9 @@ For each not-amp this:
   4. writes the definitions and the inverse level tables to src/notamps.h, so the
      steer changes the sound rather than the volume.
 
-Needs the starter captures in captures/starter/ (CC0 / CC-BY, shipped with Mirth).
+Needs the starter captures in captures/starter/ (CC0 / CC-BY, shipped with Mirth), and
+RND4, RND6 and RND7 X2 in captures/random/ (`random_captures.py captures/random 4:2`
+and so on; seeded, so they come out the same each time).
 
     c++ -std=c++17 -O2 -I. -Isrc -o tools/a2_notamp tools/a2_notamp.cpp
     c++ -std=c++17 -O2 -DNAM_A2_EXPLORE -I. -o tools/a2_explore_s1 tools/a2_explore.cpp
@@ -50,10 +59,11 @@ sys.path.insert(0, str(HERE))
 from test_signal import make_synth, scale_peak  # noqa: E402
 
 STARTER = PROJECT / "captures" / "starter"
+RANDOM = PROJECT / "captures" / "random"
 HEADER = PROJECT / "src" / "notamps.h"
 
 # name (≤10 chars, the OLED), kind, cap_a, cap_b, lo, hi, log, layer, fixed
-TWELVE = [
+DEFS = [
     ("SINE BUG",   "sine",    "BUGERA G5",  None,        0.3,  8.0,  True,  0,  0.0),
     ("LINEAR TR",  "slope",   "TWO ROCK",   None,        0.01, 1.0,  False, 0,  0.0),
     ("LINEAR TRY", "slope",   "TRAYNOR",    None,        0.01, 1.0,  False, 0,  0.0),
@@ -66,10 +76,14 @@ TWELVE = [
     ("RATE SVT",   "rate",    "SVT-2 PRO",  None,        1.0,  6.0,  False, 0,  0.0),
     ("PAST BLU",   "morph",   "BUGERA G5",  "BLUESBRKR", 1.0,  1.3,  False, 0,  0.0),
     ("PAST PLX",   "morph",   "SVT-2 PRO",  "PLEXI LORE", 1.0, 1.3,  False, 0,  0.0),
+    # the weight steers (2026-10-23): x0.75 to x1.5 of the x2 capture = x1.5 to x3
+    ("RND4 SCALE", "scale",   "RND4 X2",    None,        0.75, 1.5,  True,  0,  0.0),
+    ("RND6 SCALE", "scale",   "RND6 X2",    None,        0.75, 1.5,  True,  0,  0.0),
+    ("RND7 SCALE", "scale",   "RND7 X2",    None,        0.75, 1.5,  True,  0,  0.0),
 ]
 RATE_STEPS = [1, 2, 3, 4, 6]
 KIND_ENUM = {"sine": "Sine", "slope": "Slope", "freeze": "Freeze", "fold": "Fold", "morph": "Morph",
-             "fbgain": "FbGain", "fbpitch": "FbPitch", "rate": "Rate"}
+             "fbgain": "FbGain", "fbpitch": "FbPitch", "rate": "Rate", "scale": "Scale"}
 
 
 def param(t, u):
@@ -89,7 +103,7 @@ def explore_spec(t, v):
 
 def main():
     caps = {}
-    for f in sorted(STARTER.glob("*.a2nb")):
+    for f in sorted(STARTER.glob("*.a2nb")) + [RANDOM / f"r{s:02d}_x2p0.a2nb" for s in (4, 6, 7)]:
         b = f.read_bytes()
         caps[b[16:28].split(b"\0")[0].decode()] = (b[32:], np.frombuffer(b[12:16], "<f4")[0])
     tmp = pathlib.Path(tempfile.mkdtemp())
@@ -112,7 +126,11 @@ def main():
                     str(fixed), str(u), str(u)])
 
     def explore(t, u):
-        _, _, ca, cb, *_ = t
+        _, kind, ca, cb, *_ = t
+        if kind == "scale":  # not in the search harness: the capture's weights scaled, played plainly
+            (np.frombuffer(caps[ca][0], "<f4") * np.float32(param(t, u))).astype("<f4").tofile(tmp / "scaled.f32")
+            return run([str(HERE / "a2_explore_s1"), str(tmp / "scaled.f32"), "-", str(tmp / "in.f32"),
+                        str(tmp / "out.f32"), "none"])
         return run([str(HERE / "a2_explore_s1"), wpath(ca), wpath(cb) if cb else "-", str(tmp / "in.f32"),
                     str(tmp / "out.f32"), explore_spec(t, param(t, u))])
 
@@ -127,7 +145,7 @@ def main():
     (tmp / "idle.f32").write_bytes((rng.standard_normal(48000 * 4) * 10 ** (-70 / 20)).astype("<f4").tobytes())
     defs = []
     print("not-amp       firmware vs harness              level at steer 0 … 1 (dB, before correction)")
-    for t in TWELVE:
+    for t in DEFS:
         name, kind, ca, cb, lo, hi, log, layer, fixed = t
         # 1. the firmware processor against the harness it was chosen with
         worst = -999.0
@@ -138,7 +156,7 @@ def main():
                 f = f[lag:]  # the firmware's output trails by 48·R samples
             n = min(len(f), len(e))  # the harness pads its input to a multiple of 48·R
             f, e = f[:n], e[:n]
-            if kind == "morph":  # the harness starts from A and rewrites; skip its first block's transient
+            if kind in ("morph", "scale"):  # the harness starts from A and rewrites; skip its first block's transient
                 f, e = f[4800:], e[4800:]
             diff = np.sum((f - e) ** 2) / (np.sum(e ** 2) + 1e-30)
             worst = max(worst, 10 * np.log10(diff + 1e-30))
@@ -165,8 +183,9 @@ def main():
 
     # 3. the header
     L = ["// GENERATED by tools/notamp_design.py — do not edit by hand; rerun it.",
-         "// The twelve not-amps (2026-10-02): a starter capture with one transform and one",
-         "// steer, each measured outside the amp region by two judges and approved by ear.",
+         "// The not-amps: twelve starter captures with one transform and one steer each",
+         "// (2026-10-02), measured outside the amp region by two judges and approved by ear,",
+         "// and three random-weight captures whose steer scales every weight (2026-10-23).",
          "// Types and processing: notamp_dsp.h. gain_db is the inverse of the measured level,",
          "// so the steer changes the sound rather than the volume.",
          "#pragma once", "", '#include "notamp_dsp.h"', "", "namespace notamps", "{",

@@ -6,7 +6,7 @@
  *   a2_notamp <wA.f32> <wB.f32|-> <in.f32> <out.f32> <kind> <lo> <hi> <log 0|1>
  *             <layer> <fixed> <u0> <u1>
  *
- * kind: sine slope freeze fold morph fbgain fbpitch rate. The steer goes from u0 to u1
+ * kind: sine slope freeze fold morph fbgain fbpitch rate scale. The steer goes from u0 to u1
  * across the clip (equal for a fixed setting). tools/notamp_design.py uses this to
  * measure the level tables, and to check it matches tools/a2_explore.cpp, the
  * harness the not-amps were chosen with.
@@ -62,6 +62,7 @@ int main(int argc, char** argv)
            : !strcmp(k, "fbgain")  ? notamps::Kind::FbGain
            : !strcmp(k, "fbpitch") ? notamps::Kind::FbPitch
            : !strcmp(k, "rate")    ? notamps::Kind::Rate
+           : !strcmp(k, "scale")   ? notamps::Kind::Scale
                                    : (notamps::Kind)255;
     if((int)d.kind == 255)
     {

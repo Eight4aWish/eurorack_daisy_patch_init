@@ -33,10 +33,13 @@ above the threshold, the glide), this brief (the Wasp, under-Res, HP).
    layer, and a statistical layer like FLT3's is the right kind of model. Tests 2 (noise or
    chaos) and 3 (beating) cannot be answered from the riff takes; they would need new
    recordings, and recording for Mirth is closed.
-3. **Random-weight not-amps:** `r01_x2p0.a2nb` (RND1 X2, `tools/random_captures.py`; NAM
-   rebuilds the A2-Lite from the Klon's config, so no capture's weights are used) is staged
-   for the card as an AMPS capture; 24 more (eight seeds × 1.5, 2 and 3) are on the
-   listening page for David to choose from (David: "explore creating some more").
+3. **Random-weight not-amps: chosen 2026-10-23.** From eight seeds at ×1.5, 2 and 3
+   (`tools/random_captures.py`; NAM rebuilds the A2-Lite from the Klon's config, so no
+   capture's weights are used): RND1 X2 as an AMPS capture, and seeds 4, 6 and 7 as three
+   NOT-AMPS **weight steers** (RND4/6/7 SCALE: the ×2 capture with the steer scaling every
+   weight ×1.5 → ×3, log; `notamp_design.py`, Kind::Scale), David preferring one steer to
+   three files each. The ×2 files go on the card as the steers' base. Staged with FLT6 in
+   `captures/card_2026-10-23/`.
 
 ## Goal
 

@@ -12,6 +12,7 @@
 //   FbGain   output fed back to the input after D samples   steer: loop gain, linear
 //   FbPitch  the same at a fixed gain                       steer: D (the pitch), log
 //   Rate     the engine run at 1/R of the sample rate       steer: R in kRateSteps
+//   Scale    every weight times s (2026-10-23)               steer: s, log
 #pragma once
 
 #include <cmath>
@@ -22,7 +23,7 @@
 
 namespace notamps
 {
-enum class Kind : uint8_t { Sine, Slope, Freeze, Fold, Morph, FbGain, FbPitch, Rate };
+enum class Kind : uint8_t { Sine, Slope, Freeze, Fold, Morph, FbGain, FbPitch, Rate, Scale };
 
 struct Def
 {
@@ -82,18 +83,18 @@ class Processor
     bool Active() const { return def_ != nullptr; }
     const Def* Current() const { return def_; }
 
-    // The weights to load for steer u: A, or the morph at its current t.
+    // The weights to load for steer u: A, or the morph (or scale) at its current t.
     // w must hold kA2WeightCount floats.
     const float* InitialWeights(float u, float* w) const
     {
-        if(def_->kind != Kind::Morph)
+        if(def_->kind != Kind::Morph && def_->kind != Kind::Scale)
             return a_;
         Morph(Param(*def_, u), w);
         return w;
     }
 
-    // Once per block, before Process(): set the bend for steer u. A Morph whose
-    // t has moved rewrites the weights through rewrite(w), with no prewarm, as
+    // Once per block, before Process(): set the bend for steer u. A Morph or Scale
+    // whose t has moved rewrites the weights through rewrite(w), with no prewarm, as
     // the engine allows between blocks. Returns the level correction (linear).
     template <class Rewrite>
     float Apply(float u, float* w, Rewrite rewrite)
@@ -114,6 +115,7 @@ class Processor
                 bend::fold[d.layer]   = v;
                 break;
             case Kind::Morph:
+            case Kind::Scale:
                 if(fabsf(v - last_) > 0.0005f)
                 {
                     Morph(v, w);
@@ -200,10 +202,11 @@ class Processor
     int Latency() const { return (def_ && def_->kind == Kind::Rate && rate_ > 1) ? kBlock * rate_ : 0; }
 
   private:
+    // Morph: A + t(B - A). Scale (no B): A times t.
     void Morph(float t, float* w) const
     {
         for(int i = 0; i < nam_a2_daisy::kA2WeightCount; i++)
-            w[i] = a_[i] + t * (b_[i] - a_[i]);
+            w[i] = b_ ? a_[i] + t * (b_[i] - a_[i]) : a_[i] * t;
     }
 
     void ResetRate()
