@@ -346,6 +346,44 @@ options as written:
    lines from step 0, a random start phase. Cheapest and most predictable; the weak point
    is how it meets the input (the islands at 5.5 V where the input pulls it into step).
 
+## FLT6: Swords with its oscillation, design for review (2026-10-23)
+
+David's shape: FLT5's capture plus a layer, as FLT3 is the Wasp plus its granular layer,
+not a circuit model. Nothing new is recorded; every number below is already measured.
+
+**What it is.** FLT5's GRU (`sw4_all_gru16_s3`, Res CV 0–4 V, where Swords repeats itself)
+with an **oscillator layer** added to its output once the dial passes 10. The dial reads
+Swords' Res CV: 0–10 is 0–4 V as on FLT5, 10–11 is 4–6 V (`sw-a`'s range). The GRU's Res
+stays at 4 V; the layer supplies what the network never learned.
+
+**The layer, part by part, each from a measurement:**
+
+| Part | Model | From |
+|---|---|---|
+| When it sounds | on when Res CV passes the onset line, off when it falls below the stop line; both lines fitted in cutoff (start 5.43 / 4.56 / 4.22 V and stop 3.44 / 3.88 / 4.04 V at V/OCT 1 / 4 / 7 V), so it starts lower at higher cutoffs and has hysteresis | step 0 |
+| Its pitch | 165 Hz at V/OCT 4 V, 0.976 octave per volt, rising a few cents with Res (23–26 cents from onset to 8 V) | `sw-glide` free pitch; step 0 |
+| Its level | rising with Res above the onset, about 2 V peak at the onset to 7.5 V at 8 V, fitted from the step 0 ramps | step 0 |
+| Its shape | a sine through a symmetric soft clip whose drive rises with Res: near pure at the onset, H3 −29 and H5 −38 dB at 8 V (odd only, as measured) | step 0 |
+| Locking | a phase oscillator pulled by the input (Adler's model: the input times the oscillator's quadrature, scaled by the oscillator's pitch so the lock range is the same in cents everywhere), the coupling fitted so the lock range against the input's level matches the glide (±20 cents at 0.2 V, ±150 at 1 V, −6/+5 semitones at 3 V); outside the lock it pulls, the model's own behaviour, checked against the measured 16–39 cents | `sw-glide` |
+| Start | a random phase each time it starts, as Swords | `sw-a` repeat takes |
+
+**Judged on, before it goes on the card** (a desktop host running the same C++ as the
+firmware, as the granular layer was checked):
+1. the glide takes, through `swords_glide.py`'s reading: free pitch within 2%, lock range
+   within a quarter of Swords' at each level, no hysteresis;
+2. step 0's Res ramps: onset and stop within 0.2 V of Swords', level within 2 dB;
+3. the 4.5 and 5.5 V test takes: the oscillation's pitch and level per hold, and band levels
+   (phase-blind, as the oscillation's phase is random) within 2 dB of Swords' where it
+   oscillates;
+4. on the module: CPU (it should cost little beside the GRU), and David's ear.
+
+**What it is not:** a model of how the oscillation and the filtered input share Swords'
+clip (the input's own tone is the GRU's; the layer only adds), nor the islands at 5.5 V
+where the input holds the oscillation's phase steady (the locking covers part of that).
+
+**On the card:** `f6_SWORDS_OSC.grnb`, FLT5's network and controls plus an oscillator
+section (its fitted constants) at the file's end, read by the firmware like the controls.
+
 ## To build after review
 
 - `tools/wasp_capture.py`: a fourth play channel (Res CV on ES-10 OUT 4), a Res walk for
