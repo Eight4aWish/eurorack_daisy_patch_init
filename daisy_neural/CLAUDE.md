@@ -13,20 +13,21 @@ unless David reopens them: Swords Part B (mode, drive and Response under CV) and
 layer for the Wasp HP (it would need HP repeat takes). The rig's ES-10 jumper can go back to
 AC; captures need it on DC.
 
-On the card (firmware `eceb308`): AMPS, 12 starters and 7 personal (`PERSONAL_CARD.md`,
-private); FILTERS, five GRU-16s each carrying its own controls, with the level match (README,
-"Five filters on the card"). Measurements in hand: SWORDS.md (Part A, Res 0–4 V, fixed Res,
+On the card (firmware `35b38bc`, 2026-10-23): AMPS, 19: the 12 starters, 6 personal
+(`PERSONAL_CARD.md`, private) and `w01_WASP_LP`, an A2 capture of the Wasp LP; NOT-AMPS,
+16, the four weight steers' bases in `notamps/`; FILTERS, six GRU-16s each carrying its own
+controls, with the level match (README, "Six filters for the card"). Measurements in hand: SWORDS.md (Part A, Res 0–4 V, fixed Res,
 above the threshold, the glide), this brief (the Wasp, under-Res, HP).
 
 **Next, when picked up again (agreed):**
-1. **FLT6, a Swords that oscillates: built 2026-10-23, waiting for the card and David's
+1. **FLT6, a Swords that oscillates: built and on the card 2026-10-23, waiting for David's
    ear.** David's shape, **the capture plus a layer, not a full circuit model**: FLT5's GRU
    (Res 0–4 V) plus an oscillator layer (`nam/osc_layer.h`) built part by part from the
    measurements; the dial's 10–11 takes the layer's Res CV from 4 to 6 V (SWORDS.md, "FLT6").
    Desktop checks: onset, stop, level, pitch and lock range pass (the free pitch at V/OCT 4
    misses its 2% mark by half a percent); with the riff, the band levels are within 2 dB only
    at the top two cutoff holds, the oscillation runs 2–8 dB quiet above V/OCT 5, and it pulls
-   harder than Swords outside the lock. Staged in `captures/card_2026-10-23/` with RND1 X2.
+   harder than Swords outside the lock.
 2. **What the Wasp's wildness is: run 2026-10-23** (Wasp section, "three tests"). Test 1
    answers the question: at Res 9–10 the spectrum itself changes take to take, not just
    the phase, so a deterministic grey-box like FLT6's cannot stand in for FLT3's granular
