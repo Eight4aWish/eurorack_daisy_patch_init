@@ -789,6 +789,21 @@ is not what was missing. One-Res batches and three times the training parameters
 have made it harder to train, as the three short runs suggest. Not pursued further without
 a new design.
 
+**The LSTM arm, designed and launched 2026-10-23 on the mini** (`tools/train_lp_lstm.sh`;
+David: "did we give up prematurely on LSTM?"). The 19 October pilot tried LSTMs on one take
+with no controls and one seed each, and could not separate them from the GRUs (riff ESR
+0.050–0.099 for both, inside one network's checkpoint swing of 0.047–0.085); every network
+with cutoff and Res inputs since has been a GRU, with no recorded decision against LSTM.
+Only the cell changes against the first recipe's `lp_cr_*`: the same loss, schedule, early
+stopping, clip, data, splits (Res 5 held out) and seeds, PyTorch's default initialisation
+(no forget-gate bias, as the GRUs had none). LSTM-14 (1,064 weights, about GRU-16's 1,008)
+and LSTM-16 (GRU-16's units), seeds 1–3; the control test on both arms in one run.
+**Decision rule, fixed before training:** LSTM is better only if its median Res right way
+*and* amount both beat GRU-16's median by more than GRU-16's seed range; inside it, no
+detectable difference; cutoff response, validation and held-out Res 5 ESR reported the
+same way. Cost if it won: about a third more arithmetic than a GRU of the same units, and
+an LSTM engine for the firmware.
+
 **What the Wasp's randomness is (2026-10-20).** Four recordings of identical input at each of
 Res 6–10 (the three repeat takes and 18 October's): their average is the repeatable part,
 each take minus it the random part. In absolute terms the random part peaks at the cutoff
