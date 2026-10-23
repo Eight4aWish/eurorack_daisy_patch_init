@@ -31,7 +31,8 @@ EPOCH = re.compile(r"^epoch\s+(\d+)\s+train (?:ESR|MSE) ([\d.e+-]+)\s+valid ESR 
                    r"(?:grad (\S+) \(max (\S+), (\d+)% clipped\)\s+)?([\d.]+) min")
 COLOURS = {"cutoff + Res, GRU-16": "var(--c1)", "cutoff + Res, GRU-24": "var(--c2)",
            "cutoff + Res, WaveNet FiLM": "var(--c3)",
-           "cutoff, GRU-16": "var(--c3)", "cutoff, GRU-24": "var(--c4)"}
+           "cutoff, GRU-16": "var(--c3)", "cutoff, GRU-24": "var(--c4)",
+           "cutoff + Res, LSTM-14": "var(--c3)", "cutoff + Res, LSTM-16": "var(--c4)"}
 DASHES = {1: "", 2: "6 4", 3: "2 3"}
 
 try:
