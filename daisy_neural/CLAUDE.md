@@ -806,6 +806,25 @@ detectable difference; cutoff response, validation and held-out Res 5 ESR report
 same way. Cost if it won: about a third more arithmetic than a GRU of the same units, and
 an LSTM engine for the firmware.
 
+**Result, finished 2026-10-23 21:43: the rule is not met; no detectable difference on Res,
+and the GRU stays.** Medians with the seed range (`gru_runs/lp_lstm_control.txt`, each
+run's `result.json`); Res and cutoff on audible cells, spurious on quiet ones (lower is
+better), ESR 0 = perfect:
+
+| | Res right way | Res amount | Res spurious | Cut right way | Cut amount | Cut err dB | Cut spurious | Valid ESR | Res 5 ESR |
+|---|---|---|---|---|---|---|---|---|---|
+| GRU-16 | 0.73 (0.59–0.78) | 0.45 (0.36–0.68) | 0.09 (0.07–0.12) | 0.98 (0.97–0.99) | 0.86 (0.78–0.90) | 6.0 (5.5–6.8) | 0.73 (0.73–0.80) | 0.157 (0.155–0.159) | 0.045 (0.035–0.045) |
+| LSTM-14 | 0.65 (0.57–0.76) | 0.35 (0.26–0.45) | 0.17 (0.16–0.21) | 0.93 (0.92–0.97) | 0.79 (0.73–0.86) | 7.9 (6.4–8.6) | 0.53 (0.53–0.67) | 0.155 (0.153–0.163) | 0.040 (0.037–0.055) |
+| LSTM-16 | 0.68 (0.54–0.81) | 0.38 (0.37–0.60) | 0.10 (0.09–0.15) | 0.98 (0.93–0.99) | 0.82 (0.76–0.93) | 6.9 (6.6–7.2) | 0.53 (0.33–0.67) | 0.157 (0.155–0.158) | 0.042 (0.035–0.044) |
+
+Both LSTMs' Res medians sit just below GRU-16's, inside its scatter, and so do both ESRs.
+Outside the scatter: LSTM-14's Res spurious, cutoff right way and cutoff error are worse,
+LSTM-16's cutoff error slightly worse, and both LSTMs' cutoff spurious is better. That is
+mixed and small against a cell that costs a third more at the same units (LSTM-16: 1,361
+parameters against 1,025) and a new engine. The pilot's LSTMs were not given up on too
+early: given the same recipe, data and seeds, they match the GRU and do not beat it.
+Training took the same time (103–156 min against 97–155).
+
 **What the Wasp's randomness is (2026-10-20).** Four recordings of identical input at each of
 Res 6–10 (the three repeat takes and 18 October's): their average is the repeatable part,
 each take minus it the random part. In absolute terms the random part peaks at the cutoff
