@@ -346,15 +346,15 @@ options as written:
    lines from step 0, a random start phase. Cheapest and most predictable; the weak point
    is how it meets the input (the islands at 5.5 V where the input pulls it into step).
 
-## FLT6: Swords with its oscillation (built 2026-10-23)
+## SWORDS_OSC: Swords with its oscillation (built 2026-10-23; FLT7 on the card)
 
-David's shape: FLT5's capture plus a layer, as FLT3 is the Wasp plus its granular layer,
+David's shape: SWORDS_16's capture plus a layer, as WASP_LP_GR is the Wasp plus its granular layer,
 not a circuit model. Nothing new was recorded; every constant is from a measurement already
 made.
 
-**What it is.** FLT5's GRU (`sw4_all_gru16_s3`, Res CV 0–4 V, where Swords repeats itself)
+**What it is.** SWORDS_16's GRU (`sw4_all_gru16_s3`, Res CV 0–4 V, where Swords repeats itself)
 with an **oscillator layer** (`nam/osc_layer.h`) added to its output. The dial reads Swords'
-Res CV: 0–10 is 0–4 V as on FLT5, 10–11 is 4–6 V (`sw-a`'s range). The GRU's Res stays at
+Res CV: 0–10 is 0–4 V as on SWORDS_16, 10–11 is 4–6 V (`sw-a`'s range). The GRU's Res stays at
 4 V past 10; the layer sees the Res CV itself, so at the top cutoffs, where Swords starts
 lower, it comes in just under 10 (the onset line reaches about 3.8 V at V/OCT 10.5,
 extended from the knots at 1, 4 and 7 V). No feedback.
@@ -370,11 +370,11 @@ extended from the knots at 1, 4 and 7 V). No feedback.
 | Locking | Adler's model on the input's part near the pitch only: the input mixed down at the oscillator's phase and low-passed (within 0.6 of the pitch) gives that part's level A and phase; it locks when the detuning is under 0.075 A^1.2 of the pitch in Hz, the same up and down in Hz as measured (−624 / +476 cents at 3 V) | `sw-glide` |
 | Start | a random phase each time it starts | `sw-a` repeat takes |
 
-**Checked on the desktop** against the marks set in the design: FLT5's network plus the
+**Checked on the desktop** against the marks set in the design: SWORDS_16's network plus the
 layer, through `tools/osc_host` (the firmware's own C++), with `tools/osc_layer.py check`
 (output in `captures/swords/osc_check.txt`).
 
-| Check | Mark | FLT6 | Swords | Verdict |
+| Check | Mark | SWORDS_OSC | Swords | Verdict |
 |---|---|---|---|---|
 | Free pitch at V/OCT 4 / 6 / 8 | within 2% | 169.1 / 650.4 / 2,460 Hz | 164.9 / 640 / 2,468 | +2.5%, +1.6%, −0.3%: 4 V misses by half a percent (one curve through both days' points) |
 | Lock range, 1 V peak | within a quarter | −170 to +180 / −172 to +178 / −148 to +154 cents | about ±150 | 0–20% wide: passes |
@@ -388,7 +388,7 @@ layer, through `tools/osc_host` (the firmware's own C++), with `tools/osc_layer.
 | Oscillation level, riff takes | no mark | within 2.5 dB at V/OCT 2.5 and 4.1; 2–8 dB under above | | ducked too hard at the higher cutoffs |
 | Band levels, riff takes | within 2 dB | 1.2–1.5 dB at V/OCT 8.9 and 10.5; 2.7–6.3 dB below | | passes at the top two holds only |
 
-Against FLT5's network alone (Res capped at 4 V) on the same riff takes, the layer brings
+Against SWORDS_16's network alone (Res capped at 4 V) on the same riff takes, the layer brings
 the band error down by 0.7–2.8 dB at every hold but the top one (4.5 V: 6.4 → 5.7, 4.6 →
 3.2, 5.3 → 4.0, 4.8 → 2.6, 2.6 → 1.2 dB; 5.5 V: 7.3 → 6.3, 5.7 → 3.9, 7.3 → 4.8, 5.9 →
 3.1, 3.1 → 1.1 dB). At V/OCT 10.5 the network alone was already within 1 dB and the layer
@@ -399,7 +399,7 @@ ducking factor (the level shortfall at the higher cutoffs is that), and the isla
 5.5 V where the input holds the oscillation's phase steady (the locking covers part).
 Still to judge on the module: its CPU (the FILTERS page's cycle reading) and David's ear.
 
-**On the card:** `f6_SWORDS_OSC.grnb` (panel name SWORDS_OSC): FLT5's file with a version-2
+**On the card:** `f7_SWORDS_OSC.grnb` (panel name SWORDS_OSC): SWORDS_16's file with a version-2
 controls section, written by `tools/grnb_controls.py --osc`: dial 0 / 10 / 11 → network Res
 0 / 4 / 4 V and layer Res CV 0 / 4 / 6 V, no feedback, and the layer's 34 constants
 (`captures/swords/osc_params.f32`). It needs the firmware of 2026-10-23; older firmware

@@ -1,4 +1,4 @@
-"""Is the warble the network's own? FLT2's network (lp_cr_gru16_s3).
+"""Is the warble the network's own? WASP_LP_16's network (lp_cr_gru16_s3).
 1. Its own ringing modes: the GRU linearised at rest (audio 0, cutoff V, Res R), the
    eigenvalues of dh'/dh -> frequency and decay time of each mode.
 2. The same input as the real Wasp's Res 9 test take, network against Wasp: per hold, how

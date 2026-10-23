@@ -30,7 +30,7 @@ nam/gru_runtime.h, and the two must agree. Little-endian, 64-byte header + paylo
                  dial[N], res[N], feedback[N] (f32): the Res dial (0-11) mapped, piecewise
                  linear, to the network's Res input and the feedback of its output into
                  its input (main.cpp ProcessFilter). Without one, Mirth uses the Wasp LP's.
-                 Version 2 (2026-10-23) adds an oscillator layer (nam/osc_layer.h; FLT6,
+                 Version 2 (2026-10-23) adds an oscillator layer (nam/osc_layer.h; SWORDS_OSC,
                  Swords with its oscillation): osc_res[N] (f32), the Res CV the layer sees
                  at each dial point, then its 34 constants (f32, tools/osc_layer.py's order).
 """

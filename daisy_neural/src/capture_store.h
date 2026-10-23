@@ -101,12 +101,14 @@ struct FilterEntry
     uint32_t layer_crc;
     uint32_t ctl_bytes;     // the controls section at the file's end (tools/grnb.py), or 0
     uint32_t ctl_crc;
+    int      a2_index = -1; // an A2 capture named like a filter file (f1_WASP_A2.a2nb): its
+                            // capture entry, for Load(); the rest above is unused. Else -1
 };
 
 /** How Mirth's knobs drive a filter network (tools/grnb.py's controls section): the
  *  network's cutoff volts at the FREQ knob's ends, and the Res dial (0-11) mapped piecewise
  *  linearly to its Res input and the feedback of its output into its input. Version 2 of
- *  the section adds an oscillator layer (nam/osc_layer.h; FLT6): the Res CV it sees at each
+ *  the section adds an oscillator layer (nam/osc_layer.h; SWORDS_OSC): the Res CV it sees at each
  *  dial point, and its constants. */
 constexpr int kMaxDialPoints = 8;
 constexpr int kOscFloats     = 34;  // osc::kParams

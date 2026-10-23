@@ -3,7 +3,7 @@
 notamp_ideas.py — listening demos for two new kinds of not-amp (David, 2026-10-22: the
 current twelve are not that compelling).
 
-1. Filters past their limits. FLT2's network (the Wasp's cutoff + Res GRU-16,
+1. Filters past their limits. WASP_LP_16's network (the Wasp's cutoff + Res GRU-16,
    lp_cr_gru16_s3) driven where it was never trained: Res above 10 and below 0, the
    cutoff past both ends, its output fed back into its input, and Res following the
    audio. Mirth clamps all of this today.
@@ -37,7 +37,7 @@ import train_gru as T  # noqa: E402
 from test_signal import make_synth, scale_peak  # noqa: E402
 
 SR = 48000
-FLT2 = pathlib.Path.home() / "wasp_lp/gru_runs/lp_cr_gru16_s3"
+WASP_LP_16 = pathlib.Path.home() / "wasp_lp/gru_runs/lp_cr_gru16_s3"
 STARTER = HERE.parent / "captures/nam_test/KLON 2.nam"
 
 
@@ -60,7 +60,7 @@ def finish(y):
 
 # ---------------------------------------------------------------- 1. filters past limits
 def gru_parts():
-    model, inputs, out, scale = C.load_model(FLT2)
+    model, inputs, out, scale = C.load_model(WASP_LP_16)
     assert inputs == ["audio", "cv", "res"], inputs
     cell = torch.nn.GRUCell(3, model.rnn.hidden_size).double()
     with torch.no_grad():

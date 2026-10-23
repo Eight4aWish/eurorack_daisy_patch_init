@@ -1,5 +1,5 @@
 """The Res dial's calibration (2026-10-22): for each Wasp Res mark, the network Res input
-(FLT2's lp_cr_gru16_s3) whose change from Res 6 best matches the real Wasp's, over every
+(WASP_LP_16's lp_cr_gru16_s3) whose change from Res 6 best matches the real Wasp's, over every
 band and then over the band holding the resonance at each cutoff hold.
 
     .venv-nam/bin/python tools/res_dial_calibrate.py      (reads ~/wasp_lp: lp_cr_gru16_s3 and the lp-res* takes)

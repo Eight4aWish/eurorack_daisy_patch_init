@@ -75,31 +75,40 @@ at 10 and 0.5 at 11. Mapped, the rise is +0.6, +1.8, +2.5, +4.6 dB. The feedback
 ring, then oscillate, first at the highest cutoffs and lower as the dial rises; at 10 from
 about cutoff 4 V, within a tenth of where the Wasp itself rings up to 8 V, lower above. The
 real Wasp never quite oscillates; the network does from about 9.5 at some cutoffs, and 10
-to 11 is over-Res. FLT1, trained at one Res, gets the feedback alone from 9. The granular
-layer on FLT3 follows the dial itself.
+to 11 is over-Res. WASP_R6_16, trained at one Res, gets the feedback alone from 9. The
+granular layer on WASP_LP_GR follows the dial itself.
 
-**Six filters for the card (2026-10-23), each file carrying its own controls** (a section at
+**Seven filters for the card (2026-10-23):** FLT1 an A2 capture at one setting, then six
+GRU-16s, each file carrying its own controls (a section at
 the end of the `.grnb`, set with `tools/grnb_controls.py`: the network's cutoff volts at the
 FREQ knob's ends, and its Res dial table, calibrated against its own module with
 `tools/filter_dial_calibrate.py`; a file without one gets the Wasp LP's):
 
 | | Network | FREQ knob | Res dial |
 |---|---|---|---|
-| FLT1 | Wasp LP, cutoff only, Res 6 | 0–10 V | feedback alone from 9 (0.15 at 10, 0.5 at 11) |
-| FLT2 | Wasp LP, cutoff + Res | 0–10 V | lifted 7 → 12 by 9, feedback 0.15 at 10, 0.5 at 11 |
-| FLT3 | FLT2 + the granular layer | 0–10 V | as FLT2; the layer follows the dial itself |
-| FLT4 | Wasp HP, cutoff + Res (`hp_cr_gru16_s3`) | −10 to 0 V | as marked to 8, lifted to 11.5 by 10; feedback 0.3 at 11 (its resonance shrinks with feedback, so it only whistles at the top cutoffs) |
-| FLT5 | Swords, cutoff + Res 0–4 V (`sw4_all_gru16_s3`) | V/OCT 2.5–10.5 V | 0–10 → Res CV 0–4 V, no lift needed; feedback 0.2 at 11 (it oscillates only at the lowest and highest cutoffs; Swords' own oscillation is FLT6's) |
-| FLT6 | FLT5 + an oscillator layer: Swords' own self-oscillation, built from measurements (`nam/osc_layer.h`; SWORDS.md, "FLT6") | V/OCT 2.5–10.5 V | 0–10 as FLT5; 10–11 takes the layer's Res CV from 4 to 6 V (the network stays at 4), so it oscillates from about 10 (just under at the top cutoffs) at Swords' pitch, and locks to the input near that pitch; no feedback |
+| FLT1 | Wasp LP as an A2-Lite capture at one setting, Res 6 and cutoff CV +5 V (`f1_WASP_A2.a2nb`, panel WASP_A2_R6: the first Wasp capture, 2026-10-19) | fixed | fixed |
+| FLT2 | Wasp LP, cutoff only, Res 6 (WASP_R6_16) | 0–10 V | feedback alone from 9 (0.15 at 10, 0.5 at 11) |
+| FLT3 | Wasp LP, cutoff + Res (WASP_LP_16) | 0–10 V | lifted 7 → 12 by 9, feedback 0.15 at 10, 0.5 at 11 |
+| FLT4 | FLT3 + the granular layer (WASP_LP_GR) | 0–10 V | as FLT3; the layer follows the dial itself |
+| FLT5 | Wasp HP, cutoff + Res (`hp_cr_gru16_s3`, WASP_HP_16) | −10 to 0 V | as marked to 8, lifted to 11.5 by 10; feedback 0.3 at 11 (its resonance shrinks with feedback, so it only whistles at the top cutoffs) |
+| FLT6 | Swords, cutoff + Res 0–4 V (`sw4_all_gru16_s3`, SWORDS_16) | V/OCT 2.5–10.5 V | 0–10 → Res CV 0–4 V, no lift needed; feedback 0.2 at 11 (it oscillates only at the lowest and highest cutoffs; Swords' own oscillation is FLT7's) |
+| FLT7 | FLT6 + an oscillator layer: Swords' own self-oscillation, built from measurements (`nam/osc_layer.h`; SWORDS_OSC; SWORDS.md, "SWORDS_OSC") | V/OCT 2.5–10.5 V | 0–10 as FLT6; 10–11 takes the layer's Res CV from 4 to 6 V (the network stays at 4), so it oscillates from about 10 (just under at the top cutoffs) at Swords' pitch, and locks to the input near that pitch; no feedback |
 
-All GRU-16. **Level match:** every file's audio input is scaled by 0.666 and its output by
+**Level match:** every GRU file's audio input is scaled by 0.666 and its output by
 1.353 (the patch.init's 7.30 V input and 8.85 V output against the ES-10's 10.96 and 11.97 V
 the networks were trained in), so DRIVE at noon puts volts in and gets volts out as the
 module did; turn DRIVE up 3.5 dB for the level the filters played at before. The feedback is
 added in the network's own units, after that scale. The FREQ line shows the knob's 0–10
-whatever the volts. Firmware `eceb308` for FLT1–5; FLT6's controls section is version 2
-(the layer's Res CV per dial point and its constants), which needs the firmware of
-2026-10-23: older firmware cannot read it and gives the file the Wasp LP's controls.
+whatever the volts.
+
+**FLT1 is an A2 capture filed with the filters:** an `.a2nb` named like a filter file
+(`f`, digits, an underscore) plays in FILTERS rather than AMPS, through the amps' engine at its
+header gain, without the level match. It plays the one setting it was captured at, so FREQ
+and RES do nothing and their lines on the panel are blank. SWORDS_OSC's controls section is
+version 2 (the layer's Res CV per dial point and its constants). Both need the firmware of
+2026-10-23: older firmware lists the A2 file in AMPS, and gives SWORDS_OSC the Wasp LP's
+controls. **Renumbered 2026-10-23:** the A2 capture became FLT1 and the GRU filters moved
+up one; notes from before then use the numbering of their day.
 
 Each bank keeps its own place, so going round the banks comes back to the patch you
 left. Choosing a patch by CV, which the v1.0.0 slot knob allowed, has gone.

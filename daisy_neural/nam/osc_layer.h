@@ -1,6 +1,6 @@
 /**
- * osc_layer — Swords' self-oscillation, added to its network's output (FLT6; SWORDS.md,
- * "FLT6"). The network (Res CV 0-4 V) is where Swords repeats itself; past its onset Swords
+ * osc_layer — Swords' self-oscillation, added to its network's output (SWORDS_OSC, FLT7;
+ * SWORDS.md, "SWORDS_OSC"). The network (Res CV 0-4 V) is where Swords repeats itself; past its onset Swords
  * oscillates, and that is this layer, built part by part from measurements rather than
  * learned:
  *

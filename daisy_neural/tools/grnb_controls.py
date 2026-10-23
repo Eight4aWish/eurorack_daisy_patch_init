@@ -9,7 +9,7 @@ place, so an exported network does not have to be exported again.
     .venv/bin/python tools/grnb_controls.py f4_WASP_HP_16.grnb --cut=-10,0 \\
         --dial 0:0:0,7:7:0,9:12:0,10:12:0.15,11:12:0.5                          # set
     .venv/bin/python tools/grnb_controls.py f*.grnb --audio-scale 0.666 --gain 1.353
-    .venv/bin/python tools/grnb_controls.py f6_SWORDS_OSC.grnb --name SWORDS_OSC --cut 2.5,10.5 \\
+    .venv/bin/python tools/grnb_controls.py f7_SWORDS_OSC.grnb --name SWORDS_OSC --cut 2.5,10.5 \\
         --dial 0:0:0:0,10:4:0:4,11:4:0:6 --osc captures/swords/osc_params.f32
 
 --audio-scale and --gain set the header's audio input scale and output gain (absolute
@@ -18,7 +18,7 @@ values). The level match of 2026-10-22: the networks were trained in the ES-10's
 output at 8.85 V (tools/mirth_input_fs.py), so audio scale 7.30 / 10.96 = 0.666 and gain
 11.97 / 8.85 = 1.353 make DRIVE at noon put volts in and get volts out as the module did.
 
---osc adds an oscillator layer (nam/osc_layer.h; FLT6): its constants from
+--osc adds an oscillator layer (nam/osc_layer.h; SWORDS_OSC): its constants from
 tools/osc_layer.py, and a fourth number on each dial point, the Res CV the layer sees there.
 --name sets the name the panel shows (ten characters).
 """

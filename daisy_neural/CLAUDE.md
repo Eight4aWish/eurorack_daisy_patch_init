@@ -13,25 +13,28 @@ unless David reopens them: Swords Part B (mode, drive and Response under CV) and
 layer for the Wasp HP (it would need HP repeat takes). The rig's ES-10 jumper can go back to
 AC; captures need it on DC.
 
-On the card (firmware `35b38bc`, 2026-10-23): AMPS, 19: the 12 starters, 6 personal
-(`PERSONAL_CARD.md`, private) and `w01_WASP_LP`, an A2 capture of the Wasp LP; NOT-AMPS,
-16, the four weight steers' bases in `notamps/`; FILTERS, six GRU-16s each carrying its own
-controls, with the level match (README, "Six filters for the card"). Measurements in hand: SWORDS.md (Part A, Res 0–4 V, fixed Res,
+The card's layout (2026-10-23): AMPS, 18: the 12 starters and 6 personal
+(`PERSONAL_CARD.md`, private); NOT-AMPS, 16, the four weight steers' bases in `notamps/`;
+FILTERS, seven: FLT1 the Wasp LP's A2 capture at one setting (`f1_WASP_A2.a2nb`), then six
+GRU-16s each carrying its own controls, with the level match (README, "Seven filters for
+the card"). **Filters renumbered 2026-10-23,** the GRUs up one: FLT2 WASP_R6_16, FLT3
+WASP_LP_16, FLT4 WASP_LP_GR, FLT5 WASP_HP_16, FLT6 SWORDS_16, FLT7 SWORDS_OSC. Notes from
+before then use the numbering of their day, so name a filter rather than number it. Measurements in hand: SWORDS.md (Part A, Res 0–4 V, fixed Res,
 above the threshold, the glide), this brief (the Wasp, under-Res, HP).
 
 **Next, when picked up again (agreed):**
-1. **FLT6, a Swords that oscillates: built and on the card 2026-10-23, waiting for David's
-   ear.** David's shape, **the capture plus a layer, not a full circuit model**: FLT5's GRU
+1. **SWORDS_OSC (FLT7), a Swords that oscillates: built and on the card 2026-10-23, waiting for David's
+   ear.** David's shape, **the capture plus a layer, not a full circuit model**: SWORDS_16's GRU
    (Res 0–4 V) plus an oscillator layer (`nam/osc_layer.h`) built part by part from the
-   measurements; the dial's 10–11 takes the layer's Res CV from 4 to 6 V (SWORDS.md, "FLT6").
+   measurements; the dial's 10–11 takes the layer's Res CV from 4 to 6 V (SWORDS.md, "SWORDS_OSC").
    Desktop checks: onset, stop, level, pitch and lock range pass (the free pitch at V/OCT 4
    misses its 2% mark by half a percent); with the riff, the band levels are within 2 dB only
    at the top two cutoff holds, the oscillation runs 2–8 dB quiet above V/OCT 5, and it pulls
    harder than Swords outside the lock.
 2. **What the Wasp's wildness is: run 2026-10-23** (Wasp section, "three tests"). Test 1
    answers the question: at Res 9–10 the spectrum itself changes take to take, not just
-   the phase, so a deterministic grey-box like FLT6's cannot stand in for FLT3's granular
-   layer, and a statistical layer like FLT3's is the right kind of model. Tests 2 (noise or
+   the phase, so a deterministic grey-box like SWORDS_OSC's cannot stand in for WASP_LP_GR's
+   granular layer, and a statistical layer like WASP_LP_GR's is the right kind of model. Tests 2 (noise or
    chaos) and 3 (beating) cannot be answered from the riff takes; they would need new
    recordings, and recording for Mirth is closed.
 3. **Random-weight not-amps: chosen 2026-10-23.** From eight seeds at ×1.5, 2 and 3
@@ -1087,8 +1090,8 @@ large lift.
    fifteen times Swords' 0.03, waveform ESR 0.5–1.2; less at 8 V (0.014–0.08), none at 2 V
    or 10 V. The band levels averaged over a hold still agree within 0.4–1.8 dB: the same
    colour on average, different moment to moment. Not a fixed sound with a random phase, so
-   a deterministic grey-box (FLT6's kind) cannot stand in for FLT3's layer; a statistical
-   layer is the right kind of model, and FLT3 has one.
+   a deterministic grey-box (SWORDS_OSC's kind) cannot stand in for WASP_LP_GR's layer; a
+   statistical layer is the right kind of model, and WASP_LP_GR has one.
 2. **Not answerable from these takes.** The premise fails at Res 9–10: in the last 15 ms of
    each rest (input silent) the Wasp is still sounding, 14–19 dB under the note after it
    (Res 6–8: 32–46 dB under), and the takes already differ there by as much as that sound

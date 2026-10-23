@@ -54,7 +54,9 @@ const char* FailHex(const char* stage, uint32_t bits)
 
 Entry       s_entries[kMaxFiles];
 int         s_count  = 0;  // the card root's captures, the AMPS bank
-int         s_total  = 0;  // then notamps/'s, found by name only
+int         s_total  = 0;  // then notamps/'s, found by name only, and the A2 filters'
+Entry       s_a2f[kMaxFilters];  // A2 captures named like filter files, until the scan files them
+int         s_na2f   = 0;
 FilterEntry s_filters[kMaxFilters];
 int         s_nfilters = 0;
 bool        s_ready  = false;
@@ -93,6 +95,17 @@ bool EndsWith(const char* name, const char* ext)  // ext lower case, with its do
     return true;
 }
 bool EndsWithA2nb(const char* name) { return EndsWith(name, ".a2nb"); }
+
+// A filter file's name: f, digits, an underscore (f1_WASP_A2.a2nb).
+bool FilterName(const char* n)
+{
+    if(n[0] != 'f' && n[0] != 'F')
+        return false;
+    int i = 1;
+    while(n[i] >= '0' && n[i] <= '9')
+        i++;
+    return i > 1 && n[i] == '_';
+}
 
 // A .grnb's network payload in bytes (tools/grnb.py weight_count, gru::WeightCount).
 size_t GrnbPayload(int h, int i) { return 4u * (size_t)(3 * h * i + 3 * h * h + 6 * h + h + 1); }
@@ -328,6 +341,7 @@ bool Init(LevelFn level, ProgressFn progress, ImportResult* imported)
 {
     s_count    = 0;
     s_total    = 0;
+    s_na2f     = 0;
     s_nfilters = 0;
     s_ready    = false;
 
@@ -423,13 +437,21 @@ bool Init(LevelFn level, ProgressFn progress, ImportResult* imported)
         if(info.fattrib & AM_DIR)
             continue;
         const bool a2 = EndsWithA2nb(info.fname), gr = EndsWith(info.fname, ".grnb");
-        if(!(a2 && s_count < kMaxFiles) && !(gr && s_nfilters < kMaxFilters))
+        const bool a2f = a2 && FilterName(info.fname);  // an A2 capture filed with the filters
+        if(!(a2 && !a2f && s_count < kMaxFiles) && !(gr && s_nfilters < kMaxFilters)
+           && !(a2f && s_na2f < kMaxFilters))
             continue;
 
         char path[kPathLen];
         snprintf(path, sizeof(path), "%s%s", s_fsi.GetSDPath(), info.fname);
 
-        if(a2)
+        if(a2f)
+        {
+            Entry e;
+            if(ReadHeader(path, e))
+                s_a2f[s_na2f++] = e;
+        }
+        else if(a2)
         {
             Entry e;
             if(ReadHeader(path, e))
@@ -459,18 +481,6 @@ bool Init(LevelFn level, ProgressFn progress, ImportResult* imported)
         s_entries[j + 1] = key;
     }
 
-    for(int i = 1; i < s_nfilters; i++)  // the same, for the filters
-    {
-        FilterEntry key = s_filters[i];
-        int         j   = i - 1;
-        while(j >= 0 && strcmp(s_filters[j].path, key.path) > 0)
-        {
-            s_filters[j + 1] = s_filters[j];
-            j--;
-        }
-        s_filters[j + 1] = key;
-    }
-
     // Not-amp sources (2026-10-23): captures that are not amps, such as the weight steers'
     // random-weight bases, go in notamps/. The NOT-AMPS bank finds them by name; they
     // follow the root's entries, so Count(), and with it AMPS, leaves them out.
@@ -490,6 +500,32 @@ bool Init(LevelFn level, ProgressFn progress, ImportResult* imported)
                 s_entries[s_total++] = e;
         }
         f_closedir(&dir);
+    }
+
+    // An A2 capture named like a filter file plays in FILTERS, not AMPS (2026-10-23): a
+    // filter at one setting, like the Wasp's first capture. Its entry follows the others,
+    // for Load(), and its filter entry points at it; it sorts among the .grnb by name.
+    for(int k = 0; k < s_na2f && s_total < kMaxFiles && s_nfilters < kMaxFilters; k++)
+    {
+        FilterEntry fe = {};
+        memcpy(fe.name, s_a2f[k].name, sizeof(fe.name));
+        memcpy(fe.path, s_a2f[k].path, sizeof(fe.path));
+        fe.gain                 = s_a2f[k].gain;
+        fe.a2_index             = s_total;
+        s_entries[s_total++]    = s_a2f[k];
+        s_filters[s_nfilters++] = fe;
+    }
+
+    for(int i = 1; i < s_nfilters; i++)  // the same, for the filters
+    {
+        FilterEntry key = s_filters[i];
+        int         j   = i - 1;
+        while(j >= 0 && strcmp(s_filters[j].path, key.path) > 0)
+        {
+            s_filters[j + 1] = s_filters[j];
+            j--;
+        }
+        s_filters[j + 1] = key;
     }
 
     s_ready  = s_count > 0;

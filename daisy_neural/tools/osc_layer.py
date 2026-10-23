@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-osc_layer.py — FLT6's oscillator layer (nam/osc_layer.h; SWORDS.md, "FLT6"): its constants,
-each from a measurement, and the three checks the design set, run with FLT5's network
+osc_layer.py — SWORDS_OSC's oscillator layer (nam/osc_layer.h; SWORDS.md, "SWORDS_OSC"): its constants,
+each from a measurement, and the three checks the design set, run with SWORDS_16's network
 (sw4_all_gru16_s3) plus the layer through the same C++ as the firmware (tools/osc_host):
 
   1. the glide takes, read as Swords' were (swords_glide.analyse);
@@ -102,14 +102,14 @@ def network(x, cut, res):
 
 
 def flt6(x, cut, res):
-    """FLT6 on input x (network units), V/OCT cut and Res CV res (volts): the network at Res
+    """SWORDS_OSC on input x (network units), V/OCT cut and Res CV res (volts): the network at Res
     CV up to 4 V, the layer at the Res CV itself."""
     res_net = np.minimum(np.broadcast_to(np.asarray(res, np.float64), (len(x),)), 4.0)
     return network(x, cut, res_net) + layer(x, cut, res)
 
 
 def check_glide():
-    print("1. the glide takes: FLT6 against Swords (free pitch, lock range up / down, pull)")
+    print("1. the glide takes: SWORDS_OSC against Swords (free pitch, lock range up / down, pull)")
     d = CAP / "sw-glide"
     s = json.loads((d / "session.json").read_text())
     for t in s["takes"]:

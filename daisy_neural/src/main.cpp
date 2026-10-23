@@ -41,7 +41,9 @@
  * (nam/gran_layer.h): the Wasp's take-to-take randomness, phased in from Res 8 to 9,
  * at 53.7 ms of latency for that slot, wet and dry alike. A file whose controls section is
  * version 2 carries an oscillator layer (nam/osc_layer.h): Swords' self-oscillation, added to
- * its network past the dial's 10 (FLT6). AMPS: the captures on the card,
+ * its network past the dial's 10 (SWORDS_OSC). An A2 capture named like a filter file
+ * (f1_WASP_A2.a2nb) plays there too, through the amps' engine, at the one cutoff and Res it
+ * was captured at (2026-10-23). AMPS: the captures on the card,
  * played exactly as captured; the steer knob does nothing there, on purpose. NOT-AMPS:
  * twelve starter captures,
  * each with one transform chosen by measurement to leave the region where real
@@ -130,7 +132,7 @@ using namespace patch_sm;
 #endif
 #include "nam/gran_layer.h"
 // A FILTERS file's controls may carry an oscillator layer (the section's version 2): Swords'
-// self-oscillation, added to its network's output (nam/osc_layer.h; FLT6). A few hundred
+// self-oscillation, added to its network's output (nam/osc_layer.h; SWORDS_OSC). A few hundred
 // bytes, so ordinary RAM.
 #include "nam/osc_layer.h"
 static_assert(osc::kParams == captures::kOscFloats, "the .grnb oscillator block and the layer disagree");
@@ -239,6 +241,9 @@ GRU_HOT_DATA inline gru::Net   g_filter;
 GRU_HOT_DATA inline gru::State g_filter_state;
 static float                   g_filter_gain = 1.f;
 static char                    g_filter_name[gru::kGrnbNameLen] = "";
+// The FILTERS slot is an A2 capture (an .a2nb named like a filter file): the amps' engine
+// plays it, at the one cutoff and Res it was captured at.
+static volatile bool g_filter_a2 = false;
 
 // The filter's granular layer, when its file has one: the engine's tables and rings
 // (~95 KB) in RAM_D2 beside A2's history, the bank it points into (1.9 MB for the Wasp)
@@ -249,7 +254,7 @@ alignas(32) static uint8_t DSY_SDRAM_BSS g_layer_buf[kLayerCap];
 static gran::Layer                      g_layer_def;
 static volatile bool                    g_layer_on = false;
 
-// The filter's oscillator layer, when its controls carry one (FLT6). Like g_layer_on,
+// The filter's oscillator layer, when its controls carry one (SWORDS_OSC). Like g_layer_on,
 // g_osc_on is cleared before a load and set once the layer is set up.
 static osc::Layer    g_osc;
 static volatile bool g_osc_on = false;
@@ -463,7 +468,7 @@ static void ApplySteer(float u)
 // (the controls section, tools/grnb_controls.py; the Wasp HP's cutoff runs -10 to 0 V,
 // Swords' Res is volts 0-4), calibrated against its own module with
 // tools/filter_dial_calibrate.py; a file without one gets the Wasp LP's below. A version-2
-// section also maps the dial to an oscillator layer's Res CV (FLT6: 10-11 is 4-6 V, past
+// section also maps the dial to an oscillator layer's Res CV (SWORDS_OSC: 10-11 is 4-6 V, past
 // the network's 4).
 static constexpr float kResDial = 11.f;
 static constexpr captures::FilterControls kLpControls = {
@@ -636,11 +641,12 @@ void AudioCallback(AudioHandle::InputBuffer  in,
     static bool filter_ran = false;  // last block, for the layer's restart
     if(g_xf != Xf::Swap)
     {
-        if(filt)
+        const bool gru_filt = filt && !g_filter_a2;
+        if(gru_filt)
             ProcessFilter(scratch, n, cut_to, res_to, !filter_ran);
         else
             engine.ProcessBlock(scratch, scratch, n);
-        filter_ran = filt;
+        filter_ran = gru_filt;
     }
     else
     {
@@ -766,6 +772,16 @@ static bool SwapFilter(int index)
     const captures::FilterEntry* e = captures::GetFilter(index);
     g_layer_on = false;
     g_osc_on   = false;
+    if(e && e->a2_index >= 0)
+    {
+        // An A2 capture filed with the filters (FLT1, the Wasp's first capture, at one cutoff
+        // and Res): the amps' engine plays it, and FREQ and RES do nothing.
+        if(!SwapCapture(e->a2_index))
+            return false;
+        g_filter_a2 = true;
+        snprintf(g_filter_name, sizeof(g_filter_name), "%s", e->name);
+        return true;
+    }
     if(e && e->layer_bytes > 0)
     {
         size_t got = 0;
@@ -788,6 +804,7 @@ static bool SwapFilter(int index)
     }
     g_na = -1;
     g_proc.End();
+    g_filter_a2   = false;
     g_filter_gain = gain;
     snprintf(g_filter_name, sizeof(g_filter_name), "%s", name);
     g_filter_state.Reset();
@@ -836,7 +853,7 @@ static void DrawRunPage()
     // percent signs go. Both clamped to two digits so the line never overruns.
     const int cpu_avg = (int)(cpu_meter.GetAvgCpuLoad() * 100.f + 0.5f);
     const int cpu_max = (int)(cpu_meter.GetMaxCpuLoad() * 100.f + 0.5f);
-    if(filt)  // on a filter: the load, and the network's (and layer's) worst block in cycles per sample
+    if(filt && !g_filter_a2)  // on a GRU filter: the load, and its (and its layer's) worst block in cycles per sample
         snprintf(line, sizeof(line), "%2d%% %5dc", cpu_avg > 99 ? 99 : cpu_avg, (int)g_gru_cycles);
     else
         snprintf(line, sizeof(line), "CPU %2d(%2d)", cpu_avg > 99 ? 99 : cpu_avg, cpu_max > 99 ? 99 : cpu_max);
@@ -875,7 +892,9 @@ static void DrawRunPage()
     // this bank shows nothing.
     char right[12];
     snprintf(line, sizeof(line), "M%d", (int)(g_mix * 100.f + 0.5f));
-    if(filt)
+    if(filt && g_filter_a2)
+        right[0] = '\0';  // an A2 capture in FILTERS plays one cutoff: FREQ does nothing
+    else if(filt)
         snprintf(right, sizeof(right), "F%.1f", (double)g_cut);
     else if(g_active >= 100)
         // A not-amp: where its steer sits, since the steer is its whole character.
@@ -886,12 +905,12 @@ static void DrawRunPage()
     display.DrawString(34, 32, right, false);
 
     line[0] = '\0';
-    if(filt)
+    if(filt && !g_filter_a2)  // an A2 capture in FILTERS plays one Res: RES shows nothing
     {
         bool has_res = false;
         for(int i = 0; i < g_filter.inputs; i++)
             has_res |= g_filter.kind[i] == gru::kRes;
-        if(has_res || DialMap(g_ctl.fb, g_res) > 0.f)  // the dial, to 11; with feedback even FLT1
+        if(has_res || DialMap(g_ctl.fb, g_res) > 0.f)  // the dial, to 11; with feedback even WASP_R6_16
             snprintf(line, sizeof(line), "R%.1f", (double)g_res);
         else
             snprintf(line, sizeof(line), "R6*");  // trained at one Res only
