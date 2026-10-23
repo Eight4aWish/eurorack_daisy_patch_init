@@ -27,10 +27,12 @@ above the threshold, the glide), this brief (the Wasp, under-Res, HP).
    misses its 2% mark by half a percent); with the riff, the band levels are within 2 dB only
    at the top two cutoff holds, the oscillation runs 2–8 dB quiet above V/OCT 5, and it pulls
    harder than Swords outside the lock. Staged in `captures/card_2026-10-23/` with RND1 X2.
-2. **What the Wasp's wildness is:** the three tests written down in the Wasp section (phase
-   only or the spectrum too, noise or chaos, the warble as beating), on the repeat takes
-   already recorded. Analysis only; it says whether a grey-box could stand in for FLT3's
-   layer.
+2. **What the Wasp's wildness is: run 2026-10-23** (Wasp section, "three tests"). Test 1
+   answers the question: at Res 9–10 the spectrum itself changes take to take, not just
+   the phase, so a deterministic grey-box like FLT6's cannot stand in for FLT3's granular
+   layer, and a statistical layer like FLT3's is the right kind of model. Tests 2 (noise or
+   chaos) and 3 (beating) cannot be answered from the riff takes; they would need new
+   recordings, and recording for Mirth is closed.
 3. **Random-weight not-amps:** `r01_x2p0.a2nb` (RND1 X2, `tools/random_captures.py`; NAM
    rebuilds the A2-Lite from the Klon's config, so no capture's weights are used) is staged
    for the card as an AMPS capture; 24 more (eight seeds × 1.5, 2 and 3) are on the
@@ -1039,7 +1041,7 @@ its Res input helps to about 12 (+2.5 dB); beyond, its resonance falls (+1.0 at 
 checked with `tools/res_dial_check.py`): +0.6, +1.8, +2.5, +4.6 dB at 7–10. It rings from
 9.5, and from 10 sustains its own tone at most cutoffs, which the real Wasp never does.
 
-**What the Wasp's wildness is: three tests, not yet run** (2026-10-21, after Swords turned
+**What the Wasp's wildness is: three tests, run 2026-10-23 (results after the list)** (2026-10-21, after Swords turned
 out to repeat everything but the phase of its oscillation, SWORDS.md "Above the
 threshold"). Each needs the Res 8–10 repeat takes, on the Crucial drive; `swords_osc.py`
 part B is the first test almost as it stands. The layer's bank cannot answer them: it
@@ -1072,6 +1074,31 @@ large lift.
    right at the top of the range; lower down the warble he heard (F 5.9 and 4.2, R 9.0) is
    the Wasp's, learned weaker. On Mirth's own input level, still unmeasured, the network
    may be off its training ground, where its own behaviour could take over.
+
+**Results (2026-10-23, `tools/wasp_wildness.py` on the mini, the four LP takes at each Res
+6–10, output in `captures/wasp/wildness.txt`):**
+1. **The spectrum too, and only at Res 9–10.** Up to Res 8 the four takes repeat almost
+   exactly at every cutoff hold (STFT magnitude ESR at most 0.008, band levels within
+   0.4 dB). At Res 9 and 10 the 4 V and 6 V holds part: magnitude ESR 0.15–0.45, five to
+   fifteen times Swords' 0.03, waveform ESR 0.5–1.2; less at 8 V (0.014–0.08), none at 2 V
+   or 10 V. The band levels averaged over a hold still agree within 0.4–1.8 dB: the same
+   colour on average, different moment to moment. Not a fixed sound with a random phase, so
+   a deterministic grey-box (FLT6's kind) cannot stand in for FLT3's layer; a statistical
+   layer is the right kind of model, and FLT3 has one.
+2. **Not answerable from these takes.** The premise fails at Res 9–10: in the last 15 ms of
+   each rest (input silent) the Wasp is still sounding, 14–19 dB under the note after it
+   (Res 6–8: 32–46 dB under), and the takes already differ there by as much as that sound
+   (Res 6–8: 9–19 dB less than it). No note starts from the same state, so the difference
+   is full size from the first milliseconds (+1 to +2 dB against the signal in 0–5 ms,
+   −3 to −10 dB after). Telling noise from chaos needs rests longer than the ring.
+3. **Not answerable from these takes.** The riff's notes move its envelope at 4.0 Hz, and
+   that is what the first reading found at every Res (median 4.0 Hz, identical figures at
+   Res 8, 9 and 10). No 0.5 s frame at any hold has the input steady within 3 dB around the
+   ring (0 of 110 at each Res); beating needs a held tone. The script now checks both
+   premises and says so.
+
+Tests 2 and 3 would each need a new recording (long rests; a held tone), and recording for
+Mirth is closed (David, 2026-10-22).
 
 **Controls rearranged (David, 2026-10-21).** Bypass gone; B7 short steps to the next patch
 in the bank (each bank keeps its place), held 1.5 s the next bank; knobs 1 MIX, 2 FREQ

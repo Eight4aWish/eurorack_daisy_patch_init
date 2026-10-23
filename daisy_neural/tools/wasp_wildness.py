@@ -11,9 +11,16 @@ three tests"), on the four recordings of identical input at Res 6-10 (lp-res<r> 
    starts from the same state. The takes' difference, relative to the signal, in windows
    after each such onset: from the first milliseconds at a steady level is noise amplified
    by a nearly undamped ring; starting near nothing and growing over the note is chaos.
-3. Is the warble beating? Per hold, in 0.5 s frames: the gain at the resonance (output over
-   input envelope, a third of an octave around the ring) and its strongest wobble at 2-40
-   Hz, against the gap between the ring and the input's partial nearest it.
+   The premise is checked too: in the rest's last 15 ms, the output and the takes'
+   difference against the note after it. (Run 2026-10-23: at Res 9-10 the Wasp is still
+   sounding there, 14-19 dB under the note, and the takes already differ by as much, so
+   this riff cannot answer it.)
+3. Is the warble beating? Per hold, in 0.5 s frames where the input around the ring holds
+   within 3 dB: the gain at the resonance (output over input envelope, a third of an octave
+   around the ring) and its strongest wobble at 2-40 Hz, against the gap between the ring
+   and the input's partial nearest it. (Run 2026-10-23: the riff's notes move its envelope
+   at 4 Hz and no frame is steady, so this riff cannot answer it either; without the
+   steadiness test the reading was the riff's 4 Hz at every Res.)
 
     .venv-nam/bin/python tools/wasp_wildness.py     # on the mini, with the Crucial attached
 """
@@ -89,8 +96,13 @@ def onsets(x):
 
 def test2(data):
     wins = [(0, 5), (5, 20), (20, 50), (50, 100), (100, 200)]
-    print("\n2. noise or chaos: takes' difference relative to the signal after a rest, dB, by ms after the onset")
-    print("   Res  onsets  " + "  ".join(f"{a:>3d}-{b:<3d}ms" for a, b in wins))
+    print("\n2. noise or chaos: takes' difference relative to the signal after a rest, dB, by ms after the onset;"
+          " then the premise, in the rest's last 15 ms: the output, and the takes' difference, against the note")
+    print("   Res  onsets  " + "  ".join(f"{a:>3d}-{b:<3d}ms" for a, b in wins) + "   rest out  rest diff")
+
+    def energy(s, ws):
+        return sum(np.sum(s[a:b] ** 2) for a, b in ws)
+
     for r in RES:
         x, cv, ys = data[r]
         on = onsets(x)
@@ -104,37 +116,56 @@ def test2(data):
                     num += np.sum((y[s:e] - mean[s:e]) ** 2)
                     den += np.sum(mean[s:e] ** 2)
             rows.append(10 * np.log10(num / (den + 1e-30) + 1e-30))
-        print(f"   {r:3d}   {len(on):4d}   " + "  ".join(f"{v:9.1f}" for v in rows))
+        rest = [(o - int(0.015 * SR), o) for o in on]  # the input is silent here (onsets())
+        note = [(o + int(0.02 * SR), o + int(0.2 * SR)) for o in on]
+        out = sum(energy(y, rest) for y in ys) / sum(energy(y, note) for y in ys)
+        dif = sum(energy(y - mean, rest) for y in ys) / (len(ys) * energy(mean, note))
+        print(f"   {r:3d}   {len(on):4d}   " + "  ".join(f"{v:9.1f}" for v in rows)
+              + f"   {10 * np.log10(out):8.1f}  {10 * np.log10(dif):9.1f}")
 
 
 def test3(data):
-    print("\n3. the warble as beating: per 0.5 s frame at the holds, the gain wobble's rate at the ring"
-          " against the gap to the input's nearest partial (Hz)")
+    print("\n3. the warble as beating: per 0.5 s frame at the holds where the input around the ring holds within"
+          " 3 dB, the gain wobble's rate at the ring against the gap to the input's nearest partial (Hz)")
+    x = data[RES[0]][0]
+    env = signal.decimate(np.abs(signal.hilbert(x)), 48)
+    g = 20 * np.log10(np.maximum(env, 1e-4 * env.max()))
+    f, p = signal.welch(g - g.mean(), SR / 48, nperseg=4000)
+    band = (f >= 1) & (f <= 40)
+    print(f"   (the riff's own envelope moves at {f[band][np.argmax(p[band])]:.2f} Hz; without the steadiness test"
+          " the reading finds that, at every Res)")
     for r in (8, 9, 10):
         x, cv, ys = data[r]
-        meas, pred = [], []
+        meas, pred, tot = [], [], 0
         for v, (a, b) in C.HOLDS.items():
             fr = ring_hz(v)
             if fr > 16000:
                 continue
             sos = signal.butter(4, [fr * 2 ** (-1 / 3), min(fr * 2 ** (1 / 3), 20000)], "bandpass", fs=SR, output="sos")
-            for t0 in np.arange(a, b - 0.5 + 1e-9, 0.5):
-                s, e = int(t0 * SR), int((t0 + 0.5) * SR)
-                ex = np.abs(signal.hilbert(signal.sosfiltfilt(sos, x[s:e])))
-                if ex.mean() < 1e-4:
+            h0, h1 = int(a * SR), int(b * SR)
+            ex = np.abs(signal.hilbert(signal.sosfiltfilt(sos, x[h0:h1])))
+            sm = np.convolve(ex, np.ones(480) / 480, mode="same")
+            eys = [np.abs(signal.hilbert(signal.sosfiltfilt(sos, y[h0:h1]))) for y in ys[:2]]
+            for s in range(0, len(ex) - SR // 2, SR // 20):
+                e = s + SR // 2
+                tot += 1
+                seg = sm[s:e]
+                if seg.min() <= 1e-3 * sm.max() or 20 * np.log10(seg.max() / seg.min()) >= 3:
                     continue
-                for y in ys[:2]:
-                    ey = np.abs(signal.hilbert(signal.sosfiltfilt(sos, y[s:e])))
-                    g = 20 * np.log10(np.maximum(ey, 1e-6) / np.maximum(ex, 1e-6))
-                    g = signal.decimate(g - g.mean(), 24)
-                    f, p = signal.welch(g, SR / 24, nperseg=len(g))
-                    band = (f >= 2) & (f <= 40)
-                    meas.append(f[band][np.argmax(p[band])])
-                    X = np.abs(np.fft.rfft(x[s:e] * np.hanning(e - s)))
+                for ey in eys:
+                    gg = 20 * np.log10(np.maximum(ey[s:e], 1e-6) / np.maximum(ex[s:e], 1e-6))
+                    gg = signal.decimate(gg - gg.mean(), 24)
+                    ff, pp = signal.welch(gg, SR / 24, nperseg=len(gg))
+                    bb = (ff >= 2) & (ff <= 40)
+                    meas.append(ff[bb][np.argmax(pp[bb])])
+                    X = np.abs(np.fft.rfft(x[h0 + s:h0 + e] * np.hanning(e - s)))
                     fx = np.fft.rfftfreq(e - s, 1 / SR)
                     m = (fx > fr / 2) & (fx < fr * 2)
                     pk = fx[m][np.argsort(X[m])[-5:]]  # the strongest partials near the ring
                     pred.append(np.min(np.abs(pk - fr)))
+        if not meas:
+            print(f"   Res {r}: no steady frame of {tot}: the riff never holds a note half a second")
+            continue
         meas, pred = np.array(meas), np.array(pred)
         ok = pred <= 40
         rr = np.corrcoef(meas[ok], pred[ok])[0, 1] if ok.sum() > 3 else float("nan")
