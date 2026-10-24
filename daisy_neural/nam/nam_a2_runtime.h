@@ -141,6 +141,25 @@ inline const float* cond = nullptr;  // nullptr: the input itself, as normal
 #define NAM_A2_PRECOMBINE_OK true
 #endif
 
+// Video logging (daisy_neural addition). NAM_A2_TRACE is defined only by
+// tools/a2_trace.cpp, for the MirthWaveNet animation; the firmware never sets it.
+//   trace::z, trace::a  each layer's sums (before the activation) and activations
+//                       for the block just run, [layer][sample][lane]
+//   trace::r            each layer's residual output, what the next layer reads
+#ifdef NAM_A2_TRACE
+namespace trace
+{
+inline float z[kNumLayers][kBlockSize][kChannels];
+inline float a[kNumLayers][kBlockSize][kChannels];
+inline float r[kNumLayers][kBlockSize][kChannels];
+inline void Lane(int li, int n, float z0, float z1, float z2, float a0, float a1, float a2) noexcept
+{
+    z[li][n][0] = z0; z[li][n][1] = z1; z[li][n][2] = z2;
+    a[li][n][0] = a0; a[li][n][1] = a1; a[li][n][2] = a2;
+}
+} // namespace trace
+#endif
+
 // process_head() wraps its ring index with a bitmask, which requires kHeadKernel
 // to be a power of two.
 static_assert((kHeadKernel & (kHeadKernel - 1)) == 0,
@@ -603,6 +622,9 @@ NAM_A2_NOINLINE void process_layer_kernel(A2State& st,
         const float a0 = act_fn<ACT>(z0);
         const float a1 = act_fn<ACT>(z1);
         const float a2 = act_fn<ACT>(z2);
+#ifdef NAM_A2_TRACE
+        trace::Lane(li, n, z0, z1, z2, a0, a1, a2);
+#endif
 
         float* const hs = hot.headSum + n * 3;
         hs[0] += a0;
@@ -725,6 +747,10 @@ NAM_A2_NOINLINE void process_layer_kernel6_dual(A2State& st,
         const float ab0 = act_fn<ACT>(zb0);
         const float ab1 = act_fn<ACT>(zb1);
         const float ab2 = act_fn<ACT>(zb2);
+#ifdef NAM_A2_TRACE
+        trace::Lane(li, n, za0, za1, za2, aa0, aa1, aa2);
+        trace::Lane(li, n + 1, zb0, zb1, zb2, ab0, ab1, ab2);
+#endif
 
         float* __restrict__ const hsA = hot.headSum + n * 3;
         float* __restrict__ const hsB = hsA + 3;
@@ -803,6 +829,9 @@ NAM_A2_NOINLINE void process_layers(A2State& st, A2HotState& hot, const A2Shared
 
         if (bend::active[li])
             bend::After(li, in, out);
+#ifdef NAM_A2_TRACE
+        std::memcpy(trace::r[li], out, sizeof trace::r[li]);
+#endif
 
         float* tmp = in;
         in = out;
