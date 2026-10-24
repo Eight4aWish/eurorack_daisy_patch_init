@@ -6,7 +6,8 @@
  * nam/fallback_capture.h) on an input, and writes JSON: the layer table from the
  * engine's own constants; every layer's three lanes over the whole input (activation
  * after the LeakyReLU, as min/max per `decim` samples); the skip sums and the output;
- * a full-rate excerpt around one sample; and one neuron at that sample taken apart:
+ * a full-rate excerpt around one sample; the capture's 1,871 parameters as stored;
+ * and one neuron at that sample taken apart:
  * each history value it read, each weight, the products, the bias, the sum and the
  * activation. That neuron's sum is rebuilt here from the engine's loaded weights and
  * checked against the sum the engine itself computed (trace::z), so what is drawn is
@@ -182,6 +183,10 @@ int main(int argc, char** argv)
     fprintf(f, "],\"sample\":%.6g,\"mixin\":%.6g,\"bias\":%.6g,\"sum\":%.6g,\"engineSum\":%.6g,\"activation\":%.6g},",
             input[at], sw.layer[0].mixinW[lane], sw.layer[0].convB[lane], sum, nz, na);
     fprintf(f, "\"inputLaneWeights\":[%.6g,%.6g,%.6g],", sw.rechannel[0], sw.rechannel[1], sw.rechannel[2]);
+    // every parameter, in the capture's own order
+    fprintf(f, "\"weights\":");
+    Floats(f, fallback::kWeights, kA2WeightCount);
+    fputc(',', f);
 
     // full rate, the `excerpt` samples up to and including the neuron's sample
     const long e0 = at - excerpt + 1;
