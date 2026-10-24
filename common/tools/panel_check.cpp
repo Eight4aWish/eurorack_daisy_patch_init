@@ -103,29 +103,15 @@ void CheckAllTitles()
         CheckTitle("SCAN", s, nullptr, false);
     CheckTitle("SCAN", nullptr, nullptr, true);
 
-    CheckTitle("SINE", "", nullptr, false);
-    CheckTitle("SINE", nullptr, nullptr, true);
-
-    // BYTEBEAT: the name alone is eight of the ten columns, so its Edit page
-    // puts the family on the selection line. All six must fit there.
-    for(auto b : {"TEXT", "NOISE", "PERC", "RHYTM", "MELOD", "REF"})
+    // WAVES:Sin is ten columns: every shape must stay on the title line.
+    for(auto s : {"Sin", "Tri", "Saw", "Sqr"})
     {
-        CheckTitle("BYTEBEAT", nullptr, b, true);
-        const LegendText lt = ComposeLegend("BYTEBEAT", nullptr, b, true);
-        if(!lt.has_selection())
-            Fail("BYTEBEAT EDIT:%s should sit on the selection line", b);
-        else if(!FitsCentered(33, lt.selection))
-            Fail("BYTEBEAT selection \"%s\" clips", lt.selection);
+        CheckTitle("WAVES", s, nullptr, false);
+        const LegendText lt = ComposeLegend("WAVES", s, nullptr, false);
+        if(lt.has_selection())
+            Fail("WAVES:%s dropped to the selection line", s);
     }
-    // Play page: short formula names must fit whole; long ones truncate, but
-    // the engine name must never be the thing that gets dropped.
-    for(auto f : {"ref A440", "Lofi Drone", "Oldskool Tune", "Failing Electro Loop"})
-    {
-        const LegendText lt = ComposeLegend("BYTEBEAT", f, nullptr, false);
-        if(std::strcmp(lt.title, "BYTEBEAT") != 0)
-            Fail("BYTEBEAT play title became \"%s\"", lt.title);
-        CheckTitle("BYTEBEAT", f, nullptr, false);
-    }
+    CheckTitle("WAVES", nullptr, nullptr, true);
 }
 
 //--------------------------------------------------------------------------
@@ -150,14 +136,16 @@ void CheckBootMenu()
                 Fail("%d engines, sel %d: scrolled out of view", count, sel);
                 continue;
             }
-            // ...and its row must actually put pixels in the buffer.
+            // ...and its row must actually put pixels in the buffer. The probe
+            // is the widest row the menu can draw: "> " plus an eight-letter
+            // name, which is what BYTEBEAT needed when it was in the menu.
             const uint8_t y = (uint8_t)MenuRowY(sel - first);
             d.Clear();
-            d.DrawString(2, y, "> BYTEBEAT", false);
+            d.DrawString(2, y, "> ABCDEFGH", false);
             if(!AnyPixels())
                 Fail("%d engines, sel %d: row at y=%u drew nothing", count, sel, y);
-            if(!Fits(2, y, "> BYTEBEAT"))
-                Fail("%d engines, sel %d: \"> BYTEBEAT\" clips at y=%u", count, sel, y);
+            if(!Fits(2, y, "> ABCDEFGH"))
+                Fail("%d engines, sel %d: \"> ABCDEFGH\" clips at y=%u", count, sel, y);
         }
     }
 }

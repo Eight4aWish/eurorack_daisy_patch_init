@@ -14,7 +14,7 @@ contract.
 > description of everything flashed on the module.
 >
 > - The contract is **implemented** by [`daisy_multiosc/`](../daisy_multiosc/),
->   which hosts FM4OP, INTVL, SCAN, BYTEBEAT and a SINE test voice behind the boot-time
+>   which hosts FM4OP, INTVL, SCAN and WAVES behind the boot-time
 >   chooser described below.
 > - **Joy** (`daisy_braids_oled/`) and **Joy Lite** (`daisy_joy_lite/`) are
 >   separate firmwares on this same panel that **do not follow the contract**.
@@ -212,6 +212,20 @@ labels them for the active algorithm. `TRIG` (Gate In 1) = envelope trigger.
 
 - `MOD 1` CV (CV_6) = offset CV; `MOD 3` CV (CV_8) = PWM CV (already wired).
 - `OUT L / OUT R` = osc 1 / osc 2. Free Edit slots show "—" on screen.
+
+### WAVES (plain waveforms)
+
+| Slot | Play page | Edit page |
+| --- | --- | --- |
+| TUNE | Pitch | — |
+| MOD 1 | Pulse width (Sqr only; anticlockwise = square, clockwise = 5% pulse) | — |
+| MOD 2 | — (free) | — |
+| MOD 3 | — (free) | — |
+| Short press | cycle Shape (Sin / Tri / Saw / Sqr) | — |
+
+- `MOD 1` CV (CV_6) adds to the pulse width.
+- `OUT L / OUT R` = mono (same signal). Every shape peaks at the same level.
+- Env **off** (default) = continuous VCO; env **on** = gated by `TRIG`.
 
 ## Screen legend (every app)
 
