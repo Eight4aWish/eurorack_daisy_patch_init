@@ -100,7 +100,7 @@ narrower vocabulary. Keep to it in code, commits and on the panel.
 - **"Model" is reserved for the architecture**, or avoided by naming it. Say "the A2
   engine runs a capture of the gate at medium CV", where each word does one job.
 - **"Engine" matches the repo already** — `daisy_multiosc` calls FM4OP, INTVL, SCAN and
-  BYTEBEAT engines, not patches.
+  WAVES engines, not patches.
 - NAM upstream calls its `.nam` files "models". Write "a `.nam` capture" and accept the
   seam rather than fight their naming.
 
@@ -115,7 +115,7 @@ narrower vocabulary. Keep to it in code, commits and on the panel.
   branches that move.
 - **Carry the licence with it.** Lifted code also puts the upstream licence text in
   `daisy_neural/LICENSE-<project>.txt` and a line in the repo README pointing at it, as
-  `daisy_bytebeat/` and `daisy_interval_osc/` already do. Phase 1 lifts from two separate
+  `daisy_interval_osc/` already does. Phase 1 lifts from two separate
   MIT projects, so expect two files.
 - **Keep the build standalone.** This firmware repurposes the Daisy MultiFX unit;
   MultiFX goes back on by re-flashing `daisy_multifx_oled/`. Nothing is merged into it.

@@ -65,8 +65,9 @@ class Engine {
     virtual const char* Selection() const = 0;     // e.g. "Parallel"
 
     // What the short-press selection is *on the Edit page*, for engines where
-    // that page has its own state worth naming -- bytebeat's formula family, for
-    // instance, which decides what the short press then walks. Returning nullptr
+    // that page has its own state worth naming -- the BYTEBEAT engine's formula
+    // family was one, deciding what the short press then walked. No current
+    // engine uses it. Returning nullptr
     // (the default) leaves the page reading plain "EDIT" as before. Must be a
     // stable pointer for the same value: the redraw check compares by pointer.
     virtual const char* EditSelection() const { return nullptr; }

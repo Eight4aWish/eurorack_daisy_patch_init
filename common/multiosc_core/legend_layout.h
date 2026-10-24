@@ -8,7 +8,7 @@
 // The rule it encodes: a 64 px line at 6 px per character is TEN characters.
 // "NAME:SEL" is the house style and fits for engines with short selections
 // (FM4OP:SwTr), but an engine whose selection is words rather than an
-// abbreviation -- bytebeat reports the formula, "Oldskool Tune" -- blows past
+// abbreviation -- the BYTEBEAT engine reported its formula, "Oldskool Tune" -- blows past
 // it. Rather than clip the engine name away, the selection drops onto its own
 // line under the knob grid, where there is room.
 //

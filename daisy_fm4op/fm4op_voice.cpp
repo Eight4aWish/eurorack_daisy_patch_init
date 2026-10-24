@@ -103,11 +103,12 @@ void FmFourOp::Process(DaisyPatchSM&             hw,
     const bool gate = hw.gate_in_1.State() || hw.gate_in_1.Trig();
 
     // Pitch (frozen on the Edit page, where TUNE is the env on/off control):
-    // knob = 0..6 octaves, CV = ±5 V (1 V/oct), clamped to the audible range.
+    // knob = five octaves, CV = ±5 V at 1 V/oct, clamped to the audible range.
+    // libDaisy reads the CV as -1..1, so a volt is 0.2 and 12 semitones. The
+    // same law as SCAN, INTVL and WAVES.
     if(!ctx.edit_page)
     {
-        const float exponent = (k_tune * 6.0f) + ((cv_pitch * 10.0f) - 5.0f);
-        float       bf       = 50.0f * powf(2.0f, exponent);
+        float bf = mtof(fmap(k_tune, 28.f, 88.f) + cv_pitch * 60.f);
         if(bf < 20.0f)
             bf = 20.0f;
         if(bf > 8000.0f)

@@ -43,7 +43,7 @@ single-engine DFU testing; `daisy_scanned/` is engine-only.
 
 | Engine | Source | Why |
 | --- | --- | --- |
-| **BYTEBEAT** | keeos-io/ogham (Collins), MIT | Out on 2026-10-24, never bench-tested in MultiOsc: the Ogham in the rack is the module its code came from. Source stays in `daisy_bytebeat/`, unbuilt. |
+| **BYTEBEAT** | keeos-io/ogham (Collins), MIT | Out on 2026-10-24, never bench-tested in MultiOsc: the Ogham in the rack is the module its code came from. `daisy_bytebeat/` deleted the same day; it is in git history before that commit. |
 | **Joy, Sorrow** | MI Braids (MIT), MI Grids (GPL) | Considered 2026-09-20 and 2026-10-18 and kept as separate firmwares: see the [MultiOsc README](../daisy_multiosc/README.md#status). |
 
 ### Future engines — go *different*

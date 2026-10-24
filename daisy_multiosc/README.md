@@ -46,9 +46,8 @@ bench-tested**.
 
 **BYTEBEAT was taken out on 2026-10-24.** The Ogham in the rack is the module its
 code came from, so the engine duplicated hardware already there. It was never
-bench-tested in MultiOsc. Its source stays in
-[`../daisy_bytebeat/`](../daisy_bytebeat/), unbuilt, so putting it back is its
-four sources in the Makefile and one `AddEngine` line.
+bench-tested in MultiOsc. `daisy_bytebeat/` was deleted the same day; the port,
+with Ogham's MIT notice, is in git history before that commit.
 
 A fifth engine once exposed two panel bugs, both fixed: the boot menu drew its
 last entry off the bottom of the 48 px screen (it now scrolls to keep the

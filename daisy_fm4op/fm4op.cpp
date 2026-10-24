@@ -174,9 +174,9 @@ void AudioCallback(AudioHandle::InputBuffer in,
 
     UpdateLedPattern(algo_mode);
 
-    // Knob: 0-6 octaves. CV: -5 to +5V (1V/oct).
-    float exponent = (k0 * 6.0f) + ((cv_pitch * 10.0f) - 5.0f);
-    float base_freq = 50.0f * powf(2.0f, exponent);
+    // Knob: five octaves. CV: -5 to +5V (1V/oct), which libDaisy reads as
+    // -1..1, so a volt is 0.2 and 12 semitones.
+    float base_freq = mtof(fmap(k0, 28.f, 88.f) + cv_pitch * 60.f);
     RecomputeIncrements(base_freq);
 
     // Map knobs according to algorithm mode

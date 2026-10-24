@@ -96,7 +96,7 @@ TAME CV both routable for free.
 
 **What Ogham does.** A bytebeat isn't a pitched source either: it's a formula in
 `t`, periodic only by accident of its shifts. Ogham's V/Oct (`SetPitchSync`,
-vendored in `daisy_bytebeat/bytebeat_engine.cpp`) runs an internal accumulator at
+in Ogham's `firmware/src/bytebeat_engine.cpp`) runs an internal accumulator at
 the V/Oct frequency and **hard-syncs the master phase every time it wraps**. The
 output is exactly periodic at the requested pitch, and the Rate knob stops being
 pitch and becomes timbre: it now sets how much of the formula fits in one cycle.
