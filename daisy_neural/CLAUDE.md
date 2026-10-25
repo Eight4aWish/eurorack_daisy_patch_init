@@ -13,8 +13,9 @@ unless David reopens them: Swords Part B (mode, drive and Response under CV) and
 layer for the Wasp HP (it would need HP repeat takes). The rig's ES-10 jumper can go back to
 AC; captures need it on DC.
 
-The card's layout (2026-10-23): AMPS, 18: the 12 starters and 6 personal
-(`PERSONAL_CARD.md`, private); NOT-AMPS, 16, the four weight steers' bases in `notamps/`;
+The card's layout (2026-10-25): AMPS, 18: the 12 starters and 6 personal
+(`PERSONAL_CARD.md`, private); NOT-AMPS, 19 (README, "The not-amps"), the four weight
+steers' bases and KAY MUTATE in `notamps/`;
 FILTERS, seven: FLT1 the Wasp LP's A2 capture at one setting (`f1_WASP_A2.a2nb`), then six
 GRU-16s each carrying its own controls, with the level match (README, "Seven filters for
 the card"). **Filters renumbered 2026-10-23,** the GRUs up one: FLT2 WASP_R6_16, FLT3
