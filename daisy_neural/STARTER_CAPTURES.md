@@ -19,7 +19,9 @@ The Orange TH100 is also compiled into the firmware as its fallback
 random-weight networks in the Klon's layout (`RND1`, `RND4`, `RND6`, `RND7 X2`, drawn
 from seeds by `tools/random_captures.py`), and `KAY MUTATE`, random numbers the size of
 the Kay 703's weights (`tools/notamp_design.py`), which MUTATE KAY adds to the Kay as its
-steer turns. None of them holds any capture's weights.
+steer turns. None of them holds any capture's weights, and all five are
+[CC0](https://creativecommons.org/publicdomain/zero/1.0/). The filters in the FILTERS bank
+are credited separately, in `FILTERS.md`.
 
 | On the card | Pack | Model used | Creator | Licence |
 |---|---|---|---|---|
