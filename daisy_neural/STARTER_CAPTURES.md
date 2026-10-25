@@ -8,10 +8,18 @@ anyway.
 
 **Changes made to every one:** the A2-Lite network extracted from the downloaded `.nam`
 and stored as an `.a2nb` file (`tools/nam_to_a2nb.py`); its output gain set so the set
-plays at one level. The not-amps then alter them while they play — activation, layer
-holds and folds, weights pushed past another capture, the engine's rate — which is a
-further change, made live by the firmware. The Orange TH100 is also compiled into the
-firmware as its fallback (`nam/fallback_capture.h`).
+plays at one A-weighted level (`tools/level_captures.py`; v1.0.0's files were levelled by
+plain RMS). The not-amps then alter them while they play — the activation, layer holds
+and folds, feedback, the engine's rate, weights pushed past another capture, or moved
+along a fixed random direction — which is a further change, made live by the firmware.
+The Orange TH100 is also compiled into the firmware as its fallback
+(`nam/fallback_capture.h`).
+
+**The `notamps/` folder** holds five files that are not captures of anything: four
+random-weight networks in the Klon's layout (`RND1`, `RND4`, `RND6`, `RND7 X2`, drawn
+from seeds by `tools/random_captures.py`), and `KAY MUTATE`, random numbers the size of
+the Kay 703's weights (`tools/notamp_design.py`), which MUTATE KAY adds to the Kay as its
+steer turns. None of them holds any capture's weights.
 
 | On the card | Pack | Model used | Creator | Licence |
 |---|---|---|---|---|
