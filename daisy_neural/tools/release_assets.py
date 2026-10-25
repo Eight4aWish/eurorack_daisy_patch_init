@@ -2,7 +2,7 @@
 """
 release_assets.py — build and check a Mirth release's assets, ready to attach.
 
-    .venv/bin/python tools/release_assets.py v2.0.0 <out_dir> [--filters DIR]
+    .venv/bin/python tools/release_assets.py v1.1.0 <out_dir> [--filters DIR]
 
 Writes to out_dir:
 
@@ -23,7 +23,7 @@ A-weighted target (the v1.0.0 zip had the older RMS levels); the starters' weigh
 v1.0.0 ones; and every not-amp's capture is in the zip by name.
 
 v1.0.0 (2026-10-03) was packed by hand as mirth-v1.0.0-captures.zip: the twelve, the
-credits and CARD.txt. From v2.0.0 the zip is the card's, since not-amps need notamps/.
+credits and CARD.txt. From v1.1.0 the zip is the card's, since not-amps need notamps/.
 """
 
 import argparse
@@ -93,7 +93,7 @@ def run(cmd, **kw):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("version", help="e.g. v2.0.0")
+    ap.add_argument("version", help="e.g. v1.1.0")
     ap.add_argument("out", type=pathlib.Path)
     ap.add_argument("--filters", type=pathlib.Path, help="folder holding the card's f*_ filter files")
     ap.add_argument("--v1", type=pathlib.Path, help="mirth-v1.0.0-captures.zip, to check the weights are unchanged")
