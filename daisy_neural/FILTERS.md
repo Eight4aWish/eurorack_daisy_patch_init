@@ -1,6 +1,5 @@
 # Mirth's filters — credits
 
-
 The seven files in the FILTERS bank, learned from two filters in the eight4awish rack: a
 **Doepfer A-124 Wasp** and a **Behringer Swords**. Each was recorded on the rack's own
 module through an ES-10 at 48 kHz, its cutoff (and on Swords its resonance) swept by CV,
