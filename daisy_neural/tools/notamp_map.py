@@ -11,7 +11,7 @@ and writes JSON:
     tau        the amps' own spacing: 95% of real captures have a neighbour this close
     amps       every real capture as an anonymous point (measured, never shipped)
     starters   the twelve starter captures at their plain sound
-    routes     for each of the sixteen not-amps on the card, and for each transform that
+    routes     for each of the nineteen not-amps on the card, and for each transform that
                measured as still an amp, its five steer positions: 2-D position, distance
                to the nearest real capture in amp spacings, and whether that is outside
 
@@ -41,20 +41,25 @@ import notamp_search as S  # noqa: E402
 PROJECT = HERE.parent
 CACHE = PROJECT / "amp_compare" / "notamp_search" / "cache.json"
 
-# the card's not-amps (src/notamps.h): OLED name -> (capture, the search's transform)
+# the card's not-amps (src/notamps.h, in its order): OLED name -> (capture, the search's
+# transform). MUTATE KAY's direction is the search's own (notamp_design.py writes the same
+# draw for the card), so the cache's points are the module's.
 CARD = {
     "SINE BUG": ("BUGERA G5", "sine neurons"),
+    "TANH BJT": ("DIY BJT", "tanh neurons"),
     "LINEAR TR": ("TWO ROCK", "slope→linear"),
     "LINEAR TRY": ("TRAYNOR", "slope→linear"),
+    "LINEAR ORG": ("ORANGE TH", "slope→linear"),
     "RECT ORG": ("ORANGE TH", "slope→rectify"),
     "FB100 F57": ("FENDER 57", "feedback 100 Hz"),
-    "FRZ E TR": ("TWO ROCK", "freeze early"),
     "FRZ M F57": ("FENDER 57", "freeze mid"),
     "FRZ M KAY": ("KAY 703", "freeze mid"),
     "FOLD ORG": ("ORANGE TH", "fold inside"),
     "RATE SVT": ("SVT-2 PRO", "rate ÷"),
+    "RATE F57": ("FENDER 57", "rate ÷"),
     "PAST BLU": ("BLUESBRKR", "past a partner"),
     "PAST PLX": ("PLEXI LORE", "past a partner"),
+    "MUTATE KAY": ("KAY 703", "mutate"),
 }
 RND = {"RND1 SCALE": 1, "RND4 SCALE": 4, "RND6 SCALE": 6, "RND7 SCALE": 7}
 STAY = ["bias off", "bias ×4", "mix-in off", "mix-in ×6", "rectified mix-in", "delayed mix-in",

@@ -13,6 +13,8 @@
 //   FbPitch  the same at a fixed gain                       steer: D (the pitch), log
 //   Rate     the engine run at 1/R of the sample rate       steer: R in kRateSteps
 //   Scale    every weight times s (2026-10-23)               steer: s, log
+//   Tanh     every neuron's activation tanh(g x)/g         steer: g, log    (2026-10-25)
+//   Mutate   weights A + t·B, B a fixed random direction    steer: t, linear (2026-10-25)
 #pragma once
 
 #include <cmath>
@@ -23,14 +25,14 @@
 
 namespace notamps
 {
-enum class Kind : uint8_t { Sine, Slope, Freeze, Fold, Morph, FbGain, FbPitch, Rate, Scale };
+enum class Kind : uint8_t { Sine, Slope, Freeze, Fold, Morph, FbGain, FbPitch, Rate, Scale, Tanh, Mutate };
 
 struct Def
 {
     const char* name;     // on the OLED, at most 10 characters
     Kind        kind;
     const char* cap_a;    // the capture on the card (Morph: the one pushed away from)
-    const char* cap_b;    // Morph: the capture pushed past; else nullptr
+    const char* cap_b;    // Morph: the capture pushed past; Mutate: the direction; else nullptr
     const char* cap_ref;  // the capture whose header gain sets the level
     float       lo, hi;   // the parameter at steer 0 and steer 1
     bool        log_map;  // the steer law
@@ -83,18 +85,18 @@ class Processor
     bool Active() const { return def_ != nullptr; }
     const Def* Current() const { return def_; }
 
-    // The weights to load for steer u: A, or the morph (or scale) at its current t.
-    // w must hold kA2WeightCount floats.
+    // The weights to load for steer u: A, or the morph (or scale, or mutation) at its
+    // current t. w must hold kA2WeightCount floats.
     const float* InitialWeights(float u, float* w) const
     {
-        if(def_->kind != Kind::Morph && def_->kind != Kind::Scale)
+        if(!Rewrites(def_->kind))
             return a_;
         Morph(Param(*def_, u), w);
         return w;
     }
 
-    // Once per block, before Process(): set the bend for steer u. A Morph or Scale
-    // whose t has moved rewrites the weights through rewrite(w), with no prewarm, as
+    // Once per block, before Process(): set the bend for steer u. A Morph, Scale or
+    // Mutate whose t has moved rewrites the weights through rewrite(w), with no prewarm, as
     // the engine allows between blocks. Returns the level correction (linear).
     template <class Rewrite>
     float Apply(float u, float* w, Rewrite rewrite)
@@ -106,6 +108,7 @@ class Processor
         {
             case Kind::Sine: bend::SetActivation(bend::kActSine, v); break;
             case Kind::Slope: bend::SetActivation(bend::kActSlope, v); break;
+            case Kind::Tanh: bend::SetActivation(bend::kActTanh, v); break;
             case Kind::Freeze:
                 bend::active[d.layer]  = true;
                 bend::freezeP[d.layer] = (int)lroundf(v);
@@ -116,6 +119,7 @@ class Processor
                 break;
             case Kind::Morph:
             case Kind::Scale:
+            case Kind::Mutate:
                 if(fabsf(v - last_) > 0.0005f)
                 {
                     Morph(v, w);
@@ -202,11 +206,14 @@ class Processor
     int Latency() const { return (def_ && def_->kind == Kind::Rate && rate_ > 1) ? kBlock * rate_ : 0; }
 
   private:
-    // Morph: A + t(B - A). Scale (no B): A times t.
+    static bool Rewrites(Kind k) { return k == Kind::Morph || k == Kind::Scale || k == Kind::Mutate; }
+
+    // Morph: A + t(B - A). Mutate: A + t·B, B the direction. Scale (no B): A times t.
     void Morph(float t, float* w) const
     {
+        const bool mutate = def_->kind == Kind::Mutate;
         for(int i = 0; i < nam_a2_daisy::kA2WeightCount; i++)
-            w[i] = b_ ? a_[i] + t * (b_[i] - a_[i]) : a_[i] * t;
+            w[i] = !b_ ? a_[i] * t : mutate ? a_[i] + t * b_[i] : a_[i] + t * (b_[i] - a_[i]);
     }
 
     void ResetRate()

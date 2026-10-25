@@ -6,7 +6,7 @@
 
 **Mirth** runs neural amp captures on a Daisy Patch.Init, with a 64×48 OLED: NAM A2-Lite
 networks read off the microSD card (AMPS), and *not-amps* — captures bent inside the
-network, each with one control (NOT-AMPS: twelve in v1.0.0, sixteen in development).
+network, each with one control (NOT-AMPS: twelve in v1.0.0, nineteen in development).
 **Mirth Lite** (`make LITE=1`) is the same
 firmware for a stock patch.init with no screen. Page and downloads:
 <https://eight4awish.com/modules/mirth/>.
@@ -310,44 +310,52 @@ transform and one control on the steer knob (CV_2 + the CV_6 jack; CV_4 + CV_8 i
 that can move while it plays. Chosen by measurement to sit outside the region where real amps sound, then by
 ear — "The measured search" below has the numbers. Sixteen since 2026-10-23 (in
 development): four **weight steers**, random-weight captures chosen by ear whose steer
-scales every weight.
+scales every weight. Nineteen since 2026-10-25 (in development), from a second audition:
+MUTATE KAY in place of FRZ E TR, and RATE F57, LINEAR ORG and TANH BJT added — "The
+second audition" below. In patch order, grouped by family:
 
-| OLED | Built from | Transform | Steer controls |
-|---|---|---|---|
-| `SINE BUG` | Bugera G5 | every neuron's activation sin(g·x)/g | g, 0.3 → 8 (log) |
-| `LINEAR TR` | Two Rock | every neuron's leaky-ReLU slope | slope, 0.01 (as trained) → 1 (linear) |
-| `LINEAR TRY` | Traynor TS 120 B | the same | the same |
-| `RECT ORG` | Orange TH100 | the same, the other way | slope, 0.01 → −1 (full-wave rectifying) |
-| `FB100 F57` | Fender 57 | output fed back after 480 samples (100 Hz) | loop gain, 0 → 0.95 |
-| `FRZ E TR` | Two Rock | layer 3's output held | hold, 1 → 1,024 samples (log) |
-| `FRZ M F57` | Fender 57 | layer 11's output held | the same |
-| `FRZ M KAY` | Kay 703 | the same | the same |
-| `FOLD ORG` | Orange TH100 | a triangle fold inside layer 11 | threshold, 1 → 0.05 (log); a flat +24 dB level correction |
-| `RATE SVT` | SVT-2 Pro | the engine at 1/R of the sample rate, held back up | R = 1, 2, 3, 4, 6 (stepped) |
-| `PAST BLU` | Bluesbreaker | weights pushed past it, away from the Bugera G5 | how far past, 1.0 → 1.3× |
-| `PAST PLX` | pLEXI-LORE | weights pushed past it, away from the SVT-2 Pro | the same |
-| `RND1 SCALE` | RND1 X2: random weights in the Klon's layout, drawn from seed 1, doubled (`tools/random_captures.py`) | every weight scaled | the scale, ×1.5 → ×3 of the seed's draw (log; about ×2.1 at noon) |
-| `RND4 SCALE` | RND4 X2 (seed 4) | the same | the same |
-| `RND6 SCALE` | RND6 X2 (seed 6) | the same | the same |
-| `RND7 SCALE` | RND7 X2 (seed 7) | the same | the same |
+| # | OLED | Built from | Transform | Steer controls |
+|---|---|---|---|---|
+| 1 | `SINE BUG` | Bugera G5 | every neuron's activation sin(g·x)/g | g, 0.3 → 8 (log) |
+| 2 | `TANH BJT` | DIY BJT drive | every neuron's activation tanh(g·x)/g, a soft clip | g, 0.3 → 12 (log) |
+| 3 | `LINEAR TR` | Two Rock | every neuron's leaky-ReLU slope | slope, 0.01 (as trained) → 1 (linear) |
+| 4 | `LINEAR TRY` | Traynor TS 120 B | the same | the same |
+| 5 | `LINEAR ORG` | Orange TH100 | the same | the same |
+| 6 | `RECT ORG` | Orange TH100 | the same, the other way | slope, 0.01 → −1 (full-wave rectifying) |
+| 7 | `FB100 F57` | Fender 57 | output fed back after 480 samples (100 Hz) | loop gain, 0 → 0.95 |
+| 8 | `FRZ M F57` | Fender 57 | layer 11's output held | hold, 1 → 1,024 samples (log) |
+| 9 | `FRZ M KAY` | Kay 703 | the same | the same |
+| 10 | `FOLD ORG` | Orange TH100 | a triangle fold inside layer 11 | threshold, 1 → 0.05 (log); a flat +29 dB level correction |
+| 11 | `RATE SVT` | SVT-2 Pro | the engine at 1/R of the sample rate, held back up | R = 1, 2, 3, 4, 6 (stepped) |
+| 12 | `RATE F57` | Fender 57 | the same | the same |
+| 13 | `PAST BLU` | Bluesbreaker | weights pushed past it, away from the Bugera G5 | how far past, 1.0 → 1.3× |
+| 14 | `PAST PLX` | pLEXI-LORE | weights pushed past it, away from the SVT-2 Pro | the same |
+| 15 | `MUTATE KAY` | Kay 703 | its weights plus t times a fixed random direction (KAY MUTATE: the search's own draw for the Kay, one weight spread in size) | t, 0 → 0.5 |
+| 16 | `RND1 SCALE` | RND1 X2: random weights in the Klon's layout, drawn from seed 1, doubled (`tools/random_captures.py`) | every weight scaled | the scale, ×1.5 → ×3 of the seed's draw (log; about ×2.1 at noon) |
+| 17 | `RND4 SCALE` | RND4 X2 (seed 4) | the same | the same |
+| 18 | `RND6 SCALE` | RND6 X2 (seed 6) | the same | the same |
+| 19 | `RND7 SCALE` | RND7 X2 (seed 7) | the same | the same |
 
 They find their captures on the card by name — the starter set, which ships with Mirth
 (CC0 / CC-BY) — so a missing one shows `N need cap`. The weight steers need RND1, RND4, RND6
-and RND7 X2 in a `notamps/` folder on the card: the NOT-AMPS bank finds captures there by
-name, and AMPS never lists them, since they are not amps. They are generated, not
-downloaded, and carry no capture's weights. The RUN page shows `N3 S0.42`: not-amp 3,
+and RND7 X2, and MUTATE KAY needs KAY MUTATE (`captures/random/mutate_KAY_703.a2nb`,
+which `notamp_design.py` writes), in a `notamps/` folder on the card: the NOT-AMPS bank
+finds captures there by name, and AMPS never lists them, since they are not amps. They
+are generated, not downloaded, and carry no capture's weights. The RUN page shows `N3 S0.42`: not-amp 3,
 steer at 0.42.
 
 **One processor, two places.** `src/notamp_dsp.h` is the whole of the not-amps'
 processing — the bend, feedback loop, rate streaming and level table — and the firmware
 and `tools/a2_notamp.cpp` both run it. `tools/notamp_design.py` renders each through it and
 through the search harness they were chosen with (`tools/a2_explore.cpp`) and refuses to
-write `src/notamps.h` unless they agree: fourteen bit for bit (the weight steers against
+write `src/notamps.h` unless they agree: sixteen bit for bit (the weight steers against
 their capture's weights scaled and played plainly, which the search harness cannot do),
-PAST BLU and PAST PLX to −102 and −114 dB (the harness's first-block transient). It then
-measures a nine-point level table for each, against its source capture played plainly,
-so the steer changes the sound and not the volume. For the twelve, corrections run from
-−27 dB (PAST PLX at full steer) to +39 dB (SINE BUG). Each weight steer's run from +25 to
+PAST BLU, PAST PLX and MUTATE KAY to −102, −114 and −161 dB (the harness's first-block
+transient). It then measures a nine-point level table for each, against its source
+capture played plainly, so the steer changes the sound and not the volume. For the
+fifteen, corrections run from −27 dB (PAST PLX at full steer) to +70 dB (TANH BJT at
+full steer: a soft clip in every neuron, divided by its gain, leaves the network's output
+32 to 70 dB below the drive's; the noise screen still passes it with 35 dB to spare). Each weight steer's run from +25 to
 +39 dB at the bottom to between −82 and −102 dB at the top: scaling every weight compounds
 through the network's layers, so its raw output rises 106–136 dB from ×1.5 to ×3.
 
@@ -380,10 +388,13 @@ Almost certainly RATE BUG's "tone past 0.12" too. Fixed, and `a2_notamp` now pro
 place like the firmware; RATE SVT kept for one more listen.
 
 **The activation is a firmware choice.** `nam/nam_a2_runtime.h` compiles each activation
-— as trained, a variable slope, a sine — as its own copy of the layer kernels, chosen once
-per block, so a real amp pays nothing. The sine is `bend::FastSin`, a 2,048-entry table, within
+— as trained, a variable slope, a sine, a tanh — as its own copy of the layer kernels,
+chosen once per block, so a real amp pays nothing. The sine is `bend::FastSin`, a 2,048-entry table, within
 −53 to −106 dB of `sinf` through whole networks (pLEXI-LORE's network amplifies single
-rounding steps; the Bugera's does not). Freeze and the morph use the `bend`
+rounding steps; the Bugera's does not). The tanh is `bend::FastTanh`, a branch-free lookup
+on the upper half of the GRU filters' own tanh table (`nam/tanh_table.h`, held once for
+both: a second 8 KB table in DTCM halved the stack's headroom), within −109 to −134 dB of
+`std::tanh` through TANH BJT's network; the GRU filters render bit for bit as before. Freeze and the morph use the `bend`
 operations and live weight rewrites introduced earlier.
 
 **The seed slot, retired.** Random weights drawn with one amp's statistics all came out as
@@ -450,6 +461,35 @@ Audition: `amp_compare/notamp_search/audition.wav` (gitignored). **Heard and app
 2026-10-02:** every one has zones where it does not sound like a guitar amp. Built into the
 firmware the same day (`src/notamp_dsp.h`, `src/notamps.h`), then settled over the three
 bench sessions above.
+
+### The second audition, 2026-10-25
+
+Asked for more diversity, and to audition more options. `tools/notamp_options.py` took
+every route that passed both judges and was not on the card, ranked them by distance from
+the card's sixteen (in amp spacings, on the search's measure), and picked eight: at most
+two per family, one per transform and two per capture, each past the noise screen, none a
+route the bench had turned down (feedback pitch on the Kay and on pLEXI-LORE, SINE PLX).
+It rendered each as the riff four times with the steer swept end to end, beside the
+card's three freezes, RECT ORG and RATE SVT. The three freezes measured as each other's
+nearest neighbours, 1.8–1.9 spacings apart.
+
+| Option | From the amps | From the card | |
+|---|---|---|---|
+| feedback pitch on the Sunbender | 5.45 | 5.17 | |
+| feedback 100 Hz on the Two Rock | 6.89 | 3.99 | |
+| tanh neurons on the DIY BJT drive | 2.07 | 3.22 | **kept: TANH BJT** |
+| slope→linear on the Orange TH100 | 1.65 | 3.21 | **kept: LINEAR ORG** |
+| fold on the DIY BJT drive | 4.16 | 3.09 | |
+| mutate on the Kay 703 | 1.81 | 2.80 | **kept: MUTATE KAY, in place of FRZ E TR** |
+| long gaps out on the Bugera G5 | 1.39 | 2.58 | |
+| rate ÷ on the Fender 57 | 1.67 | 2.42 | **kept: RATE F57** |
+
+Chosen by David, 2026-10-25. Two new kinds came with them (`src/notamp_dsp.h`): Tanh,
+on the table tanh above, and Mutate, the capture plus t times a direction file — the
+search's own fixed draw for the Kay, which `notamp_design.py` writes for the card's
+`notamps/` folder, bit for bit what the audition played. Not yet heard on the module;
+TANH BJT's CPU is unmeasured, though its lookup is the same shape as the table sine that
+took SINE BUG from 99% to 75%.
 
 ## Getting more captures
 

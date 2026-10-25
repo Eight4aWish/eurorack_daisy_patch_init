@@ -42,6 +42,8 @@
 #include <cstdint>
 #include <cstring>
 
+#include "tanh_table.h"
+
 #ifndef GRU_HOT_DATA
 #define GRU_HOT_DATA
 #endif
@@ -125,14 +127,9 @@ inline bool Load(Net& n, int hidden, int inputs, const void* payload)
 #ifdef GRU_EXACT_ACTIVATIONS
 inline float Tanh(float x) noexcept { return std::tanh(x); }
 #else
-inline constexpr int   kTanhN     = 2048;
-inline constexpr float kTanhRange = 8.f;
-GRU_HOT_DATA inline float tanhTab[kTanhN + 1];
-inline const bool tanhTabReady = [] {
-    for(int i = 0; i <= kTanhN; i++)
-        tanhTab[i] = std::tanh(-kTanhRange + 2.f * kTanhRange * (float)i / (float)kTanhN);
-    return true;
-}();
+// The table is tanh_table.h's, shared with the A2 engine's tanh not-amp (2026-10-25).
+inline constexpr int   kTanhN     = tanh_table::kN;
+inline constexpr float kTanhRange = tanh_table::kRange;
 inline float Tanh(float x) noexcept
 {
     if(x <= -kTanhRange)
@@ -142,7 +139,7 @@ inline float Tanh(float x) noexcept
     const float p = (x + kTanhRange) * ((float)kTanhN / (2.f * kTanhRange));
     const int   i = (int)p;
     const float f = p - (float)i;
-    return tanhTab[i] + f * (tanhTab[i + 1] - tanhTab[i]);
+    return tanh_table::tab[i] + f * (tanh_table::tab[i + 1] - tanh_table::tab[i]);
 }
 #endif
 inline float Sigmoid(float x) noexcept { return 0.5f + 0.5f * Tanh(0.5f * x); }

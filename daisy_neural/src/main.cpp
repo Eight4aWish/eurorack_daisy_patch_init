@@ -45,13 +45,14 @@
  * (f1_WASP_A2.a2nb) plays there too, through the amps' engine, at the one cutoff and Res it
  * was captured at (2026-10-23). AMPS: the captures on the card,
  * played exactly as captured; the steer knob does nothing there, on purpose. NOT-AMPS:
- * twelve starter captures,
+ * fifteen starter captures,
  * each with one transform chosen by measurement to leave the region where real
- * amps sit — sine or linear neurons, a feedback loop, a frozen layer, the engine
- * at a fraction of the sample rate, or a capture pushed past another — and one
- * steer control that can move while playing; and four random-weight captures whose
- * steer scales every weight (2026-10-23), their bases in the card's notamps/ folder, which
- * AMPS never lists. Processing in src/notamp_dsp.h
+ * amps sit — sine, tanh or linear neurons, a feedback loop, a frozen layer, the engine
+ * at a fraction of the sample rate, a capture pushed past another, or one moved along a
+ * fixed random direction — and one steer control that can move while playing; and four
+ * random-weight captures whose steer scales every weight (2026-10-23). Their bases and
+ * the Kay's direction are in the card's notamps/ folder, which AMPS never lists.
+ * Processing in src/notamp_dsp.h
  * (shared with the Mac harness tools/a2_notamp.cpp); definitions and level
  * tables generated into src/notamps.h by tools/notamp_design.py.
  *

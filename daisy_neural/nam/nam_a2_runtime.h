@@ -38,6 +38,8 @@
 #include <cstdint>
 #include <cstring>
 
+#include "tanh_table.h"
+
 #ifndef NAM_A2_ALIGN32
 #define NAM_A2_ALIGN32 alignas(32)
 #endif
@@ -197,7 +199,7 @@ inline int   heldCount[23] = {};
 // original code path; the others are not-amps. Each is compiled as its own copy of
 // the layer kernels and chosen once per block (process_block_48), so a real amp
 // pays nothing for the choice existing.
-enum Act : int { kActTrained = 0, kActSlope = 1, kActSine = 2, kActTanh = 3 /* host only */ };
+enum Act : int { kActTrained = 0, kActSlope = 1, kActSine = 2, kActTanh = 3 };
 inline int   act      = kActTrained;
 inline float actParam = kLeakySlope;  // kActSlope: the slope; kActSine/kActTanh: the gain
 inline float actInv   = 1.0f;         // 1 / gain, so the neuron's small-signal slope stays 1
@@ -230,6 +232,22 @@ inline float FastSin(float a) noexcept
     const float fl = floorf(p);
     const int   j  = (int)fl & (kSinN - 1);
     return sinTab[j] + (p - fl) * (sinTab[j + 1] - sinTab[j]);
+}
+
+// tanh(a) for TANH BJT (2026-10-25), from the GRU filters' table (tanh_table.h: ±8 in
+// 2,048 steps, so its upper half is tanh(k / 128)), held once for both: a table of its
+// own here cost 8 KB of the stack's headroom in DTCM. tanh is odd, so the lookup is on
+// |a|, branch-free, with the sign put back: |error| < 6e-6. Past 8 it holds at tanh(8),
+// 1 - 2.3e-7, and a NaN comes out as that too, never an index off the table. std::tanh,
+// which the search used, is a libm call per neuron.
+inline float FastTanh(float a) noexcept
+{
+    constexpr int   kHalf = tanh_table::kN / 2;
+    constexpr float kTop  = (float)kHalf - 0x1p-14f;  // the last float below 1,024, so j + 1 <= kHalf
+    const float* const t = tanh_table::tab + kHalf;
+    const float p = fminf(__builtin_fabsf(a) * (kHalf / tanh_table::kRange), kTop);
+    const int   j = (int)p;
+    return copysignf(t[j] + (p - (float)j) * (t[j + 1] - t[j]), a);
 }
 
 inline void Clear()
@@ -438,7 +456,7 @@ NAM_A2_TINY_INLINE float act_fn(float x) noexcept
     else if constexpr (ACT == bend::kActSine)
         return bend::FastSin(bend::actParam * x) * bend::actInv;
     else if constexpr (ACT == bend::kActTanh)
-        return std::tanh(bend::actParam * x) * bend::actInv;
+        return bend::FastTanh(bend::actParam * x) * bend::actInv;
     else
         return leaky(x);
 }
@@ -883,9 +901,7 @@ NAM_A2_NOINLINE void process_block_48(A2State& st,
     {
         case bend::kActSlope: process_layers<bend::kActSlope>(st, hot, sw, cond, in, out); break;
         case bend::kActSine:  process_layers<bend::kActSine>(st, hot, sw, cond, in, out);  break;
-#ifdef NAM_A2_EXPLORE
         case bend::kActTanh:  process_layers<bend::kActTanh>(st, hot, sw, cond, in, out);  break;
-#endif
         default:              process_layers<bend::kActTrained>(st, hot, sw, cond, in, out); break;
     }
 
