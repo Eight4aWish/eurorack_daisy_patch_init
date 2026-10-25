@@ -127,6 +127,8 @@ def main():
                      if re.fullmatch(r"f\d+_.*\.(grnb|a2nb)", p.name))
     if a.filters and not filters:
         raise SystemExit(f"no f*_ filter files in {a.filters}")
+    if filters and not (PROJECT / "FILTERS.md").exists():
+        raise SystemExit("--filters needs FILTERS.md, the filters' credits, beside STARTER_CAPTURES.md")
     for p in starters + notamps + [p for p in filters if p.suffix == ".a2nb"]:
         if not a2nb_ok(p.read_bytes()):
             raise SystemExit(f"{p}: bad header or CRC")
