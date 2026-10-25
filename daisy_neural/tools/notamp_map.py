@@ -61,6 +61,30 @@ STAY = ["bias off", "bias ×4", "mix-in off", "mix-in ×6", "rectified mix-in", 
         "lane offset", "long gaps out"]
 
 
+def measure_rnd():
+    """The four weight steers, described as the search describes everything: {"RNDn SCALE|i":
+    (descriptors, weight scale)} at the five steer positions, each render levelled first."""
+    dry = np.asarray(S.make_synth(), np.float64)
+    S.scale_peak(dry, 0.5)
+    S.SIGNAL = dry                                # describe() reads the dry phrase from here
+    tmp = tempfile.mkdtemp()
+    dry.astype("<f4").tofile(pathlib.Path(tmp) / "dry.f32")
+    out = {}
+    for name, seed in RND.items():
+        base = np.frombuffer((PROJECT / "captures" / "random" / f"r{seed:02d}_x2p0.a2nb").read_bytes()[32:], "<f4")
+        for i, u in enumerate(S.U):
+            s = math.exp(math.log(0.75) + (math.log(1.5) - math.log(0.75)) * u)
+            w = (base * s).astype("<f4")
+            hot = S.render((w, None, "none", 1, 1.0, tmp))
+            soft = S.render((w, None, "none", 1, 0.1, tmp))
+            g = 0.5 / max(np.max(np.abs(hot)), 1e-12)
+            d = S.describe(hot * g, soft * g)
+            if d is None:
+                raise SystemExit(f"{name} at ×{2 * s:.2f}: no usable render")
+            out[f"{name}|{i}"] = (d, 2 * s)
+    return out
+
+
 def weighted(z):
     """Concatenate the groups so plain Euclidean distance equals Space.dist."""
     return np.hstack([z[g] / math.sqrt(len(S.GROUPS) * z[g].shape[1]) for g in S.GROUPS])
@@ -80,24 +104,7 @@ def main():
     tau = float(np.percentile(dAA.min(1), 95))
 
     # the weight steers, measured as the search measured everything else
-    dry = np.asarray(S.make_synth(), np.float64)
-    S.scale_peak(dry, 0.5)
-    S.SIGNAL = dry                                # describe() reads the dry phrase from here
-    tmp = tempfile.mkdtemp()
-    dry.astype("<f4").tofile(pathlib.Path(tmp) / "dry.f32")
-    rnd_desc = {}
-    for name, seed in RND.items():
-        base = np.frombuffer((PROJECT / "captures" / "random" / f"r{seed:02d}_x2p0.a2nb").read_bytes()[32:], "<f4")
-        for i, u in enumerate(S.U):
-            s = math.exp(math.log(0.75) + (math.log(1.5) - math.log(0.75)) * u)
-            w = (base * s).astype("<f4")
-            hot = S.render((w, None, "none", 1, 1.0, tmp))
-            soft = S.render((w, None, "none", 1, 0.1, tmp))
-            g = 0.5 / max(np.max(np.abs(hot)), 1e-12)
-            d = S.describe(hot * g, soft * g)
-            if d is None:
-                raise SystemExit(f"{name} at ×{2 * s:.2f}: no usable render")
-            rnd_desc[f"{name}|{i}"] = (d, 2 * s)
+    rnd_desc = measure_rnd()
     R = S.matrix([d for d, _ in rnd_desc.values()])
     zR = sp.z(R)
 
