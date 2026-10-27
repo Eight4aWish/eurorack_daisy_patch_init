@@ -716,8 +716,9 @@ with non-finite steps skipped; data, splits and seeds as the first recipe (the b
 GRU-16 and GRU-24 (update gate +1), seeds 1–3, on the Mac mini from the Crucial drive
 (`gru_runs/lp2_gru*`); NAM's WaveNet in A2-Lite's layout with audio, cutoff and Res as
 conditioning and FiLM before each activation (2,566 parameters), seeds 1–3 one after
-another on the laptop's GPU, from a local copy (`~/wasp_lp`, runs `lp2_wn_s*`; copy them
-to the drive afterwards). All four changes go in together, so a win does not say which
+another on the laptop's GPU, from a local copy (`~/wasp_lp`, runs `lp2_wn_s*`; everything
+in it, runs and control results included, checked onto the Crucial byte for byte and the
+local copy deleted 2026-10-27). All four changes go in together, so a win does not say which
 change made it. Each batch ends with `control_response.py`, whose first version averages
 over every Res mark, hold and band and so rates the first GRUs near right (Res movement
 0.9–1.7) although on the module their Res was inaudible: to be sharpened towards the cells
