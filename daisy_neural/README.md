@@ -1,35 +1,40 @@
 # daisy_neural — Mirth
 
-> **Released: v1.0.0, 2026-10-03.** Tags `mirth-v1.0.0` and `mirth_lite-v1.0.0`; assets
-> `mirth-v1.0.0.bin`, `mirth_lite-v1.0.0.bin`, the starter captures
-> (`mirth-v1.0.0-captures.zip`) and a notices file each.
+> **Released: v1.1.0, 2026-10-29.** Tags `mirth-v1.1.0` and `mirth_lite-v1.1.0`; assets
+> `mirth-v1.1.0.bin`, `mirth_lite-v1.1.0.bin`, the card files (`mirth-v1.1.0-card.zip`: the
+> starter set, `notamps/` and the seven filters) and a notices file each. v1.0.0
+> (2026-10-03) stays on the releases page.
 
 **Mirth** runs neural amp captures on a Daisy Patch.Init, with a 64×48 OLED: NAM A2-Lite
 networks read off the microSD card (AMPS), and *not-amps* — captures bent inside the
-network, each with one control (NOT-AMPS: twelve in v1.0.0, nineteen in development).
-**Mirth Lite** (`make LITE=1`) is the same
-firmware for a stock patch.init with no screen. Page and downloads:
-<https://eight4awish.com/modules/mirth/>.
+network, each with one control (NOT-AMPS: nineteen since v1.1.0, twelve in v1.0.0); and
+since v1.1.0 two filters from the rack, a Doepfer Wasp and a Behringer Swords, as networks
+with cutoff and resonance as knobs (FILTERS). **Mirth Lite** (`make LITE=1`) is the same
+firmware for a stock patch.init with no screen. Pages and downloads:
+<https://eight4awish.com/modules/mirth/> (amps and not-amps) and
+<https://eight4awish.com/modules/mirth-filters/> (the filters).
 
 Built `BOOT_SRAM`, which needs the Daisy bootloader installed once on the unit. That is
 what the engine was written for: weights in DTCMRAM, history in RAM_D2, both on-chip.
-**CPU load: 64%** with a capture running (1% in bypass), against 30–61% for A2 on a
+**CPU load: 64%** with a capture running, against 30–61% for A2 on a
 480 MHz H7 in the reference builds.
 
 The compiled-in fallback is the Orange TH100 starter capture (CC BY, credited in
 `nam/fallback_capture.h`), so a missing or unreadable card still gives a working module,
 and every build carries CC-licensed data only. The twelve starter captures ship with the
 release, credited in [`STARTER_CAPTURES.md`](STARTER_CAPTURES.md). Mirth Lite was checked on a
-stock patch.init on 2026-10-03.
+stock patch.init on 2026-10-03 (v1.0.0) and 2026-10-29 (v1.1.0).
 
 ## What it does
 
-1. **Runs NAM A2-Lite captures off the card** (AMPS), with input trim, a dry/wet mix,
-   bypass for A/B against the dry input, an input peak meter for setting the trim, and a
-   CPU load readout. (v1.0.0; the development layout below has no bypass.)
-2. **Not-amps** (NOT-AMPS): the twelve starter captures, each with one transform measured
-   to leave the region where real amps sound, and one steer control; in development, four
+1. **Runs NAM A2-Lite captures off the card** (AMPS), with a drive into the network, a
+   dry/wet mix (fully down is the dry input, for A/B), an input peak meter and a CPU load
+   readout. (v1.0.0 had an input trim and a bypass instead of the drive.)
+2. **Not-amps** (NOT-AMPS): the starter captures, each with one transform measured to leave
+   the region where real amps sound, and one steer control; since v1.1.0 also four
    random-weight captures whose steer scales every weight — see "The not-amps".
+3. **Filters** (FILTERS, since v1.1.0): GRU networks of the rack's Wasp and Swords, cutoff
+   and resonance as knobs, RES to 11 — see "Controls" and "Filters".
 
 ## Signal path
 
@@ -46,14 +51,14 @@ The dry side is the input before the drive. MIX fully down is the dry side alone
 A/B compares the engine with its input. The engine runs within the same block as its
 input, so dry and wet line up sample for sample — except the RATE not-amps, which stream
 48·R samples late, and a filter with the granular layer, 53.7 ms late; the dry side is
-delayed by the same amount while one plays. (v1.0.0 has the trim on CV_1, the mix on
+delayed by the same amount while one plays. (v1.0.0 had the trim on CV_1, the mix on
 CV_2, and a bypass on B7.)
 
 ## Controls
 
-**In development (after v1.0.0): a FILTERS bank, B7 for patches, and the knobs
-rearranged** (David, 2026-10-21). The v1.0.0 release still has the old layout: knob 1
-trim, 2 mix, 3 slot, 4 steer, B7 bypass, and two banks. Each knob is summed with the CV
+**Since v1.1.0: a FILTERS bank, B7 for patches, and the knobs rearranged** (David,
+2026-10-21). v1.0.0 had the old layout: knob 1 trim, 2 mix, 3 slot, 4 steer, B7 bypass,
+and two banks. Each knob is summed with the CV
 jack under it; the four knobs sit two by two, 1 and 2 on top.
 
 | Control | AMPS | NOT-AMPS | FILTERS |
@@ -135,8 +140,8 @@ the input *before* the drive. Free for later: Gate In 1 and 2, Gate Out, CV_OUT_
 `make LITE=1` → `build_lite/mirth_lite.bin`. Same source (`MIRTH_LITE`), same engine,
 captures, not-amps, filters, knobs and B7; no OLED code at all. The B8 toggle is unused:
 it was the bank until 2026-10-21 (David), when B7's hold took the bank on both builds,
-which also brings FILTERS to Lite. v1.0.0 Lite still has the toggle for the bank and B7
-for bypass.
+which also brings FILTERS to Lite. v1.0.0 Lite had the toggle for the bank and B7 for
+bypass.
 
 | Control | Mirth Lite |
 |---|---|
@@ -147,6 +152,8 @@ for bypass.
 
 v1.0.0 Lite was run on a stock patch.init on 2026-10-03, from a card made from the
 release files: everything as its release notes describe, with the toggle up for AMPS.
+v1.1.0 Lite was checked the same way on 2026-10-29, from a card made only from
+`mirth-v1.1.0-card.zip`.
 
 ## Pages
 
@@ -308,9 +315,8 @@ with integer maths is the largest single saving (Mirth Lite formats nothing).
 Twelve slots in the NOT-AMPS bank since 2026-10-02, each a starter capture with one
 transform and one control on the steer knob (CV_2 + the CV_6 jack; CV_4 + CV_8 in v1.0.0)
 that can move while it plays. Chosen by measurement to sit outside the region where real amps sound, then by
-ear — "The measured search" below has the numbers. Sixteen since 2026-10-23 (in
-development): four **weight steers**, random-weight captures chosen by ear whose steer
-scales every weight. Nineteen since 2026-10-25 (in development), from a second audition:
+ear — "The measured search" below has the numbers. Sixteen from 2026-10-23: four **weight steers**, random-weight captures chosen by ear whose steer
+scales every weight. Nineteen since 2026-10-25, released in v1.1.0, from a second audition:
 MUTATE KAY in place of FRZ E TR, and RATE F57, LINEAR ORG and TANH BJT added — "The
 second audition" below. In patch order, grouped by family:
 
@@ -533,7 +539,7 @@ card. Each is 7,516 bytes.
 
 Captures you convert yourself (`tools/nam_to_a2nb.py`, above) go on the same card.
 
-**Or copy the `.nam` itself (in development, after v1.0.0).** At boot Mirth imports any
+**Or copy the `.nam` itself (since v1.1.0).** At boot Mirth imports any
 `.nam` in the card's root: it takes the A2-Lite weights, names the capture from the file
 name and levels it with the not-amps' test phrase run through its own engine, then writes
 the `.a2nb` beside it, the same file `nam_to_a2nb.py` and `level_captures.py` would have
@@ -550,7 +556,7 @@ Mirth Lite imports the same way, with no screen to say so: look in the two folde
 download and a non-A2 file imported as described, the screens, the numbering of the clash
 and the refusal all as above.
 
-**Filters** (FILTERS bank, in development) are `.grnb` files on the same card: GRU networks
+**Filters** (FILTERS bank, since v1.1.0) are `.grnb` files on the same card: GRU networks
 from `tools/train_gru.py`, written by `tools/gru_export.py` (format in `tools/grnb.py`,
 engine in `nam/gru_runtime.h`, checked against PyTorch by `tools/gru_check.py`). Up to 16,
 in filename order, GRU-24 at most. The first are the Doepfer A-124 Wasp's (`CLAUDE.md`).
