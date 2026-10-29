@@ -487,9 +487,9 @@ nearest neighbours, 1.8–1.9 spacings apart.
 Chosen by David, 2026-10-25. Two new kinds came with them (`src/notamp_dsp.h`): Tanh,
 on the table tanh above, and Mutate, the capture plus t times a direction file — the
 search's own fixed draw for the Kay, which `notamp_design.py` writes for the card's
-`notamps/` folder, bit for bit what the audition played. Not yet heard on the module;
-TANH BJT's CPU is unmeasured, though its lookup is the same shape as the table sine that
-took SINE BUG from 99% to 75%.
+`notamps/` folder, bit for bit what the audition played. On the module (2026-10-29) all
+four work; TANH BJT runs at 84% CPU, above SINE BUG's 75% though its lookup is the same
+shape as the table sine.
 
 ## Getting more captures
 
