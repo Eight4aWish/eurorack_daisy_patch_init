@@ -3,7 +3,8 @@
 // Owns the Daisy Patch SM hardware, the OLED, and the single B7 button. On boot
 // it shows a firmware chooser; once an engine is selected it starts audio and
 // runs the UI loop, dispatching audio + B7 gestures (short = cycle, long =
-// Play/Edit page) to the active engine and drawing its control legend.
+// Play/Edit page) to the active engine and drawing its control legend. Holding
+// B7 for 3 s stops the engine and returns to the chooser, no power cycle needed.
 //
 // Copyright (c) 2026 David Baghurst — MIT (see repo LICENSE).
 
@@ -23,8 +24,8 @@ class Host {
     // Register an engine before Run(). Order = boot-menu order.
     void AddEngine(Engine* e);
 
-    // Init hardware + OLED, run the boot chooser, start audio, run UI loop.
-    // Does not return.
+    // Init hardware + OLED, then loop: run the chooser, start the engine, run
+    // the UI loop until B7 is held for kMenuHoldMs, stop audio. Does not return.
     void Run();
 
     // --- internal (public so the static audio thunk can reach them) ---
@@ -50,8 +51,11 @@ class Host {
     EngineContext ctx_;
     volatile bool short_press_pending_ = false;
     bool          hold_handled_        = false; // long-press consumed this hold
+    bool          pressed_in_engine_   = false; // this press began after the chooser
+    volatile bool menu_requested_      = false; // B7 held: back to the chooser
     bool          env_on_              = true;  // amplitude envelope enabled
     static constexpr uint32_t kLongPressMs = 600;
+    static constexpr uint32_t kMenuHoldMs  = 3000;
 
     // Redraw the OLED only when the legend changes, so soft-I2C isn't bit-banged
     // continuously (that switching couples into the codec as audible noise).

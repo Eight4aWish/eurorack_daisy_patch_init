@@ -109,9 +109,11 @@ settings page — see the Joy README's "Differences from Braids".
 | --- | --- |
 | Short press | Primary cycle (model / algorithm / waveform) — stays instant |
 | Long press (~1 s) | Toggle **Play ↔ Edit** page (replaces the old B8 shift) |
+| Hold 3 s | Back to the firmware chooser (`daisy_multiosc`; the panel's "hold = menu") |
 
-Only two gestures. Deep/rare functions are not on a per-app gesture — they live
-in a deep menu (a final Edit-page item) or are hard-coded with sane defaults.
+Only these three, and the third leaves the app rather than doing anything in it. Deep/rare
+functions are not on a per-app gesture — they live in a deep menu (a final Edit-page item) or are
+hard-coded with sane defaults.
 
 There is no held "shift": the **Edit page is the shift layer**. On the Edit page
 the three MOD knobs address each firmware's secondary parameters. Because a knob
@@ -119,7 +121,7 @@ changes meaning between pages, the Edit page uses **soft-takeover** (a knob does
 not grab a value until swept through it) — the same mechanism already in
 `daisy_braids_oled`. Play-page knobs stay live so performance feel is unaffected.
 
-## Firmware selection — boot-time only
+## Firmware selection — at power-on, or after a 3 s hold
 
 Implemented in [`daisy_multiosc/`](../daisy_multiosc/) (the Joy family is not
 part of that image). The app chooser is not a runtime gesture, so it never
@@ -130,9 +132,11 @@ competes with B7:
   waits for the press, and the image is `BOOT_QSPI`, where libDaisy refuses
   QSPI writes (`QSPIHandle::Impl::CheckProgramMemory`). With one engine
   registered it boots straight into it.
-- **During an app:** B7 is entirely the app's.
-- Optional later: a final Edit-page item `← Switch firmware` for runtime
-  switching, rather than a dedicated gesture.
+- **During an app:** B7 is the app's, except a 3 s hold, which stops the app and
+  returns to the chooser (added 2026-11-01: David found power-cycling to change
+  engine a pain, and the panel already said "hold = menu"). The chooser waits
+  for a fresh press, so the hold never selects. Each engine's `Init()` resets its
+  own state, which is what lets one run again in the same session.
 
 Implementation note: combined, these firmwares exceed the 128 KB internal flash,
 so the unified image must build `BOOT_QSPI` (8 MB QSPI), like

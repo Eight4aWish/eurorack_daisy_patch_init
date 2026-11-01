@@ -11,7 +11,9 @@ panel works for every engine. Control contract and panel layout:
   **B7** to select. (Auto-select when only one engine is registered.)
 - In an engine: **B7 short** = cycle (algorithm / model / waveform); **B7 long**
   = toggle **Play ↔ Edit** page. The screen shows the live meaning of MOD 1–3.
-- Engine selection is boot-time only, so B7 never competes with the chooser.
+- **Hold B7 for 3 s** to go back to the chooser, with no power cycle. The page
+  flips at 0.6 s on the way; the engine stops and its outputs go silent. The
+  chooser then waits for a fresh press: the hold itself never picks.
 
 ## Structure
 

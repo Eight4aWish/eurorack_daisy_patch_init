@@ -2,6 +2,7 @@
 //
 // Hosts several small voice engines behind one universal panel (docs/PANEL.md).
 // Pick an engine at power-on; B7 cycles (short) and toggles Play/Edit (long).
+// Hold B7 for 3 s to go back to the chooser.
 //
 // Copyright (c) 2026 David Baghurst — MIT (see repo LICENSE).
 

@@ -104,7 +104,10 @@ void Host::UpdateButton()
     ctx_.page_changed = false;
 
     if(button_.RisingEdge())
-        hold_handled_ = false;
+    {
+        hold_handled_      = false;
+        pressed_in_engine_ = true;
+    }
 
     if(button_.Pressed() && !hold_handled_
        && button_.TimeHeldMs() >= kLongPressMs)
@@ -113,6 +116,11 @@ void Host::UpdateButton()
         ctx_.page_changed = true;
         hold_handled_     = true; // long press consumed; no short on release
     }
+
+    // Held on past the long press: leave for the chooser. Run() stops audio.
+    if(button_.Pressed() && pressed_in_engine_
+       && button_.TimeHeldMs() >= kMenuHoldMs)
+        menu_requested_ = true;
 
     if(button_.FallingEdge() && !hold_handled_)
         short_press_pending_ = true;
@@ -134,8 +142,11 @@ void Host::ProcessAudio(AudioHandle::InputBuffer  in,
     ctx.env_on           = env_on_;
     short_press_pending_ = false;
 
-    if(active_)
+    if(active_ && !menu_requested_)
         active_->Process(hw_, ctx, in, out, size);
+    else
+        for(size_t i = 0; i < size; i++)
+            out[0][i] = out[1][i] = 0.0f; // silence while leaving for the chooser
 }
 
 void Host::DrawLegend()
@@ -192,25 +203,43 @@ void Host::Run()
     g_host = this;
     InitHardware();
 
-    const int sel = RunBootMenu();
-    active_        = engines_[sel];
-    env_on_        = active_->DefaultEnvOn();
-
-    hw_.SetAudioBlockSize(active_->BlockSize());
-    active_->Init(hw_, hw_.AudioSampleRate());
-
-    hw_.StartAudio(AudioThunk);
-
-    uint32_t next_draw = 0;
     while(true)
     {
-        const uint32_t now = System::GetNow();
-        if((int32_t)(now - next_draw) >= 0)
+        const int sel = RunBootMenu();
+        active_        = engines_[sel];
+        env_on_        = active_->DefaultEnvOn();
+
+        // A fresh session: Play page, and the press that chose the engine is
+        // still down, so its release mustn't count as a short press.
+        ctx_                 = EngineContext{};
+        short_press_pending_ = false;
+        hold_handled_        = true;
+        pressed_in_engine_   = false;
+        menu_requested_      = false;
+        drawn_valid_         = false;
+
+        // Every engine's Init() resets its own state, so one can run again.
+        hw_.SetAudioBlockSize(active_->BlockSize());
+        active_->Init(hw_, hw_.AudioSampleRate());
+
+        hw_.StartAudio(AudioThunk);
+
+        uint32_t next_draw = 0;
+        while(!menu_requested_)
         {
-            DrawLegend();
-            next_draw = now + 50; // ~20 fps; bit-banged I2C is slow
+            const uint32_t now = System::GetNow();
+            if((int32_t)(now - next_draw) >= 0)
+            {
+                DrawLegend();
+                next_draw = now + 50; // ~20 fps; bit-banged I2C is slow
+            }
+            System::Delay(2);
         }
-        System::Delay(2);
+
+        // The callback has gone silent: let a few blocks of it out, then stop.
+        System::Delay(10);
+        hw_.StopAudio();
+        active_ = nullptr;
     }
 }
 
