@@ -46,6 +46,9 @@ Hardware-verified on the Daisy Patch Init for **FM4OP**, **INTVL** and **SCAN**.
 **WAVES** (2026-10-24) builds and passes the panel check but is **not yet
 bench-tested**.
 
+**Hold B7 for 3 s to return to the chooser** works on the module (2026-11-01). That build was
+installed from the SD card: a 2 GB FAT32 `DAISY` partition, loaded with `make program-sd`.
+
 **BYTEBEAT was taken out on 2026-10-24.** The Ogham in the rack is the module its
 code came from, so the engine duplicated hardware already there. It was never
 bench-tested in MultiOsc. `daisy_bytebeat/` was deleted the same day; the port,
