@@ -145,21 +145,29 @@ V/Oct calibration of its own (see below).
 `panel/` holds a Secret faceplate to have made. It is Hermetic's own front-panel template
 from the Alchemy SDK (`deps/alchemy-sdk/panel/`), with the placeholder text replaced by
 Secret's labels. The template is MIT, © Hermetic Modular LLC, so its notice travels with
-it: `panel/LICENSE-hermetic.txt`. Every hole, LED window, ring and plating note is still
-Hermetic's. The lettering is white silkscreen, like the other Eight4aWish faceplates;
-Hermetic's own is bare ENIG copper through a solder-mask opening. J1/J2 are left
-unlabelled because Secret does not use them.
+it: `panel/LICENSE-hermetic.txt`. Every hole position, copper ring and LED window is still
+Hermetic's. Two things differ:
+
+- **The lettering is white silkscreen**, like the other Eight4aWish faceplates. Hermetic's
+  is bare ENIG copper through a solder-mask opening.
+- **The holes are drilled, not cut.** Hermetic cut the holes and slots in the board outline
+  and order edge plating, with a comment asking JLCPCB to plate them along with the edges.
+  Edge plating more than tripled the price (£58 against £18 with ENIG alone, 2026-11-03).
+  So `make_panel.py` turns each one into a plated hole in the drill file, as on the other
+  faceplates, and drops the copper marks that tell JLCPCB which edges to plate. The rings
+  and every mask opening are unchanged; only the board's outer edges stay bare.
+
+J1/J2 are left unlabelled because Secret does not use them.
 
 ```sh
 python3 panel/make_panel.py --gerbers   # secret_panel.kicad_pcb, the JLCPCB zip, a preview
 ```
 
 The script needs KiCad 9's `kicad-cli`. To order, upload `secret_panel_gerbers.zip` to
-JLCPCB with the options from Hermetic's `panel/README.md`: ENIG, edge plating, black
-solder mask, and its order comment ("Please plate all holes and all drills. Plate all
-edges as indicated by F.cu boxes. Four areas are left for tooling handles."). The
-website's panel image is a different thing: a render in the series style, made with
-`build123d/panels/alchemy_secret.py`.
+JLCPCB with ENIG, black solder mask, white silkscreen, 1.6 mm and Remove Mark. Leave edge
+plating off and the order comment empty; Hermetic's `panel/README.md` asks for both only
+because its holes are cut in the outline. The website's panel image is a different thing: a
+render in the series style, made with `build123d/panels/alchemy_secret.py`.
 
 ## Build
 
