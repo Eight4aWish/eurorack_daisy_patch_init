@@ -4,17 +4,19 @@ make_panel.py — Secret's faceplate for the Alchemy Lab, from Hermetic's own te
 
 Hermetic ships a KiCad front-panel template in the Alchemy SDK
 (deps/alchemy-sdk/panel/front-panel-template.kicad_pcb, MIT) for exactly this: a firmware
-author's own faceplate, made as a PCB — copper text and a solder-mask opening over it, so
-the lettering comes out as bare ENIG metal on black. This copies the template unchanged
-except for its placeholder text, which it fills with Secret's labels by position, then adds
-the module name and the maker. Every hole, ring window, plating note and tooling tab is
-Hermetic's, so the template's MIT notice (© Hermetic Modular LLC) is kept beside the
-outputs, in LICENSE-hermetic.txt.
+author's own faceplate, made as a PCB. Hermetic's lettering is copper text with a
+solder-mask opening over it, so it comes out as bare ENIG metal on black. Secret's is white
+silkscreen instead, like the other Eight4aWish faceplates (David, 2026-11-03): each
+placeholder's copper text becomes silkscreen in Secret's words, its mask opening goes, and
+the module name and the maker are added the same way. Every hole, ring window, rule,
+plating note and tooling tab is Hermetic's, so the template's MIT notice (© Hermetic
+Modular LLC) is kept beside the outputs, in LICENSE-hermetic.txt.
 
-Labels (daisy_chaos/src/secret.cpp): knobs TUNE CHAOS / CHAR TAME / AD SR; buttons MODEL,
-TAME MODE, ENV (B2 and B3 swapped 2026-10-02 so each sits by its knobs); jacks V/OCT CHAOS X
-over GATE TAME Y, the stock panel's CV1-CV6 taken as J3-J8; the audio-in column unlabelled
-(Secret leaves J1/J2 unused); OUT as Hermetic labels it.
+Labels (daisy_chaos/src/secret.cpp, v1.1.0, on a working Alchemy Lab): knobs TUNE CHAOS /
+CHAR TAME / AD SR; buttons MODEL and ENV, with B2 unlabelled (unused since v1.1.0; it was
+TAME's mode, and B2 and B3 were swapped 2026-10-02 so each sits by its knobs); jacks V/OCT
+CHAOS X over GATE TAME Y, the stock panel's CV1-CV6 taken as J3-J8; the audio-in column
+unlabelled (Secret leaves J1/J2 unused); OUT as Hermetic labels it.
 
     python3 daisy_chaos/panel/make_panel.py            # writes secret_panel.kicad_pcb
     python3 daisy_chaos/panel/make_panel.py --gerbers  # and the JLCPCB zip + a preview
@@ -39,7 +41,7 @@ KICAD_CLI = "/Applications/KiCad/KiCad.app/Contents/MacOS/kicad-cli"
 KNOB_X = (69.16, 104.16)              # knob columns
 KNOB_Y = (53.39, 81.40, 109.40)       # knob / button rows
 KNOBS = {(0, 0): "TUNE", (1, 0): "CHAOS", (0, 1): "CHAR", (1, 1): "TAME", (0, 2): "AD", (1, 2): "SR"}
-BUTTONS = {0: "MODEL", 1: "TAME MODE", 2: "ENV"}
+BUTTONS = {0: "MODEL", 1: "", 2: "ENV"}  # B2 unused since v1.1.0
 JACK_X = (63.13, 74.92, 86.69, 98.42, 110.31)  # jack columns
 JACKS = {  # (column, label row: 0 under the top jacks, 1 under the bottom ones)
     (1, 0): "V/OCT", (2, 0): "CHAOS", (3, 0): "X",
@@ -86,9 +88,11 @@ def label_for(text, x, y):
     return None
 
 
-def retext(block, text, x, y=None, size=None):
+def retext(block, text, x, y=None, size=None, layer=None):
     """Same block with new text, centred on x (justify bottom), cache dropped so KiCad redraws."""
     b = re.sub(r'^\(gr_text "[^"]*"', f'(gr_text "{text}"', block)
+    if layer:
+        b = re.sub(r'\(layer "[^"]+"', f'(layer "{layer}"', b, count=1)
     b = re.sub(r"\(at ([\d.\-]+) ([\d.\-]+)( [\d.\-]+)?\)",
                lambda m: f"(at {x} {y if y is not None else m.group(2)} 0)", b, count=1)
     b = re.sub(r"\(justify[^)]*\)", "(justify bottom)", b)
@@ -120,8 +124,11 @@ def main():
         if new is None:
             continue
         label, cx = new
-        edits.append((start, end, "" if not label else retext(b, label, cx)))
-        done.setdefault(label or "(removed)", []).append(layer)
+        # Each of Hermetic's labels is there twice, as copper text and as the mask opening
+        # over it. The copper copy becomes white silkscreen; the mask copy goes.
+        silk = bool(label) and layer == "F.Cu"
+        edits.append((start, end, retext(b, label, cx, layer="F.SilkS") if silk else ""))
+        done.setdefault(label or "(removed)", []).append("F.SilkS" if silk else f"{layer} removed")
         if text == "KNOB LABEL" and pair is None:
             pair = {}
         if text == "KNOB LABEL":
@@ -129,11 +136,10 @@ def main():
     for start, end, new in sorted(edits, reverse=True):
         s = s[:start] + new + s[end:]
 
-    # The module name and the maker, in the same copper + mask-opening pair.
+    # The module name and the maker, in white silkscreen like the labels.
     extra = ""
     for txt, x, y, size in (TITLE, MAKER):
-        for layer in ("F.Cu", "F.Mask"):
-            extra += "\t" + retext(pair[layer], txt, x, y, size) + "\n"
+        extra += "\t" + retext(pair["F.Cu"], txt, x, y, size, layer="F.SilkS") + "\n"
     s = s.rstrip()
     assert s.endswith(")")
     s = s[:-1].rstrip() + "\n" + extra + ")\n"

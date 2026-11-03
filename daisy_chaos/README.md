@@ -85,7 +85,7 @@ firmware is frozen and whose hardware will be repurposed.
 
 Each button sits between the knobs it belongs with: B2 beside TAME, B3 between AD and SR
 (swapped 2026-10-02; until then B2 was the envelope and B3 the TAME mode). The faceplate
-still prints TAME MODE by B2, until B2 has its new job.
+leaves B2 unlabelled until it has its new job.
 
 | Jack | Job |
 | --- | --- |
@@ -145,9 +145,10 @@ V/Oct calibration of its own (see below).
 `panel/` holds a Secret faceplate to have made. It is Hermetic's own front-panel template
 from the Alchemy SDK (`deps/alchemy-sdk/panel/`), with the placeholder text replaced by
 Secret's labels. The template is MIT, © Hermetic Modular LLC, so its notice travels with
-it: `panel/LICENSE-hermetic.txt`. Every hole, LED window and plating note is still Hermetic's. Lettering
-is bare ENIG copper through a solder-mask opening, the same way Hermetic makes the stock
-panel. J1/J2 are left unlabelled because Secret does not use them.
+it: `panel/LICENSE-hermetic.txt`. Every hole, LED window, ring and plating note is still
+Hermetic's. The lettering is white silkscreen, like the other Eight4aWish faceplates;
+Hermetic's own is bare ENIG copper through a solder-mask opening. J1/J2 are left
+unlabelled because Secret does not use them.
 
 ```sh
 python3 panel/make_panel.py --gerbers   # secret_panel.kicad_pcb, the JLCPCB zip, a preview
