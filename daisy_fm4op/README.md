@@ -13,6 +13,7 @@ A compact 4-operator FM synthesizer for the Daisy Patch SM, implemented in `fm4o
 
 ## File Layout
 - `fm4op.cpp`: Core implementation of operators, algorithms, audio callback, control reads, and LED indication.
+- `fm4op_voice.cpp`, `fm4op_voice.h`: The same voice as an engine for `daisy_multiosc`, on the universal panel.
 - `Makefile`: Project build settings targeting STM32H750 (Patch SM) and linking against LibDaisy/DaisySP.
 - `build/`: Compiler outputs (`.d`, `.lst`) generated during build.
 

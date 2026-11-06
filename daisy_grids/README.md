@@ -118,7 +118,7 @@ Banks of 25 nodes, cycled by holding B7, each announcing itself:
 | Bank | Announced | Source |
 |------|-----------|--------|
 | 0 | "Original patterns" | Émilie Gillet's Grids map |
-| 1 | "Club patterns" | Lakh MIDI Dataset, selected by **rhythmic signature** |
+| 1 | "Club patterns" | Groove MIDI Dataset, selected by **rhythmic signature** |
 | 2 | "Traditional patterns" | Groove MIDI Dataset — human drummers, rock through jazz |
 | 3 | "Latin patterns" | Groove MIDI Dataset, filtered to latin, jazz, afro-cuban, afrobeat, New Orleans, reggae and highlife |
 | 4 | "User patterns" | Parked — see [user_bank.h](include/user_bank.h) |
@@ -126,26 +126,22 @@ Banks of 25 nodes, cycled by holding B7, each announcing itself:
 All are 25 × 96 bytes with the same per-lane value distribution, so density,
 accent and everything downstream behave identically.
 
-The Latin bank is the most coherent of the four — neighbouring cells
-differ least, so X/Y morphs most smoothly — because 25 nodes cover one family of
-rhythms far better than they cover eight. Its cells come out recognisably
-single-style: 76% bossa, 67% afrobeat, 55% songo, 51% jazz. It is also the
-smallest corpus of the three derived banks, at 4,793 two-bar patterns against
-11,155 for Traditional, which is the point: past roughly three thousand
-patterns, more source material stops making a better map.
+Each derived bank is 25 real one-bar patterns chosen from its corpus and arranged
+on the map, not averages of thousands, which played flat. Moving X or Y one cell
+flips 16 to 18 steps between silent and sounding at mid density, against 15.5 on
+Grids' own map. The corpus sizes and measurements are in
+[tools/grids_firmware/README.md](tools/grids_firmware/README.md).
 
 ### Selecting by rhythm rather than by genre
 
 The Club bank is the interesting one. There is no openly licensed corpus that is
 modern, timed and large — WaivOps has the genres but its JSON carries no onset
-times, Pocket Operations has the genres but not a redistributable licence, and
-Lakh has scale but is overwhelmingly rock and pop by artist.
+times, and Pocket Operations has the genres but not a redistributable licence.
 
-So it doesn't use genre labels at all. Of Lakh's 736,402 two-bar patterns,
-73,674 are four-on-the-floor with offbeat hats, 42,447 are breakbeat-flavoured
-and 29,854 are half-time — whoever happened to play them. Those three make the
-corners of the map. It doesn't matter that Genesis played it: a four-to-the-floor
-kick under offbeat hats *is* the house vocabulary.
+So it doesn't use genre labels at all. It picks from Groove MIDI by what the rhythm
+is: four-on-the-floor with offbeat hats, breakbeat-flavoured, and half-time, sampled
+evenly, whoever happened to play them. It doesn't matter who it was: a
+four-to-the-floor kick under offbeat hats *is* the house vocabulary.
 
 ### Your own bank
 

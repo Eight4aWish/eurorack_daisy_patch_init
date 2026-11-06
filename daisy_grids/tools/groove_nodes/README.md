@@ -1,5 +1,9 @@
 # Deriving a drum-map bank
 
+> **The self-organising map below was the first method, and is kept for the record.** Since
+> Sorrow v2.3.0 the shipped banks come from `exemplars.py`: see
+> [../grids_firmware/README.md](../grids_firmware/README.md).
+
 Grids is a lookup table, not an algorithm. `src/grids_nodes.cpp` is 25
 hand-authored patterns of 96 bytes each — 3 instruments × 32 steps — and each
 byte is a *level* from 0-255, not an on/off. X and Y pick a cell in a 5×5 grid
@@ -70,7 +74,7 @@ floor; the Y axis from dense to sparse.
   are strong and few, so rule-generated archetypes fed through the same SOM
   would likely beat clustering a noisy corpus.
 
-## Open: the SOM is the wrong tool, and the shipped banks are flat
+## Why the SOM was replaced: the banks it made were flat
 
 **Reported by ear first** - "our banks do not move musically, it does not sound
 like much is happening" - and the measurements agree. The number that matters is
@@ -100,7 +104,7 @@ length - which is what Emilie did by hand:
 
 | method | per-edge | across | edge/map | dead |
 | --- | ---: | ---: | ---: | ---: |
-| SOM centroids (shipped) | 12.1 | 26.3 | 46% | 3/40 |
+| SOM centroids (shipped until v2.3.0) | 12.1 | 26.3 | 46% | 3/40 |
 | real patterns, unarranged | 37.9 | 35.5 | 106% | 0/40 |
 | **real patterns, arranged** | **29.2** | 37.7 | **78%** | **0/40** |
 
