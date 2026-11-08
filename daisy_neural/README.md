@@ -283,17 +283,20 @@ the crossfade in `daisy_multifx_oled`, and for the same reason.
 A2 processes a **fixed 48-sample block**, not one sample at a time. The Patch SM defaults
 to 48 kHz with 48-sample blocks, so the two line up with no buffering.
 
-## Footprint (BOOT_SRAM, engine + SD loader + fallback capture)
+## Footprint (v1.1.0, BOOT_SRAM, the Mirth build)
 
 | Region | Used | Size | % | holds |
 |---|---|---|---|---|
-| SRAM | 137,328 B | 480 KB | 27.9% | the program, incl. FatFS |
-| RAM_D2 | **76,672 B** | 256 KB | 29.3% | the A2 history buffer |
-| DTCMRAM | 46,336 B | 128 KB | 35.4% | hot weights, work buffers, 2 weight buffers |
+| SRAM | 213,356 B | 480 KB | 43.4% | the program, incl. FatFS |
+| RAM_D2 | **160,768 B** | 256 KB | 61.3% | the A2 history buffer (`engine`, 76,672 B) and the filters' grain layer (`g_layer`, 84,068 B) |
+| DTCMRAM | 115,464 B | 128 KB | 88.1% | hot weights, the filter and not-amp state, the weight buffers, the sine and tanh tables, the grain layer's FFT |
+| SDRAM | 7,109,612 B | 64 MB | 10.6% | the grain layer's banks (`g_layer_buf`, 4 MB), a `.nam` file being read off the card (2 MB), `g_phrase` (768,000 B) |
 | QSPIFLASH | 0 | 7936 KB | 0% | free for a capture bank |
 
 That is the engine's intended tiering, and the 128 KB internal-flash ceiling the
-`BOOT_NONE` build was 84.5% into no longer applies.
+`BOOT_NONE` build was 84.5% into no longer applies. v1.0.0, before the filters, used
+137,328 B of SRAM, 76,672 B of RAM_D2 and 46,336 B of DTCMRAM. Read from `build/mirth.elf`'s
+section headers.
 
 **Getting the history into RAM_D2 took two fixes, both silent failures.** Either one
 leaves you with a build that links clean, boots, and merely runs slower with DTCMRAM 80%
