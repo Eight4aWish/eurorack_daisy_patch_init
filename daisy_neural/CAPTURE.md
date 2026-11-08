@@ -198,4 +198,5 @@ What belongs to one module, and changes with it:
   a new module needs one alongside them in `train_gru.py`.
 
 If you would like to capture a module with me, email info@eight4awish.com: I will help train
-and compare the networks.
+and compare the networks. The [call for modules](https://eight4awish.com/notes/capture-your-module/)
+on the website says what makes a good candidate.
