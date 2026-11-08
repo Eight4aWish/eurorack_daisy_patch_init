@@ -497,6 +497,11 @@ search's own fixed draw for the Kay, which `notamp_design.py` writes for the car
 four work; TANH BJT runs at 84% CPU, above SINE BUG's 75% though its lookup is the same
 shape as the table sine.
 
+## Capturing your own module
+
+[CAPTURE.md](CAPTURE.md) is the path from a module in your rack to a filter on the card: the rig,
+the recordings, training and export, as the Wasp and Swords filters were made.
+
 ## Getting more captures
 
 [TONE3000](https://www.tone3000.com/) carries **700,000+ tones**, and the library more
