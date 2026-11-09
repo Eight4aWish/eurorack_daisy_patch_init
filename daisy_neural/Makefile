@@ -71,6 +71,15 @@ C_INCLUDES += -I$(_P_UP1)/common
 # Project root, so src/main.cpp can include the lifted engine as "nam/...".
 C_INCLUDES += -I$(_P_DIR)
 
+# The FX bank (src/fx_bank.h) runs common/multifx_core, Daisy MultiFX's effects. Its
+# reverbs use ReverbSc, which DaisySP keeps in DaisySP-LGPL (LGPL-2.1), so Mirth now
+# links that library, and DaisySP itself. The GRU test firmware has no FX bank.
+ifneq ($(GRU_TEST),1)
+C_INCLUDES += -I$(DAISYSP_DIR)/DaisySP-LGPL/Source
+LIBS += -ldaisysp-lgpl
+LIBDIR += -L$(DAISYSP_DIR)/DaisySP-LGPL/build
+endif
+
 # The lifted A2 runtime uses inline variables, which are C++17. GCC accepts
 # them at the core Makefile's gnu++14 default as an extension, but warns
 # fifteen times a build — noise that would hide a real warning. The core sets

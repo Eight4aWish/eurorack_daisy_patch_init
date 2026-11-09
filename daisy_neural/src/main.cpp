@@ -75,6 +75,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <new>
 
 #ifndef MIRTH_BUILD
 #define MIRTH_BUILD "unknown"
@@ -137,6 +138,8 @@ using namespace patch_sm;
 // bytes, so ordinary RAM.
 #include "nam/osc_layer.h"
 static_assert(osc::kParams == captures::kOscFloats, "the .grnb oscillator block and the layer disagree");
+// The FX bank: Daisy MultiFX's effects, trimmed to one list (src/fx_bank.h).
+#include "fx_bank.h"
 static constexpr const char* kFallbackName    = fallback::kName;
 static const float* const    kFallbackWeights = fallback::kWeights;
 static constexpr float       kFallbackGain    = fallback::kGain;
@@ -260,6 +263,18 @@ static volatile bool                    g_layer_on = false;
 static osc::Layer    g_osc;
 static volatile bool g_osc_on = false;
 
+// The FX bank. Reverb, delay and misc hold large buffers and are trivially
+// constructible, so they live in SDRAM, as on MultiFX. The tone bank's LadderFilters
+// have constructors, which must not run (before main) on memory not yet up, so it is
+// built in place in RAM_D2 by main(), after patch.Init().
+DSY_SDRAM_BSS static mfx::ReverbBank g_fx_rev;
+DSY_SDRAM_BSS static mfx::DelayBank  g_fx_del;
+DSY_SDRAM_BSS static mfx::MiscBank   g_fx_mis;
+alignas(16) NAM_A2_STATE_DATA static uint8_t g_fx_ton_mem[sizeof(mfx::ToneBank)];
+static fx::Bank  g_fx;
+static fx::Clock g_fx_clock;
+static volatile float g_fx_p[3] = {0.f, 0.f, 0.f};  // knobs 2-4 in FX, for the RUN page
+
 static bool         g_display_dirty = true;
 
 // Metering, written in the audio ISR and read by the UI loop. Single writer,
@@ -308,41 +323,61 @@ enum class Bank
     Amps    = 0,  // the card's captures, as captured
     NotAmps = 1,  // captures bent inside the network, with a steer control
     Filters = 2,  // GRU filters off the card, with cutoff and resonance
+    Fx      = 3,  // MultiFX's effects, no network (src/fx_bank.h); needs no card
 };
+static constexpr int kBanks = 4;
 static volatile Bank g_bank = Bank::Amps;
 
 static int  Slot(Bank b, int i) { return (int)b * 100 + i; }
 static Bank SlotBank(int slot)
 {
-    return slot >= 200 ? Bank::Filters : (slot >= 100 ? Bank::NotAmps : Bank::Amps);
+    return slot < 0 ? Bank::Amps : (Bank)(slot / 100);  // -1, the fallback, is an amp
 }
 static int  SlotIndex(int slot) { return slot % 100; }
-// Not-amps are built from the card's captures, so with no card there are none.
+// Not-amps are built from the card's captures, so with no card there are none. The
+// effects are compiled in, so FX is never empty.
 static int BankSize(Bank b)
 {
-    if(b == Bank::Filters)
-        return captures::FilterCount();
-    return b == Bank::Amps ? captures::Count() : (captures::Count() > 0 ? notamps::kCount : 0);
+    switch(b)
+    {
+        case Bank::Amps: return captures::Count();
+        case Bank::NotAmps: return captures::Count() > 0 ? notamps::kCount : 0;
+        case Bank::Filters: return captures::FilterCount();
+        case Bank::Fx: return fx::kCount;
+    }
+    return 0;
 }
 
-// B7's long press: AMPS -> NOT-AMPS -> FILTERS, skipping FILTERS on a card with none.
-static Bank NextBank(Bank b)
+// Whether a bank can be chosen: AMPS always, since with no captures it plays the
+// compiled-in fallback; the others when they have something in them.
+static bool BankOffered(Bank b) { return b == Bank::Amps || BankSize(b) > 0; }
+
+// The next bank round AMPS -> NOT-AMPS -> FILTERS -> FX, skipping any not offered
+// (FILTERS on a card with none; NOT-AMPS and FILTERS with no card). Lite's B7 hold;
+// with a screen the BANKS list does this job.
+[[maybe_unused]] static Bank NextBank(Bank b)
 {
-    if(b == Bank::Amps)
-        return Bank::NotAmps;
-    if(b == Bank::NotAmps && captures::FilterCount() > 0)
-        return Bank::Filters;
-    return Bank::Amps;
+    for(int k = 1; k <= kBanks; k++)
+    {
+        const Bank n = (Bank)(((int)b + k) % kBanks);
+        if(BankOffered(n))
+            return n;
+    }
+    return b;
 }
 
 // Where B7 has stepped to in each bank, so going round the banks comes back to the same
 // patch. Ask for that patch; nothing to ask for in an empty bank.
-static int g_cursor[3] = {0, 0, 0};
+static int g_cursor[kBanks] = {0, 0, 0, 0};
 static void Select(Bank b)
 {
     const int n = BankSize(b);
     if(n <= 0)
+    {
+        if(b == Bank::Amps)
+            g_want = -1;  // no captures: the compiled-in fallback
         return;
+    }
     int& c = g_cursor[(int)b];
     if(c >= n)
         c = 0;
@@ -384,10 +419,24 @@ static inline void SetLed(bool on)
 // ================================================================
 // Controls
 // ================================================================
-static constexpr uint32_t kBankPressMs = 1500;  // B7 held: change bank, both builds
-
 static bool     g_btn_held        = false;
 static uint32_t g_btn_press_start = 0;
+
+// Short press, both builds: the next patch in the bank. From a bank whose patch failed
+// to load (the display says so), this moves past the one that failed.
+static void NextInBank()
+{
+    const int n = BankSize(g_bank);
+    if(n > 0)
+    {
+        int& c = g_cursor[(int)g_bank];
+        c      = (c + 1) % n;
+        Select(g_bank);
+    }
+}
+
+#if MIRTH_LITE
+static constexpr uint32_t kBankPressMs = 1500;  // B7 held: change bank
 
 static void ProcessNav()
 {
@@ -419,19 +468,173 @@ static void ProcessNav()
         Select(g_bank);
     }
     else
-    {
-        // The next patch in the bank. From a bank whose patch failed to load (the
-        // display says so), this moves past the one that failed.
-        const int n = BankSize(g_bank);
-        if(n > 0)
-        {
-            int& c = g_cursor[(int)g_bank];
-            c      = (c + 1) % n;
-            Select(g_bank);
-        }
-    }
+        NextInBank();
     g_display_dirty = true;
 }
+#else
+// Mirth with a screen (David, 2026-11-09): lists scrolled by knob 1, as daisy_multiosc's
+// chooser. A short press still steps to the next patch; B7 held 0.6 s opens the list of
+// the bank playing, where knob 1 scrolls and a press plays the one highlighted. Held
+// again in that list, the list of banks: a press opens a bank's list; held again, or
+// 8 s untouched, the lists close with nothing changed. The patch playing carries on
+// throughout. Knob 1 is MIX, so while a list is open the mix holds, and after it closes
+// the knob takes the mix back only once it passes the held value (the RUN page marks
+// it with a * until then), so leaving a list never jumps the mix.
+enum class Menu
+{
+    Off,    // the RUN page
+    Items,  // a bank's patches
+    Banks,  // the banks
+};
+static constexpr uint32_t kMenuPressMs = 600;   // as daisy_multiosc's long press
+static constexpr uint32_t kMenuIdleMs  = 8000;  // untouched this long: close
+static constexpr float    kScrollDead  = 0.04f; // knob travel before the list follows it
+
+static volatile Menu g_menu      = Menu::Off;
+static volatile Bank g_menu_bank = Bank::Amps;  // whose patches Items lists
+static volatile int  g_menu_sel  = 0;           // highlighted row
+static float         g_menu_k0     = 0.f;      // knob 1 when the list opened
+static bool          g_menu_follow = false;    // the list follows the knob
+static uint32_t      g_menu_touch  = 0;        // last press or scroll
+static bool          g_btn_long    = false;    // this press has already acted as held
+
+// The banks the Banks list offers: those with something in them.
+static int MenuBanks(Bank* out)
+{
+    int n = 0;
+    for(int b = 0; b < kBanks; b++)
+        if(BankOffered((Bank)b))
+            out[n++] = (Bank)b;
+    return n;
+}
+
+static int MenuCount()
+{
+    if(g_menu == Menu::Items)
+        return BankSize(g_menu_bank);
+    Bank banks[kBanks];
+    return MenuBanks(banks);
+}
+
+static void OpenMenu(Menu m, int sel, uint32_t now)
+{
+    g_menu        = m;
+    g_menu_sel    = sel;
+    g_menu_k0     = patch.GetAdcValue(CV_1);
+    g_menu_follow = false;
+    g_menu_touch  = now;
+}
+
+static void OpenItems(Bank b, uint32_t now)
+{
+    g_menu_bank = b;
+    const int n = BankSize(b);
+    int       c = g_cursor[(int)b];
+    if(SlotBank(g_active) == b && g_active >= 0)
+        c = SlotIndex(g_active);  // start on what is playing
+    OpenMenu(Menu::Items, (n > 0 && c < n) ? c : 0, now);
+}
+
+static void OpenBanks(uint32_t now)
+{
+    Bank      banks[kBanks];
+    const int n   = MenuBanks(banks);
+    int       sel = 0;
+    for(int i = 0; i < n; i++)
+        if(banks[i] == g_menu_bank)
+            sel = i;
+    OpenMenu(Menu::Banks, sel, now);
+}
+
+static void MenuShortPress(uint32_t now)
+{
+    if(g_menu == Menu::Items)
+    {
+        g_bank = g_menu_bank;
+        if(BankSize(g_menu_bank) > 0)
+            g_cursor[(int)g_menu_bank] = g_menu_sel;
+        Select(g_bank);  // AMPS with no captures: the fallback
+        g_menu = Menu::Off;
+    }
+    else
+    {
+        Bank      banks[kBanks];
+        const int n = MenuBanks(banks);
+        if(n > 0)
+            OpenItems(banks[g_menu_sel < n ? g_menu_sel : 0], now);
+        else
+            g_menu = Menu::Off;
+    }
+}
+
+static void ProcessNav()
+{
+    nav_btn.Debounce();
+    const uint32_t now = System::GetNow();
+
+    if(nav_btn.Pressed())
+    {
+        if(!g_btn_held)
+        {
+            g_btn_press_start = now;
+            g_btn_held        = true;
+            g_btn_long        = false;
+        }
+        // Held: act at 0.6 s, while still down, so the list appears under the finger.
+        if(!g_btn_long && now - g_btn_press_start >= kMenuPressMs)
+        {
+            g_btn_long = true;
+            if(g_menu == Menu::Off)
+                OpenItems(g_bank, now);
+            else if(g_menu == Menu::Items)
+                OpenBanks(now);
+            else
+                g_menu = Menu::Off;
+            g_display_dirty = true;
+        }
+    }
+    else if(g_btn_held)
+    {
+        g_btn_held = false;
+        if(!g_btn_long)
+        {
+            if(g_menu == Menu::Off)
+                NextInBank();
+            else
+                MenuShortPress(now);
+            g_display_dirty = true;
+        }
+    }
+
+    if(g_menu == Menu::Off)
+        return;
+
+    // Knob 1 scrolls: nothing until it has moved a little, so a list opens on what is
+    // playing, then the knob's travel spread over the rows.
+    const int   n = MenuCount();
+    const float k = patch.GetAdcValue(CV_1);
+    if(!g_menu_follow && fabsf(k - g_menu_k0) > kScrollDead)
+        g_menu_follow = true;
+    if(g_menu_follow && n > 0)
+    {
+        int s = (int)(fclamp(k, 0.f, 1.f) * n);
+        s     = s >= n ? n - 1 : s;
+        if(s != g_menu_sel)
+        {
+            g_menu_sel      = s;
+            g_menu_touch    = now;
+            g_display_dirty = true;
+        }
+    }
+    if(g_btn_held)
+        g_menu_touch = now;
+    if(now - g_menu_touch >= kMenuIdleMs)
+    {
+        g_menu          = Menu::Off;
+        g_display_dirty = true;
+    }
+}
+#endif
 
 // ================================================================
 // Not-amps
@@ -543,6 +746,44 @@ static void ProcessFilter(float* buf, size_t n, float cut_to, float res_to, bool
 // ================================================================
 // Audio
 // ================================================================
+#if !MIRTH_LITE
+static volatile bool g_mix_caught = true;  // false: knob 1 has yet to take the mix back
+#endif
+
+// The FX bank's block: stereo, the effect fully wet, then the mix, then MultiFX's output
+// stage (DC block and soft clamp). The swap fade mutes the wet side only, as for the
+// networks; while the main loop is clearing an effect's buffers it is not run at all.
+static void ProcessFx(AudioHandle::InputBuffer  in,
+                      AudioHandle::OutputBuffer out,
+                      size_t                    size,
+                      float                     mix,
+                      float                     p1,
+                      float                     p2,
+                      float                     p3)
+{
+    const int   i    = SlotIndex(g_active);
+    const bool  run  = g_xf != Xf::Swap;
+    const float sr   = patch.AudioSampleRate();
+    const float wetg = mix * g_xf_gain, dryg = 1.f - mix;
+    float       peak = 0.f;
+    for(size_t n = 0; n < size; n++)
+    {
+        const float l = in[0][n], r = in[1][n];
+        const float a = fabsf(l) > fabsf(r) ? fabsf(l) : fabsf(r);
+        if(a > peak)
+            peak = a;
+        float wl = 0.f, wr = 0.f;
+        if(run)
+            g_fx.Process(i, l, r, p1, p2, p3, g_fx_clock, sr, wl, wr);
+        float ol = l * dryg + wl * wetg;
+        float orr = r * dryg + wr * wetg;
+        g_fx.Voice(ol, orr);
+        out[0][n] = std::isfinite(ol) ? ol : 0.f;
+        out[1][n] = std::isfinite(orr) ? orr : 0.f;
+    }
+    g_in_peak = peak;
+}
+
 void AudioCallback(AudioHandle::InputBuffer  in,
                    AudioHandle::OutputBuffer out,
                    size_t                    size)
@@ -560,7 +801,23 @@ void AudioCallback(AudioHandle::InputBuffer  in,
     const float k2 = patch.GetAdcValue(CV_2), j2 = patch.GetAdcValue(CV_6);
     const float k3 = patch.GetAdcValue(CV_3), j3 = patch.GetAdcValue(CV_7);
     const float k4 = patch.GetAdcValue(CV_4), j4 = patch.GetAdcValue(CV_8);
-    const float mix = fclamp(patch.GetAdcValue(CV_1) + patch.GetAdcValue(CV_5), 0.f, 1.f);
+    // Knob 1, MIX. With a screen, knob 1 also scrolls the lists, so the mix holds while
+    // one is open and is taken back once the knob passes the held value (ProcessNav).
+    const float k1 = patch.GetAdcValue(CV_1);
+#if !MIRTH_LITE
+    static float mix_knob = 0.f;
+    static bool  caught   = true;
+    if(g_menu != Menu::Off)
+        caught = false;
+    else if(!caught && fabsf(k1 - mix_knob) < 0.03f)
+        caught = true;
+    if(caught)
+        mix_knob = k1;
+    g_mix_caught = caught;
+#else
+    const float mix_knob = k1;
+#endif
+    const float mix = fclamp(mix_knob + patch.GetAdcValue(CV_5), 0.f, 1.f);
 
     // DRIVE, every bank: -20..+20 dB into the network with unity at noon, so the signal
     // can be set to the level the capture was trained at, and past it. For most
@@ -611,6 +868,21 @@ void AudioCallback(AudioHandle::InputBuffer  in,
                 g_xf      = Xf::Run;
             }
             break;
+    }
+
+    // FX: Gate In 1 clocks the delays. The rest of this callback is the networks'.
+    g_fx_clock.Process(patch.gate_in_1.State(), System::GetNow());
+    if(SlotBank(g_active) == Bank::Fx)
+    {
+        const float p1 = fclamp(k2 + j2, 0.f, 1.f);
+        const float p2 = fclamp(k3 + j3, 0.f, 1.f);
+        const float p3 = fclamp(k4 + j4, 0.f, 1.f);
+        g_fx_p[0] = p1;
+        g_fx_p[1] = p2;
+        g_fx_p[2] = p3;
+        ProcessFx(in, out, size, mix, p1, p2, p3);
+        cpu_meter.OnBlockEnd();
+        return;
     }
 
     float peak = 0.f;
@@ -817,12 +1089,34 @@ static bool SwapFilter(int index)
     return true;
 }
 
+// An effect: clear its buffers (the pitch shifter's ~128 kB among them). Nothing to read
+// off the card. Main loop only, while muted.
+static bool SwapEffect(int index)
+{
+    if(index < 0 || index >= fx::kCount)
+        return false;
+    g_na = -1;
+    g_proc.End();
+    g_fx.Reset(index);
+    return true;
+}
+
 static bool SwapSlot(int slot)
 {
+    if(slot < 0)
+    {
+        // Back to the compiled-in fallback (AMPS with no captures, after FX).
+        g_na = -1;
+        g_proc.End();
+        engine.InitFallback(patch.AudioSampleRate());
+        g_active = -1;
+        return true;
+    }
     const Bank b  = SlotBank(slot);
     const bool ok = b == Bank::Amps      ? SwapCapture(SlotIndex(slot))
                     : b == Bank::NotAmps ? SwapNotAmp(SlotIndex(slot))
-                                         : SwapFilter(SlotIndex(slot));
+                    : b == Bank::Filters ? SwapFilter(SlotIndex(slot))
+                                         : SwapEffect(SlotIndex(slot));
     if(ok)
         g_active = slot;
     return ok;
@@ -838,8 +1132,13 @@ static void DrawRunPage()
 
     // Six rows of 8 px (the font is 7 high): name, meter, CPU, patch, then the two knob
     // lines. Ten characters a row.
-    const bool filt = SlotBank(g_active) == Bank::Filters;
-    display.DrawString(0, 0, filt ? g_filter_name : engine.Name(), false);
+    const Bank bank = SlotBank(g_active);
+    const bool filt = bank == Bank::Filters;
+    const bool efx  = bank == Bank::Fx;
+    display.DrawString(0, 0,
+                       efx ? fx::kDefs[SlotIndex(g_active)].name
+                           : (filt ? g_filter_name : engine.Name()),
+                       false);
 
     // Input peak meter. The point of it is setting the drive, so it reads the
     // input before the drive rather than after.
@@ -865,7 +1164,9 @@ static void DrawRunPage()
     const int n_caps = raw_n > 99 ? 99 : raw_n;
     const int k      = SlotIndex(g_active) + 1 > 99 ? 99 : SlotIndex(g_active) + 1;
     const int n_act  = BankSize(SlotBank(g_active)) > 99 ? 99 : BankSize(SlotBank(g_active));
-    if(filt)
+    if(efx)
+        snprintf(line, sizeof(line), "FX %d/%d", k, n_act);
+    else if(filt)
         snprintf(line, sizeof(line), "FLT %d/%d", k, n_act);
     else if(g_active >= 100)
         snprintf(line, sizeof(line), "NT %d/%d", k, n_act);
@@ -892,7 +1193,22 @@ static void DrawRunPage()
     // knob's value at x = 34 so the two columns line up. A knob that does nothing in
     // this bank shows nothing.
     char right[12];
-    snprintf(line, sizeof(line), "M%d", (int)(g_mix * 100.f + 0.5f));
+    // The mix, with a * while knob 1 has yet to take it back after a list closed.
+    snprintf(line, sizeof(line), "M%d%s", (int)(g_mix * 100.f + 0.5f), g_mix_caught ? "" : "*");
+    if(efx)
+    {
+        // FX: knobs 2-4 are the effect's three controls, each its label and 0-99.
+        const fx::Def& d = fx::kDefs[SlotIndex(g_active)];
+        auto pc = [](float v) { int x = (int)(v * 100.f); return x > 99 ? 99 : (x < 0 ? 0 : x); };
+        snprintf(right, sizeof(right), "%s%d", d.lbl[0], pc(g_fx_p[0]));
+        display.DrawString(0, 32, line, false);
+        display.DrawString(34, 32, right, false);
+        snprintf(line, sizeof(line), "%s%d", d.lbl[1], pc(g_fx_p[1]));
+        snprintf(right, sizeof(right), "%s%d", d.lbl[2], pc(g_fx_p[2]));
+        display.DrawString(0, 40, line, false);
+        display.DrawString(34, 40, right, false);
+        return;
+    }
     if(filt && g_filter_a2)
         right[0] = '\0';  // an A2 capture in FILTERS plays one cutoff: FREQ does nothing
     else if(filt)
@@ -921,10 +1237,94 @@ static void DrawRunPage()
     display.DrawString(34, 40, right, false);
 }
 
+// A list (B7 held): its title and a rule, then four rows, the highlighted one marked
+// with > and kept in view; knob 1 scrolls.
+static const char* BankName(Bank b)
+{
+    switch(b)
+    {
+        case Bank::Amps: return "AMPS";
+        case Bank::NotAmps: return "NOT-AMPS";
+        case Bank::Filters: return "FILTERS";
+        case Bank::Fx: return "FX";
+    }
+    return "";
+}
+
+static const char* ItemName(Bank b, int i)
+{
+    switch(b)
+    {
+        case Bank::Amps:
+        {
+            const captures::Entry* e = captures::Get(i);
+            return e ? e->name : "";
+        }
+        case Bank::NotAmps: return notamps::kDefs[i].name;
+        case Bank::Filters:
+        {
+            const captures::FilterEntry* e = captures::GetFilter(i);
+            return e ? e->name : "";
+        }
+        case Bank::Fx: return fx::kDefs[i].name;
+    }
+    return "";
+}
+
+static void DrawMenu()
+{
+    constexpr int kRows = 4, kRowY0 = 12, kRowH = 9;
+    char          line[24];
+    const Menu    m   = g_menu;
+    const int     sel = g_menu_sel;
+
+    Bank banks[kBanks];
+    int  n;
+    if(m == Menu::Items)
+    {
+        n = BankSize(g_menu_bank);
+        if(n > 0)
+            snprintf(line, sizeof(line), "%.5s %d/%d", BankName(g_menu_bank), sel + 1, n);
+        else
+            snprintf(line, sizeof(line), "%s", BankName(g_menu_bank));
+    }
+    else
+    {
+        n = MenuBanks(banks);
+        snprintf(line, sizeof(line), "BANKS");
+    }
+    display.DrawStringCentered(0, line, false);
+    display.DrawHLine(0, 9, 64);
+
+    if(m == Menu::Items && n == 0)
+    {
+        // AMPS with no captures: the one thing to play is the compiled-in fallback.
+        snprintf(line, sizeof(line), "> %.8s", kFallbackName);
+        display.DrawString(0, kRowY0, line, false);
+        return;
+    }
+
+    int first = sel - 1;
+    if(first > n - kRows)
+        first = n - kRows;
+    if(first < 0)
+        first = 0;
+    for(int r = 0; r < kRows && first + r < n; r++)
+    {
+        const int   i    = first + r;
+        const char* name = m == Menu::Items ? ItemName(g_menu_bank, i) : BankName(banks[i]);
+        snprintf(line, sizeof(line), "%s%.8s", i == sel ? "> " : "  ", name);
+        display.DrawString(0, (uint8_t)(kRowY0 + r * kRowH), line, false);
+    }
+}
+
 static void UpdateDisplay()
 {
     display.Clear();
-    DrawRunPage();
+    if(g_menu != Menu::Off)
+        DrawMenu();
+    else
+        DrawRunPage();
     display.Update();
 }
 #else
@@ -937,7 +1337,7 @@ static void RenderLed(uint32_t now)
     static int      n = 0, i = 0;
     static uint32_t next = 0;
 
-    if(captures::Count() == 0)  // nothing to play: flicker, and never stop
+    if(captures::Count() == 0 && SlotBank(g_active) != Bank::Fx)  // no card, not on FX: flicker
     {
         SetLed((now / 100) & 1);
         return;
@@ -1037,6 +1437,8 @@ int main(void)
     patch.StartDac();
 
     engine.InitFallback(sr);
+    // The FX bank: its tone bank built in place now that RAM_D2 is up (see g_fx_ton_mem).
+    g_fx.Init(&g_fx_rev, &g_fx_del, new(g_fx_ton_mem) mfx::ToneBank, &g_fx_mis, sr);
     cpu_meter.Init(sr, patch.AudioBlockSize());
     g_layer.Init();  // its FFT tables, once
     g_layer.Reset(1);

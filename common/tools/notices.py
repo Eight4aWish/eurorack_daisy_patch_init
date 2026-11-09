@@ -106,8 +106,25 @@ def mirth_components(title):
         ("NAM A2 runtime", "Keith Shepherd (bkshepherd/DaisySeedProjects), after nadavb", "MIT", nam_runtime),
         ("Built-in capture: Orange TH100", "tupalosa", "CC BY", fallback_capture),
         ("FatFs (in libDaisy)", "ChaN", "FatFs licence (BSD-style)", fatfs),
+        # The FX bank (since 2026-11-09): MultiFX's effects, on DaisySP, with ReverbSc
+        # from DaisySP-LGPL. Read off mirth.elf: LadderFilter, Svf, Phasor, PitchShifter
+        # from DaisySP; ReverbSc from DaisySP-LGPL.
+        ("DaisySP", "Electrosmith", "MIT", lambda: (DAISY / "DaisySP" / "LICENSE").read_text()),
+        ("DaisySP-LGPL (ReverbSc)", "Electrosmith, Sean Costello, Istvan Varga, Paul Batchelor",
+         "LGPL-2.1", daisysp_lgpl),
         *libdaisy(DAISY / "libDaisy"),
     ]
+
+def daisysp_lgpl():
+    """ReverbSc, statically linked. LGPL-2.1 section 6 asks that the user can relink the
+    work against a modified library: the whole firmware is published as source with its
+    Makefile, which is how that is met. Full licence text follows the note."""
+    return ("The FX bank's reverbs use ReverbSc from DaisySP-LGPL, linked statically into this\n"
+            "binary. The complete source of this firmware and its Makefile are published at\n"
+            "https://github.com/Eight4aWish/eurorack_daisy_patch_init, and DaisySP-LGPL at\n"
+            "https://github.com/electro-smith/DaisySP, so you can modify the library, rebuild\n"
+            "it and relink this firmware against it (LGPL-2.1, section 6).\n\n"
+            + (DAISY / "DaisySP" / "DaisySP-LGPL" / "LICENSE").read_text())
 
 USB_NOTE = ("STM32 USB Device Library (in libDaisy), STMicroelectronics, SLA0044 (Ultimate\n"
             "Liberty). Its clause 2 asks for no notices with a binary that is a software\n"
