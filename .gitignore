@@ -60,3 +60,6 @@ daisy_neural/captures/
 
 # Editor settings (local to each machine)
 .vscode/
+**/fx_listen/**
+daisy_neural/tools/fx_render
+daisy_neural/tools/fx_render_old

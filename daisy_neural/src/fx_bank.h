@@ -15,6 +15,7 @@
 
 #pragma once
 #include <cstddef>
+#include "fx/reverb.h"
 
 namespace fx {
 
@@ -49,16 +50,25 @@ struct Tap
 class Bank
 {
   public:
-    void Init(float samplerate)
+    void Init(float samplerate, size_t block)
     {
         sr_      = samplerate;
+        classic_.Init(samplerate, block);
         current_ = 0;
     }
 
     // On a change of effect, from the main loop while the output is muted (Mirth's swap
     // fade): this is where an effect clears its delay memory, which is too slow for the
     // audio callback.
-    void Reset(int index) { current_ = index; }
+    void Reset(int index)
+    {
+        current_ = index;
+        switch(index)
+        {
+            case 0: classic_.Clear(); break;
+            default: break;
+        }
+    }
 
     int Current() const { return current_; }
 
@@ -71,18 +81,29 @@ class Bank
                  const float  p[3],
                  const Tap&   tap)
     {
-        (void)p;
         (void)tap;
-        for(size_t k = 0; k < n; k++)
+        const float inv_n = 1.f / (float)n;
+        switch(current_)
         {
-            outL[k] = inL[k];
-            outR[k] = inR[k];
+            case 0:
+                classic_.Block(p);
+                for(size_t k = 0; k < n; k++)
+                    classic_.Process(inL[k], inR[k], ((float)k + 0.5f) * inv_n, outL[k], outR[k]);
+                break;
+            default:  // not written yet: the plumbing's passthrough
+                for(size_t k = 0; k < n; k++)
+                {
+                    outL[k] = inL[k];
+                    outR[k] = inR[k];
+                }
+                break;
         }
     }
 
   private:
-    float sr_;
-    int   current_;
+    float   sr_;
+    int     current_;
+    Classic classic_;
 };
 
 }  // namespace fx

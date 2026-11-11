@@ -566,7 +566,8 @@ static void ProcessFilter(float* buf, size_t n, float cut_to, float res_to, bool
 // ================================================================
 // The FX bank (`make FX=1`, FX.md)
 // ================================================================
-static fx::Bank g_fx;
+// Its delay memory is SDRAM's (fx_bank.h is trivially constructible, so this is safe).
+DSY_SDRAM_BSS static fx::Bank g_fx;
 static float    g_fxp[3] = {0.f, 0.f, 0.f};  // knobs 2-4, smoothed: the effect's controls, and shown
 
 // Tap tempo off gate in 1 (the B10 jack), as daisy_multifx_oled had it: the time between
@@ -1232,7 +1233,7 @@ int main(void)
 
     engine.InitFallback(sr);
 #if MIRTH_FX
-    g_fx.Init(sr);  // after patch.Init(), so the SDRAM an effect's memory lives in is up
+    g_fx.Init(sr, patch.AudioBlockSize());  // after patch.Init(), so the SDRAM an effect's memory lives in is up
 #endif
     cpu_meter.Init(sr, patch.AudioBlockSize());
     g_layer.Init();  // its FFT tables, once
