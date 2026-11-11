@@ -41,7 +41,7 @@ class Fdn
         sr_ = sr;
         for(int i = 0; i < 8; i++)
         {
-            len_[i] = (float)s.len[i];
+            base_[i] = len_[i] = (float)s.len[i];
             lfo_[i].Init(s.mod_hz[i], sr, block, (float)i / 8.f);
         }
         ap_[0].Init(142, 0.70f);  // the diffusers: Dattorro's input lengths, at 48 kHz
@@ -61,6 +61,14 @@ class Fdn
         }
         for(auto& a : ap_)
             a.Clear();
+    }
+
+    // Once a block, before Set(): the size of the space, as a scale on every line's length
+    // (TANK's size; 1 is the shape as given). A moving size bends the tail, as a moving room would.
+    void SetScale(float scale)
+    {
+        for(int i = 0; i < 8; i++)
+            len_[i] = base_[i] * scale;
     }
 
     // Once a block: decay as RT60 seconds, the dampers' corner in Hz, and the modulation
@@ -104,7 +112,7 @@ class Fdn
 
   private:
     float     sr_;
-    float     len_[8], g_[8];
+    float     base_[8], len_[8], g_[8];
     float     mod_depth_;
     Delay<N>  line_[8];
     OnePoleLP damp_[8];
@@ -156,6 +164,188 @@ class Classic
     float      sr_, pre_, gain_;
     Fdn<4096>  fdn_;
     Delay<8192> preL_, preR_;
+};
+
+// TANK: the big space. The same network on the longer, slower shape; knob 2 the size (the
+// lines from 60% to 100% of the shape, the decay from 2 to 25 s with it), knob 3 the damping
+// (more is darker), knob 4 the modulation depth (0-40 samples), which at the top makes the
+// tail chorus and swim.
+class Tank
+{
+  public:
+    void Init(float sr, size_t block)
+    {
+        fdn_.Init(kTankShape, sr, block);
+        Clear();
+    }
+    void Clear() { fdn_.Clear(); }
+    void Block(const float p[3])
+    {
+        const float rt60 = map_exp(p[0], 2.f, 25.f);
+        fdn_.SetScale(map_lin(p[0], 0.6f, 1.f));
+        fdn_.Set(rt60 * 1.13f, map_exp(1.f - p[1], 800.f, 14000.f), map_lin(p[2], 0.f, 40.f));
+        fdn_.StartBlock();
+        gain_ = kTrim * powf(rt60 / 7.f, -0.27f);
+    }
+    void Process(float inL, float inR, float frac, float& outL, float& outR)
+    {
+        fdn_.Process(inL, inR, frac, outL, outR);
+        outL *= gain_;
+        outR *= gain_;
+    }
+    static constexpr float kTrim = 1.0f;  // set on the Mac: the dry's level at the knobs' middle
+
+  private:
+    float      gain_;
+    Fdn<8192>  fdn_;
+};
+
+// SHIMMER: the hall with an octave-up shifter in its feedback. Part of the tail goes up an
+// octave and back in, so each pass climbs again: the classic shimmer, which the old one only
+// imitated by layering one shifted copy on top. Knob 2 the decay (1-20 s), knob 3 the tone,
+// knob 4 how much climbs (0 is the plain hall). The shifted return is band-limited, 250 Hz to
+// 7 kHz, and soft-clipped, so octave after octave cannot run away or turn to fizz.
+class Shimmer
+{
+  public:
+    void Init(float sr, size_t block)
+    {
+        sr_ = sr;
+        fdn_.Init(kHallShape, sr, block);
+        hp_.SetHz(250.f, sr);
+        lp_.SetHz(7000.f, sr);
+        Clear();
+    }
+    void Clear()
+    {
+        fdn_.Clear();
+        shift_.Clear();
+        hp_.Clear();
+        lp_.Clear();
+        ret_ = 0.f;
+    }
+    void Block(const float p[3])
+    {
+        const float rt60 = map_exp(p[0], 1.f, 20.f);
+        fdn_.Set(rt60 * 1.13f, map_exp(p[1], 1500.f, 16000.f), 8.f);
+        fdn_.StartBlock();
+        amount_ = map_lin(p[2], 0.f, 0.32f);
+        // The climbing octaves add energy too: up to 4.4 dB taken back at full shimmer.
+        gain_   = kTrim * powf(rt60 / 4.5f, -0.27f) * map_lin(p[2], 1.f, 0.6f);
+    }
+    void Process(float inL, float inR, float frac, float& outL, float& outR)
+    {
+        fdn_.Process(inL, inR, frac, outL, outR, ret_);
+        const float up = shift_.Process(0.5f * (outL + outR));
+        ret_ = amount_ * soft_clip(lp_.Process(hp_.Process(up)));
+        outL *= gain_;
+        outR *= gain_;
+    }
+    static constexpr float kTrim = 1.0f;
+
+  private:
+    float     sr_, amount_, gain_, ret_;
+    Fdn<4096> fdn_;
+    OctaveUp  shift_;
+    OnePoleHP hp_;
+    OnePoleLP lp_;
+};
+
+// PLATE: Dattorro's plate ("Effect Design, Part 1", JAES 45/9, 1997), the standard published
+// plate, its lengths scaled from his 29,761 Hz to 48 kHz. A band-limited input through four
+// diffusers into a figure-of-eight tank, two halves each a modulated all-pass, a delay, a
+// damper and a second all-pass, each half feeding the other; the output is his fourteen taps.
+// Knob 2 the pre-delay (0-100 ms), knob 3 the tone (the tank's damping: up is brighter), knob 4
+// the decay (his decay gain, 0.30-0.95).
+class Plate
+{
+  public:
+    void Init(float sr, size_t block)
+    {
+        sr_ = sr;
+        k_  = sr / 29761.f;
+        in_[0].Init(S(142), 0.75f);
+        in_[1].Init(S(107), 0.75f);
+        in_[2].Init(S(379), 0.625f);
+        in_[3].Init(S(277), 0.625f);
+        mapL_.Init((float)S(672), -0.70f);
+        mapR_.Init((float)S(908), -0.70f);
+        apL_.Init(S(1800), 0.50f);
+        apR_.Init(S(2656), 0.50f);
+        lfoL_.Init(1.0f, sr, block, 0.f);
+        lfoR_.Init(1.0f, sr, block, 0.25f);
+        Clear();
+    }
+    void Clear()
+    {
+        pre_.Clear();
+        for(auto& a : in_)
+            a.Clear();
+        mapL_.Clear();
+        mapR_.Clear();
+        apL_.Clear();
+        apR_.Clear();
+        dL1_.Clear();
+        dL2_.Clear();
+        dR1_.Clear();
+        dR2_.Clear();
+        bw_ = dampL_ = dampR_ = 0.f;
+    }
+    void Block(const float p[3])
+    {
+        pre_len_ = map_lin(p[0], 0.f, 0.100f) * sr_;
+        damp_    = map_lin(1.f - p[1], 0.0005f, 0.65f);
+        decay_   = map_lin(p[2], 0.30f, 0.95f);
+        // His decay gain gives an RT60 of about 1.15/-ln(decay) s (1.0 s at 0.30, 19 s at
+        // 0.95, measured on the Mac); as the other reverbs, half the longer tail's extra
+        // loudness is taken back, around 2.5 s.
+        const float rt60 = 1.15f / -logf(decay_);
+        gain_ = kTrim * powf(rt60 / 2.5f, -0.27f);
+        lfoL_.StartBlock();
+        lfoR_.StartBlock();
+    }
+    void Process(float inL, float inR, float frac, float& outL, float& outR)
+    {
+        pre_.Write(0.5f * (inL + inR));
+        float x = pre_.ReadFrac(pre_len_ + 1.f);
+        bw_ += 0.9995f * (x - bw_);  // his bandwidth filter
+        x = in_[3].Process(in_[2].Process(in_[1].Process(in_[0].Process(bw_))));
+
+        const float exc = 16.f * k_;  // his 16-sample excursion
+        // Left half, fed by the right half's end; right half, fed by the left's.
+        float l = mapL_.Process(x + decay_ * dR2_.Read(S(3163) - 1), exc * lfoL_.At(frac));
+        dL1_.Write(l);
+        l = dL1_.Read(S(4453) - 1);
+        dampL_ += (1.f - damp_) * (l - dampL_);
+        l = apL_.Process(dampL_ * decay_);
+        dL2_.Write(l);
+
+        float r = mapR_.Process(x + decay_ * dL2_.Read(S(3720) - 1), exc * lfoR_.At(frac));
+        dR1_.Write(r);
+        r = dR1_.Read(S(4217) - 1);
+        dampR_ += (1.f - damp_) * (r - dampR_);
+        r = apR_.Process(dampR_ * decay_);
+        dR2_.Write(r);
+
+        // His output taps (Table 2), scaled.
+        outL = 0.6f * (dR1_.Read(S(266)) + dR1_.Read(S(2974)) - apR_.Tap(S(1913)) + dR2_.Read(S(1996))
+                       - dL1_.Read(S(1990)) - apL_.Tap(S(187)) - dL2_.Read(S(1066)));
+        outR = 0.6f * (dL1_.Read(S(353)) + dL1_.Read(S(3627)) - apL_.Tap(S(1228)) + dL2_.Read(S(2673))
+                       - dR1_.Read(S(2111)) - apR_.Tap(S(335)) - dR2_.Read(S(121)));
+        outL *= gain_;
+        outR *= gain_;
+    }
+    static constexpr float kTrim = 0.67f;  // -3.5 dB: his 0.6 taps run hot at 48 kHz
+
+  private:
+    uint32_t S(uint32_t n) const { return (uint32_t)((float)n * k_ + 0.5f); }
+    float sr_, k_, pre_len_, damp_, decay_, bw_, dampL_, dampR_, gain_;
+    Delay<8192>      pre_;
+    Allpass<1024>    in_[4];
+    ModAllpass<2048> mapL_, mapR_;
+    Allpass<8192>    apL_, apR_;
+    Delay<8192>      dL1_, dL2_, dR1_, dR2_;
+    BlockLfo         lfoL_, lfoR_;
 };
 
 }  // namespace fx

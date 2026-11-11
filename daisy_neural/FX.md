@@ -64,7 +64,10 @@ script still build v1.1.0's three banks. Written 2026-11-11, before any code. No
 1. **The library update,** then Mirth's banks by ear on the module.
 2. **Done 2026-11-11 (`176687f`), checked on the module ("fine"):** **the bank's plumbing in Mirth** (build switch, fourth bank, switching, knobs, display, stereo,
    tap), with a passthrough in place of the effects, flashed and checked.
-3. **Each effect written and judged on the Mac first.** A harness renders it through a guitar riff, a
+3. **Done 2026-11-11, all eight at once (David: "just make the full bank"):** **each effect written and judged on the Mac first.** In `src/fx/`: `dsp.h` (building blocks), `reverb.h` (the FDN behind CLASSIC, TANK, SHIMMER and ECHOVERB's hall; Dattorro's PLATE), `delays.h` (PING, TAPE, MULTITAP, ECHOVERB). On the Mac (`tools/fx_listen.py`), at the knobs' middle, ends and two mixed settings, on the riff and the guitar: no NaNs, no clicks, every tail decaying; the reverbs' RT60 follows the knob; the wet level within about 1.5 dB of the dry at mid settings (louder with long decays and high feedback, by design). The Mac's timings put SHIMMER heaviest (46 ns a sample), CLASSIC 38, ECHOVERB 35, TANK 28, TAPE 20, PLATE 17, MULTITAP 10, PING 4.5.
+   **Tap tempo, implemented as proposed:** with a clock on gate in 1, knob 2 on the delays picks 1/16, 1/8, dotted 1/8 or 1/4 of it.
+   The old CLASSIC beside the new, matched at 1.93 s, is in `fx_listen/classic/` on the Mac. The old one's onset is a scatter of discrete echoes (28 hits on the click detector), the new one's a smooth wash.
+3b. (The original plan for this step:) **Each effect written and judged on the Mac first.** A harness renders it through a guitar riff, a
    synth riff and clicks. It checks for clicks, NaNs, level against the others and stereo, and makes
    short clips to listen to, the old MultiFX version beside the new.
 4. **Onto the module,** each one's CPU read from Mirth's display, and David's ear has the last word.

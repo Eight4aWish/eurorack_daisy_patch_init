@@ -149,4 +149,103 @@ struct BlockLfo
     float At(float frac) const { return prev + (next - prev) * frac; }  // frac 0..1 through the block
 };
 
+// A value that glides to its target, one pole per sample: for delay times, so a knob or a new
+// tap tempo bends the repeats (as tape would) instead of jumping and clicking.
+struct Glide
+{
+    float v, a;
+    bool  primed;
+    void  Init(float seconds, float sr)
+    {
+        a      = 1.f - expf(-1.f / (seconds * sr));
+        primed = false;
+        v      = 0.f;
+    }
+    float Process(float target)
+    {
+        if(!primed)
+        {
+            v      = target;
+            primed = true;
+        }
+        v += a * (target - v);
+        return v;
+    }
+};
+
+// White noise in -1..1, a 32-bit LCG: cheap, and plenty for tape drift.
+struct Noise
+{
+    uint32_t s;
+    void     Seed(uint32_t seed) { s = seed ? seed : 1u; }
+    float    Next()
+    {
+        s = s * 1664525u + 1013904223u;
+        return (float)(int32_t)s * (1.f / 2147483648.f);
+    }
+};
+
+// A soft saturator, tanh-shaped (a Pade approximant, exact to about 2% and bounded at +-1).
+inline float soft_clip(float x)
+{
+    if(x > 3.f)
+        return 1.f;
+    if(x < -3.f)
+        return -1.f;
+    const float x2 = x * x;
+    return x * (27.f + x2) / (27.f + 9.f * x2);
+}
+
+// An all-pass whose length is modulated: the plate's tank, where the slow wobble breaks up
+// the metallic ring a fixed tank would have.
+template <size_t N>
+struct ModAllpass
+{
+    Delay<N> d;
+    float    len, g;
+    void     Init(float length, float gain)
+    {
+        d.Clear();
+        len = length;
+        g   = gain;
+    }
+    void  Clear() { d.Clear(); }
+    float Process(float x, float mod)
+    {
+        const float v = d.ReadFrac(len - 1.f + mod);
+        const float u = x + g * v;
+        d.Write(u);
+        return v - g * u;
+    }
+    float Tap(uint32_t i) const { return d.Read(i); }
+};
+
+// An octave-up pitch shifter: two read heads sweep through a 43 ms window faster than the
+// write, half a window apart, each faded in and out with a raised cosine so the two always
+// sum to one. Grainy by nature, which in SHIMMER's feedback loop is the sound.
+struct OctaveUp
+{
+    Delay<4096> d;
+    float       ph;
+    static constexpr float kWin = 2048.f;
+    void Clear()
+    {
+        d.Clear();
+        ph = 0.f;
+    }
+    float Process(float x)
+    {
+        d.Write(x);
+        ph += 1.f / kWin;  // ratio 2: the heads gain one sample on the write every sample
+        if(ph >= 1.f)
+            ph -= 1.f;
+        float       p2 = ph + 0.5f;
+        if(p2 >= 1.f)
+            p2 -= 1.f;
+        const float w1 = 0.5f - 0.5f * cosf(kTwoPi * ph);
+        const float w2 = 0.5f - 0.5f * cosf(kTwoPi * p2);
+        return w1 * d.ReadFrac(2.f + kWin * (1.f - ph)) + w2 * d.ReadFrac(2.f + kWin * (1.f - p2));
+    }
+};
+
 }  // namespace fx

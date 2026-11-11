@@ -5,9 +5,9 @@
 // FILTERS. Built only with `make FX=1`; unreleased (David, 2026-11-11). The design,
 // and why each effect is what it is, is FX.md.
 //
-// Step 2 of FX.md, the plumbing: every effect passes its input straight through, so
-// the bank, the switching, the knobs, the display and the stereo path can be proved on
-// the module before any effect is written. Each effect then replaces its passthrough.
+// The effects are in fx/: the reverbs (CLASSIC, TANK, SHIMMER on one feedback delay
+// network, PLATE on Dattorro's plate) in fx/reverb.h, the delays in fx/delays.h, the building
+// blocks in fx/dsp.h. All written for Mirth: MIT, no DaisySP, no LGPL.
 //
 // The host (main.cpp) owns everything the effects share: reading knobs 2-4 once a block,
 // smoothing them, the tap tempo off gate in 1, the MIX, the swap fade and the DC blocker.
@@ -15,6 +15,7 @@
 
 #pragma once
 #include <cstddef>
+#include "fx/delays.h"
 #include "fx/reverb.h"
 
 namespace fx {
@@ -39,33 +40,41 @@ inline constexpr Def kDefs[] = {
 };
 inline constexpr int kCount = sizeof(kDefs) / sizeof(kDefs[0]);
 
-// The tap tempo from gate in 1: active while clocks keep arriving, and the interval in
-// samples. The delays use it in place of knob 2's time.
-struct Tap
-{
-    bool  active;
-    float samples;
-};
+// The tap tempo (Tap) is in fx/delays.h, with the delays that use it.
 
 class Bank
 {
   public:
     void Init(float samplerate, size_t block)
     {
-        sr_      = samplerate;
+        sr_ = samplerate;
         classic_.Init(samplerate, block);
+        plate_.Init(samplerate, block);
+        tank_.Init(samplerate, block);
+        shimmer_.Init(samplerate, block);
+        ping_.Init(samplerate);
+        tape_.Init(samplerate);
+        multi_.Init(samplerate);
+        echo_.Init(samplerate, block);
         current_ = 0;
     }
 
     // On a change of effect, from the main loop while the output is muted (Mirth's swap
-    // fade): this is where an effect clears its delay memory, which is too slow for the
-    // audio callback.
+    // fade): the new effect starts from silence, its delay memory cleared, which is too slow
+    // for the audio callback.
     void Reset(int index)
     {
         current_ = index;
         switch(index)
         {
             case 0: classic_.Clear(); break;
+            case 1: plate_.Clear(); break;
+            case 2: tank_.Clear(); break;
+            case 3: shimmer_.Clear(); break;
+            case 4: ping_.Clear(); break;
+            case 5: tape_.Clear(); break;
+            case 6: multi_.Clear(); break;
+            case 7: echo_.Clear(); break;
             default: break;
         }
     }
@@ -81,29 +90,65 @@ class Bank
                  const float  p[3],
                  const Tap&   tap)
     {
-        (void)tap;
         const float inv_n = 1.f / (float)n;
+#define FX_FRAC ((float)k + 0.5f) * inv_n
         switch(current_)
         {
             case 0:
                 classic_.Block(p);
                 for(size_t k = 0; k < n; k++)
-                    classic_.Process(inL[k], inR[k], ((float)k + 0.5f) * inv_n, outL[k], outR[k]);
+                    classic_.Process(inL[k], inR[k], FX_FRAC, outL[k], outR[k]);
                 break;
-            default:  // not written yet: the plumbing's passthrough
+            case 1:
+                plate_.Block(p);
                 for(size_t k = 0; k < n; k++)
-                {
-                    outL[k] = inL[k];
-                    outR[k] = inR[k];
-                }
+                    plate_.Process(inL[k], inR[k], FX_FRAC, outL[k], outR[k]);
+                break;
+            case 2:
+                tank_.Block(p);
+                for(size_t k = 0; k < n; k++)
+                    tank_.Process(inL[k], inR[k], FX_FRAC, outL[k], outR[k]);
+                break;
+            case 3:
+                shimmer_.Block(p);
+                for(size_t k = 0; k < n; k++)
+                    shimmer_.Process(inL[k], inR[k], FX_FRAC, outL[k], outR[k]);
+                break;
+            case 4:
+                ping_.Block(p, tap);
+                for(size_t k = 0; k < n; k++)
+                    ping_.Process(inL[k], inR[k], outL[k], outR[k]);
+                break;
+            case 5:
+                tape_.Block(p, tap);
+                for(size_t k = 0; k < n; k++)
+                    tape_.Process(inL[k], inR[k], outL[k], outR[k]);
+                break;
+            case 6:
+                multi_.Block(p, tap);
+                for(size_t k = 0; k < n; k++)
+                    multi_.Process(inL[k], inR[k], outL[k], outR[k]);
+                break;
+            default:
+                echo_.Block(p, tap);
+                for(size_t k = 0; k < n; k++)
+                    echo_.Process(inL[k], inR[k], FX_FRAC, outL[k], outR[k]);
                 break;
         }
+#undef FX_FRAC
     }
 
   private:
-    float   sr_;
-    int     current_;
-    Classic classic_;
+    float    sr_;
+    int      current_;
+    Classic  classic_;
+    Plate    plate_;
+    Tank     tank_;
+    Shimmer  shimmer_;
+    Ping     ping_;
+    Tape     tape_;
+    MultiTap multi_;
+    EchoVerb echo_;
 };
 
 }  // namespace fx
