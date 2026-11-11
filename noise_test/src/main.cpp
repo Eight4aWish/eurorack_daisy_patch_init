@@ -12,7 +12,7 @@
 //                          driven by the same driver its apps use (common/oled_soft_i2c.h)
 //   BOARD=seed             the hand-built Daisy Seed module, 128x64 SSD1306 on hardware I2C1
 //                          (D11 SCL, D12 SDA) at 1 MHz, through libDaisy's driver as in
-//                          daisy_multifx_seed
+//                          daisy_multifx_seed (retired; at the tag multifx-seed-final)
 //
 // Screen states: off = never started, or display off and charge pump off (0xAE, 0x8D 0x10);
 // still = a 50% checkerboard drawn once; redrawing = the checkerboard and its inverse
