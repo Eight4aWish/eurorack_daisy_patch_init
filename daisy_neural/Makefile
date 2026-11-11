@@ -12,6 +12,11 @@ TARGET    = mirth_lite
 else
 TARGET    = mirth
 endif
+# `make FX=1` (with or without LITE=1) adds the FX bank: reverbs and delays as a fourth
+# bank, unreleased (FX.md). Its own target and build folder, so a release build is never it.
+ifeq ($(FX),1)
+TARGET   := $(TARGET)_fx
+endif
 
 # Library Locations
 PROJECT_MAKEFILE := $(abspath $(lastword $(MAKEFILE_LIST)))
@@ -37,9 +42,14 @@ DAISYSP_DIR  ?= $(DAISY_ROOT)/DaisySP
 ifeq ($(GRU_TEST),1)
 override BUILD_DIR := build_gru_test
 else ifeq ($(LITE),1)
-override BUILD_DIR := build_lite
+override BUILD_DIR := build_lite$(if $(filter 1,$(FX)),_fx,)
+else ifeq ($(FX),1)
+override BUILD_DIR := build_fx
 else
 BUILD_DIR ?= build
+endif
+ifeq ($(FX),1)
+C_DEFS += -DMIRTH_FX=1
 endif
 
 # The build's git commit, shown on the splash screen, so what is running is never a guess

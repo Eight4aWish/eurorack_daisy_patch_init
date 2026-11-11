@@ -72,6 +72,9 @@
 #include "capture_store.h"
 #include "nam_import.h"
 #include "notamps.h"
+#if MIRTH_FX
+#include "fx_bank.h"  // the FX bank, `make FX=1` only: FX.md
+#endif
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -308,36 +311,52 @@ enum class Bank
     Amps    = 0,  // the card's captures, as captured
     NotAmps = 1,  // captures bent inside the network, with a steer control
     Filters = 2,  // GRU filters off the card, with cutoff and resonance
+#if MIRTH_FX
+    Fx = 3,  // reverbs and delays, built in, no card needed (FX.md)
+#endif
 };
 static volatile Bank g_bank = Bank::Amps;
 
 static int  Slot(Bank b, int i) { return (int)b * 100 + i; }
 static Bank SlotBank(int slot)
 {
+#if MIRTH_FX
+    if(slot >= 300)
+        return Bank::Fx;
+#endif
     return slot >= 200 ? Bank::Filters : (slot >= 100 ? Bank::NotAmps : Bank::Amps);
 }
 static int  SlotIndex(int slot) { return slot % 100; }
 // Not-amps are built from the card's captures, so with no card there are none.
 static int BankSize(Bank b)
 {
+#if MIRTH_FX
+    if(b == Bank::Fx)
+        return fx::kCount;
+#endif
     if(b == Bank::Filters)
         return captures::FilterCount();
     return b == Bank::Amps ? captures::Count() : (captures::Count() > 0 ? notamps::kCount : 0);
 }
 
-// B7's long press: AMPS -> NOT-AMPS -> FILTERS, skipping FILTERS on a card with none.
+// B7's long press: AMPS -> NOT-AMPS -> FILTERS, skipping FILTERS on a card with none;
+// with the FX bank, then FX, which needs no card, before AMPS again.
 static Bank NextBank(Bank b)
 {
     if(b == Bank::Amps)
         return Bank::NotAmps;
     if(b == Bank::NotAmps && captures::FilterCount() > 0)
         return Bank::Filters;
+#if MIRTH_FX
+    if(b != Bank::Fx)
+        return Bank::Fx;
+#endif
     return Bank::Amps;
 }
 
 // Where B7 has stepped to in each bank, so going round the banks comes back to the same
 // patch. Ask for that patch; nothing to ask for in an empty bank.
-static int g_cursor[3] = {0, 0, 0};
+static int g_cursor[4] = {0, 0, 0, 0};
 static void Select(Bank b)
 {
     const int n = BankSize(b);
@@ -543,6 +562,98 @@ static void ProcessFilter(float* buf, size_t n, float cut_to, float res_to, bool
 // ================================================================
 // Audio
 // ================================================================
+#if MIRTH_FX
+// ================================================================
+// The FX bank (`make FX=1`, FX.md)
+// ================================================================
+static fx::Bank g_fx;
+static float    g_fxp[3] = {0.f, 0.f, 0.f};  // knobs 2-4, smoothed: the effect's controls, and shown
+
+// Tap tempo off gate in 1 (the B10 jack), as daisy_multifx_oled had it: the time between
+// rising edges, in effect while clocks keep arriving (within 2 s). Mirth uses no gates.
+static bool     g_clk_gate       = false;
+static uint32_t g_clk_last       = 0;
+static float    g_clk_interval_s = 0.f;
+
+static fx::Tap ReadTap(float sr)
+{
+    const bool     g   = patch.gate_in_1.State();
+    const uint32_t now = System::GetNow();
+    if(g && !g_clk_gate)
+    {
+        if(g_clk_last != 0 && now > g_clk_last)
+            g_clk_interval_s = (float)(now - g_clk_last) * 0.001f;
+        g_clk_last = now;
+    }
+    g_clk_gate         = g;
+    const bool active  = g_clk_interval_s > 0.f && now - g_clk_last < 2000u;
+    return {active, active ? g_clk_interval_s * sr : 0.f};
+}
+
+// One block of the FX bank, in stereo: both inputs (IN_R is normalled to IN_L, so one
+// cable feeds both sides), the effect, then MIX as an equal-power crossfade, so the
+// level holds across the knob. As in the other banks, the swap fade mutes the wet side
+// only, and the effect does not run while the main loop is resetting it. A DC blocker
+// per side also clears a NaN, which a recursive effect would otherwise keep for ever.
+static void FxBlock(AudioHandle::InputBuffer  in,
+                    AudioHandle::OutputBuffer out,
+                    size_t                    size,
+                    float                     mix,
+                    float                     a2,
+                    float                     a3,
+                    float                     a4)
+{
+    const float raw[3] = {fclamp(a2, 0.f, 1.f), fclamp(a3, 0.f, 1.f), fclamp(a4, 0.f, 1.f)};
+    for(int i = 0; i < 3; i++)
+        g_fxp[i] += 0.05f * (raw[i] - g_fxp[i]);  // ~20 ms, as the steer
+    const fx::Tap tap = ReadTap(patch.AudioSampleRate());
+
+    alignas(32) static float wl[kA2BlockSize], wr[kA2BlockSize];
+    const size_t n = (size > kA2BlockSize) ? kA2BlockSize : size;
+    if(g_xf != Xf::Swap)
+        g_fx.Process(in[0], in[1], wl, wr, n, g_fxp, tap);
+    else
+        for(size_t i = 0; i < n; i++)
+            wl[i] = wr[i] = 0.f;
+
+    constexpr float kHalfPi = 1.5707963f;
+    const float     wetg    = sinf(mix * kHalfPi) * g_xf_gain;
+    const float     dryg    = cosf(mix * kHalfPi);
+    constexpr float kDcR    = 0.99738f;  // exp(-2*pi*20/48000), as the other banks
+    static float    x1[2] = {0.f, 0.f}, y1[2] = {0.f, 0.f};
+    float           peak  = 0.f;
+    for(size_t i = 0; i < n; i++)
+    {
+        const float a = fabsf(in[0][i]);
+        if(a > peak)
+            peak = a;
+        const float w[2] = {wl[i], wr[i]};
+        for(int c = 0; c < 2; c++)
+        {
+            const float r = w[c] * wetg + in[c][i] * dryg;
+            float       y = r - x1[c] + kDcR * y1[c];
+            if(!std::isfinite(y))
+            {
+                y     = 0.f;
+                x1[c] = y1[c] = 0.f;
+            }
+            else
+            {
+                x1[c] = r;
+                y1[c] = y;
+            }
+            out[c][i] = y;
+        }
+    }
+    for(size_t i = n; i < size; i++)  // only if the block were ever set above 48
+    {
+        out[0][i] = in[0][i];
+        out[1][i] = in[1][i];
+    }
+    g_in_peak = peak;
+}
+#endif
+
 void AudioCallback(AudioHandle::InputBuffer  in,
                    AudioHandle::OutputBuffer out,
                    size_t                    size)
@@ -583,7 +694,13 @@ void AudioCallback(AudioHandle::InputBuffer  in,
     // --- steer ------------------------------------------------------------
     const float steer_raw = fclamp(k2 + j2, 0.f, 1.f);
     g_steer += 0.05f * (steer_raw - g_steer);
+#if MIRTH_FX
+    // A not-amp left loaded from before the FX bank keeps its weights, but is not
+    // re-bent while an effect plays: knob 2 belongs to the effect, and the work is wasted.
+    if(g_na >= 0 && g_xf != Xf::Swap && SlotBank(g_active) != Bank::Fx)
+#else
     if(g_na >= 0 && g_xf != Xf::Swap)
+#endif
         ApplySteer(g_steer);
 
     // Drive the crossfade. The load itself happens in the main loop; all the
@@ -612,6 +729,17 @@ void AudioCallback(AudioHandle::InputBuffer  in,
             }
             break;
     }
+
+#if MIRTH_FX
+    // An effect playing: knob 1 MIX, knobs 2-4 (with their jacks) the effect. DRIVE is
+    // knob 4 on the other banks; here it is the effect's third control.
+    if(SlotBank(g_active) == Bank::Fx)
+    {
+        FxBlock(in, out, size, mix, k2 + j2, k3 + j3, k4 + j4);
+        cpu_meter.OnBlockEnd();
+        return;
+    }
+#endif
 
     float peak = 0.f;
 
@@ -820,6 +948,15 @@ static bool SwapFilter(int index)
 static bool SwapSlot(int slot)
 {
     const Bank b  = SlotBank(slot);
+#if MIRTH_FX
+    // An effect: clear its memory here, muted, where it can take as long as it needs.
+    if(b == Bank::Fx)
+    {
+        g_fx.Reset(SlotIndex(slot));
+        g_active = slot;
+        return true;
+    }
+#endif
     const bool ok = b == Bank::Amps      ? SwapCapture(SlotIndex(slot))
                     : b == Bank::NotAmps ? SwapNotAmp(SlotIndex(slot))
                                          : SwapFilter(SlotIndex(slot));
@@ -832,9 +969,61 @@ static bool SwapSlot(int slot)
 // Display
 // ================================================================
 #if !MIRTH_LITE
+#if MIRTH_FX
+// An effect's run page: the same six rows as the other banks. Name, input meter, CPU,
+// "FX 3/8", then the knobs as they sit on the panel, each as its two-letter label and
+// 0-99: MIX and knob 2 on the top line, knobs 3 and 4 below. A knob that does nothing
+// on this effect shows nothing.
+static void DrawFxPage()
+{
+    char       line[32];
+    const int  idx = SlotIndex(g_active);
+    const auto& d  = fx::kDefs[idx < fx::kCount ? idx : 0];
+    display.DrawString(0, 0, d.name, false);
+
+    const float   peak = fclamp(g_in_peak, 0.f, 1.f);
+    const uint8_t w    = (uint8_t)(peak * 62.f + 0.5f);
+    display.DrawRect(0, 9, 64, 6, true);
+    if(w > 0)
+        display.FillRect(1, 10, w > 62 ? 62 : w, 4, true);
+
+    const int cpu_avg = (int)(cpu_meter.GetAvgCpuLoad() * 100.f + 0.5f);
+    const int cpu_max = (int)(cpu_meter.GetMaxCpuLoad() * 100.f + 0.5f);
+    snprintf(line, sizeof(line), "CPU %2d(%2d)", cpu_avg > 99 ? 99 : cpu_avg, cpu_max > 99 ? 99 : cpu_max);
+    display.DrawString(0, 16, line, false);
+
+    snprintf(line, sizeof(line), "FX %d/%d", idx + 1, fx::kCount);
+    display.DrawString(0, 24, line, false);
+
+    auto knob = [&](char* out, size_t sz, int k) {
+        const int v = (int)(g_fxp[k] * 99.f + 0.5f);
+        if(d.lab[k][0] == '\0')
+            out[0] = '\0';
+        else
+            snprintf(out, sz, "%s%d", d.lab[k], v > 99 ? 99 : v);
+    };
+    char right[12];
+    snprintf(line, sizeof(line), "M%d", (int)(g_mix * 100.f + 0.5f));
+    knob(right, sizeof(right), 0);
+    display.DrawString(0, 32, line, false);
+    display.DrawString(34, 32, right, false);
+    knob(line, sizeof(line), 1);
+    knob(right, sizeof(right), 2);
+    display.DrawString(0, 40, line, false);
+    display.DrawString(34, 40, right, false);
+}
+#endif
+
 static void DrawRunPage()
 {
     char line[32];
+#if MIRTH_FX
+    if(SlotBank(g_active) == Bank::Fx)
+    {
+        DrawFxPage();
+        return;
+    }
+#endif
 
     // Six rows of 8 px (the font is 7 high): name, meter, CPU, patch, then the two knob
     // lines. Ten characters a row.
@@ -937,7 +1126,12 @@ static void RenderLed(uint32_t now)
     static int      n = 0, i = 0;
     static uint32_t next = 0;
 
+#if MIRTH_FX
+    // With the FX bank there is always something to play, card or not.
+    if(captures::Count() == 0 && SlotBank(g_active) != Bank::Fx)
+#else
     if(captures::Count() == 0)  // nothing to play: flicker, and never stop
+#endif
     {
         SetLed((now / 100) & 1);
         return;
@@ -1037,6 +1231,9 @@ int main(void)
     patch.StartDac();
 
     engine.InitFallback(sr);
+#if MIRTH_FX
+    g_fx.Init(sr);  // after patch.Init(), so the SDRAM an effect's memory lives in is up
+#endif
     cpu_meter.Init(sr, patch.AudioBlockSize());
     g_layer.Init();  // its FFT tables, once
     g_layer.Reset(1);

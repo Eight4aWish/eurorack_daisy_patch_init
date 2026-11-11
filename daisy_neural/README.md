@@ -207,6 +207,10 @@ In that mode the engine's placement sections do not exist, so the macros are neu
 and everything lands in ordinary `.bss` — correct, just slower, with the history in AXI
 SRAM rather than RAM_D2.
 
+## The FX bank (unreleased)
+
+`make FX=1` (or `make LITE=1 FX=1`) adds a fourth bank, **FX**, after FILTERS: four reverbs and four delays, written for Mirth (design and progress: [FX.md](FX.md)). Knob 1 is MIX, knobs 2–4 the effect, stereo in and out, tap tempo on gate in 1; B7 as in the other banks, and no card needed. It builds `build_fx/mirth_fx.bin` (`build_lite_fx/mirth_lite_fx.bin`). **Not in v1.1.0 or any release**, and the plain `make` and the release script never include it. As of 2026-11-11 the effects are passthroughs: the bank's plumbing is being proved first.
+
 ## Flashing
 
 ```sh

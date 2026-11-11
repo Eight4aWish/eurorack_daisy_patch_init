@@ -4,6 +4,8 @@
 # Build output (generated)
 **/build/**
 **/build_lite/**
+**/build_fx/**
+**/build_lite_fx/**
 **/build_gru_test/**
 
 # Common embedded outputs
