@@ -42,9 +42,11 @@ for the reference consumer.
 - `tools/tamerender.cpp`: audition WAVs of TAME sweeps and arpeggios
 
 This library moved here from `eurorack_modules/libs/chaos_core` on 2026-09-30,
-with the Alchemy Lab port (**Secret**, [`daisy_chaos/`](../../daisy_chaos/)). The
-copy left there is frozen with the Teensy firmware that uses it, so this one is
-live.
+with the Alchemy Lab port (**Secret**, [`daisy_chaos/`](../../daisy_chaos/)). This one is
+live. Since 2026-11-11 `eurorack_modules` carries a copy of its firmware files again,
+for Secret on the Teensy Chaos hardware; its README names the commit it came from. The
+Teensy bench there ran every model at the caps below in 43–51% of a block, so the caps
+hold on that chip too.
 
 ## ChaosBase
 
@@ -302,7 +304,8 @@ Traps for the next edit:
 
 `tools/tametest.cpp` holds the current results. With TAME at 0, `Voice` is
 bit-identical to the Teensy build's, trajectories and `setParams()` path both,
-checked against the frozen copy in `eurorack_modules`.
+checked against the copy then frozen in `eurorack_modules` (now its tag
+`teensy-chaos-final`).
 
 Cost: per step, one history write and three interpolated reads, about 120 cycles
 on the Alchemy Lab, and nothing at TAME 0 or on a model whose gain is 0.

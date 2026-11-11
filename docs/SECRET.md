@@ -5,10 +5,11 @@ predict. **Secret** is the release name; the firmware folder is
 [`daisy_chaos/`](../daisy_chaos/) and the DSP is
 [`common/chaos_core/`](../common/chaos_core/).
 
-It succeeds the Teensy 4.1 **Chaos** module in `eurorack_modules`, whose firmware
-is frozen there and whose hardware will be repurposed. `chaos_core` moved here
-from `eurorack_modules/libs/chaos_core` on 2026-09-30, so this copy is the
-live one.
+It succeeds the Teensy 4.1 **Chaos** module in `eurorack_modules`. `chaos_core` moved
+here from `eurorack_modules/libs/chaos_core` on 2026-09-30, so this copy is the live
+one. Since 2026-11-11 the Chaos hardware runs Secret too (`src/teensy_chaos/` there,
+`docs/TEENSY_CHAOS.md`), from a copy of this library's firmware files; Chaos's own
+firmware is at that repo's tag `teensy-chaos-final`.
 
 > **Status: released, v1.1.0 (2026-10-12, tag `secret-v1.1.0`)**, with TAME as delayed
 > feedback control (section 2); v1.0.0 (2026-10-02, tag `secret-v1.0.0`). It has run on the

@@ -67,7 +67,8 @@ turns. The ones that won't be tamed stay free.
 *Seven for a secret, never to be told.* **Secret** is the release name. It
 succeeds the Teensy 4.1 **Chaos** module in
 [`eurorack_modules`](https://github.com/Eight4aWish/eurorack_modules), whose
-firmware is frozen and whose hardware will be repurposed.
+hardware has run Secret too since 2026-11-11, with the same twelve models on its own
+panel (`docs/TEENSY_CHAOS.md` there).
 
 ## Panel
 
