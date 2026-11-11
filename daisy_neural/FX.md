@@ -19,6 +19,8 @@ script still build v1.1.0's three banks. Written 2026-11-11, before any code. No
 
 ## Platform first
 
+**Done 2026-11-11:** libDaisy v9.0.0 and DaisySP master (`adc30c7`); every patch.init app builds, and Mirth's three banks checked by ear on the module ("all fine").
+
 - **Update the libraries before writing the effects,** as agreed on 29 Oct (after Mirth v1.1.0 shipped):
   - **libDaisy**: v8.0.0 → v9.0.0 (29 Sep) or master. Knobs and CV ins stop reading about 3% low, the
     CV outs reach their full range, and a cache-alignment fix landed on 4 Nov.
