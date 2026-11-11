@@ -64,6 +64,8 @@ Submodules are expected at:
 
 These projects link against the static libraries built by `libDaisy` and `DaisySP` (and for some effects, `DaisySP-LGPL`).
 
+**Library versions (since 2026-11-11):** libDaisy **v9.0.0**, DaisySP at `2c72eaf` (master, with the pitch-shifter fix). Every patch.init app builds on them. Releases before that date were built on libDaisy v8.0.0. v9 fixes the knobs and CV inputs reading about 3% low (libDaisy #695) and gives the Patch SM's CV outs their full range (#630), so **an app rebuilt from here needs its V/OCT and CV outs checked by ear** before its next release. Mac builds of the libraries need PlatformIO's arm64 compiler first on the PATH; the project Makefiles do that themselves.
+
 You can either build the libraries once up-front:
 
 ```sh
