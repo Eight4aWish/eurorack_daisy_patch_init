@@ -62,7 +62,7 @@ script still build v1.1.0's three banks. Written 2026-11-11, before any code. No
 ## How it gets built
 
 1. **The library update,** then Mirth's banks by ear on the module.
-2. **The bank's plumbing in Mirth** (build switch, fourth bank, switching, knobs, display, stereo,
+2. **Done 2026-11-11 (`176687f`), checked on the module ("fine"):** **the bank's plumbing in Mirth** (build switch, fourth bank, switching, knobs, display, stereo,
    tap), with a passthrough in place of the effects, flashed and checked.
 3. **Each effect written and judged on the Mac first.** A harness renders it through a guitar riff, a
    synth riff and clicks. It checks for clicks, NaNs, level against the others and stereo, and makes
