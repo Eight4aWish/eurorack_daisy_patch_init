@@ -151,7 +151,8 @@ Hermetic's. Two things differ:
 
 - **The lettering is the other Eight4aWish faceplates':** white silkscreen in KiCad's
   stroke font, condensed, 2.6 mm for the labels and 3 mm for the name and the maker, with
-  the name on the line of the top rail slots. Hermetic's is Avenir Next at 1.5–1.8 mm, in
+  the name in title case ("Secret", like every other module's) on the line of the top
+  rail slots. Hermetic's is Avenir Next at 1.5–1.8 mm, in
   bare ENIG copper through a solder-mask opening. The first boards (November 2026) kept
   Hermetic's typeface and sizes and set the name on the top rule; beside the other
   faceplates both read wrong.
