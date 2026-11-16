@@ -66,11 +66,13 @@ BUTTON_LABEL_Y = {0: 63.9, 2: 119.0}     # MODEL 3.85 below its dash (60.03); EN
                                          # dash (116.32) and the USB slot's ring (121.08)
 JACK_LABEL_Y = (138.7, 151.8)            # midway between the jack rings (135.81, 141.55); midway
                                          # between OUT's copper (149.61) and the bottom rule (154.06)
-# The name on the top rail slots' line and the maker on the bottom one (slots at y 35.10 and
-# 157.60), as on the other faceplates. The name first sat on Hermetic's top rule (y 39.31),
-# 3 mm below the slots, and read too low (David, 2026-11-16). Title case, as every other
-# module's name is (Mirth, Joy, Girl, and Secret's own render, build123d/panels/alchemy_secret.py).
-TITLE = ("Secret", 86.88, 35.1)
+# The name midway between the board's top edge (y 32.09) and the top rule's upper edge
+# (39.11), so the gap above it matches the gap below, about 1.75 mm each; the maker sits the
+# same way between the bottom rule (154.46) and the bottom edge (160.59). David, 2026-11-16:
+# on the first boards the name sat on the rule (too low); centred on the rail slots (35.1) it
+# came too close to the top. Title case, as every other module's name is (Mirth, Joy, Girl,
+# and Secret's own render, build123d/panels/alchemy_secret.py).
+TITLE = ("Secret", 86.88, 35.6)
 MAKER = ("Eight4aWish", 86.88, 157.6)
 RING = 0.25  # copper round each plated hole, mm: build123d kicad_faceplate.py's PLATED_RING
 
