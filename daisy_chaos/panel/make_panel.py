@@ -8,7 +8,9 @@ author's own faceplate, made as a PCB. Hermetic's lettering is copper text with 
 solder-mask opening over it, so it comes out as bare ENIG metal on black. Secret's is white
 silkscreen instead, like the other Eight4aWish faceplates (David, 2026-11-03): each
 placeholder's copper text becomes silkscreen in Secret's words, its mask opening goes, and
-the module name and the maker are added the same way. Hermetic cut the holes and slots in
+the module name and the maker are added the same way. The lettering is theirs too (David,
+2026-11-16, on the first boards): KiCad's condensed stroke font at their sizes, not
+Hermetic's Avenir Next, with the name on the top rail slots' line. Hermetic cut the holes and slots in
 Edge.Cuts and have JLCPCB plate them with the board edges; here they are plated holes in the
 drill file and the edges are left bare (see drilled()). Every hole position, copper disc,
 LED window and rule is Hermetic's, so the template's MIT notice (© Hermetic Modular LLC) is
@@ -53,8 +55,22 @@ JACKS = {  # (column, label row: 0 under the top jacks, 1 under the bottom ones)
     (0, 1): "",        # Hermetic's "IN": Secret does not use the audio inputs
     (4, 1): "OUT",
 }
-TITLE = ("SECRET", 86.88, 39.3, 2.2)          # text, x, y (baseline), size: above Hermetic's top rule (y 40.2)
-MAKER = ("Eight4aWish", 86.88, 158.6, 1.6)
+# Lettering as on the other Eight4aWish faceplates (build123d kicad_faceplate.py's defaults):
+# KiCad's stroke font, bold, condensed to 72 % width, 2.6 mm labels and a 3.0 mm name and maker.
+# Hermetic's Avenir Next at 1.5-1.8 mm read small and foreign beside them (David, 2026-11-16).
+LABEL_SIZE, BRAND_SIZE = 2.6, 3.0
+WIDTH_RATIO, THICK_RATIO = 0.72, 0.17
+# Label centres, mm, from the template's geometry (every label is centred on its x and y):
+KNOB_LABEL_Y = (66.9, 94.9, 122.9)       # 3.85 below each knob row's LED dash (y 63.05, 91.05, 119.05)
+BUTTON_LABEL_Y = {0: 63.9, 2: 119.0}     # MODEL 3.85 below its dash (60.03); ENV midway between its
+                                         # dash (116.32) and the USB slot's ring (121.08)
+JACK_LABEL_Y = (138.7, 151.8)            # midway between the jack rings (135.81, 141.55); midway
+                                         # between OUT's copper (149.61) and the bottom rule (154.06)
+# The name on the top rail slots' line and the maker on the bottom one (slots at y 35.10 and
+# 157.60), as on the other faceplates. The name first sat on Hermetic's top rule (y 39.31),
+# 3 mm below the slots, and read too low (David, 2026-11-16).
+TITLE = ("SECRET", 86.88, 35.1)
+MAKER = ("Eight4aWish", 86.88, 157.6)
 RING = 0.25  # copper round each plated hole, mm: build123d kicad_faceplate.py's PLATED_RING
 
 
@@ -80,30 +96,31 @@ def nearest(v, options):
 
 
 def label_for(text, x, y):
-    """Secret's label for a template placeholder, and the x to centre it on."""
+    """Secret's label for a template placeholder, and the x and y to centre it on."""
     if text == "KNOB LABEL":
         c, r = nearest(x, KNOB_X), nearest(y - 14.0, KNOB_Y)
-        return KNOBS[(c, r)], KNOB_X[c]
+        return KNOBS[(c, r)], KNOB_X[c], KNOB_LABEL_Y[r]
     if text == "BUTTON LABEL":
-        return BUTTONS[nearest(y - 10.9, KNOB_Y)], 86.64
+        r = nearest(y - 10.9, KNOB_Y)
+        return BUTTONS[r], 86.64, BUTTON_LABEL_Y.get(r)
     if text in ("JACK", "IN", "OUT"):
         row = 0 if y < 146 else 1
         col = {"IN": 0, "OUT": 4}.get(text, nearest(x + 2.8, JACK_X))  # template anchors are left edges
-        return JACKS[(col, row)], JACK_X[col]
+        return JACKS[(col, row)], JACK_X[col], JACK_LABEL_Y[row]
     return None
 
 
-def retext(block, text, x, y=None, size=None, layer=None):
-    """Same block with new text, centred on x (justify bottom), cache dropped so KiCad redraws."""
+def retext(block, text, x, y, size, layer=None):
+    """Same block with new text centred on (x, y) in KiCad's stroke font at the house size,
+    Hermetic's typeface and cache dropped so KiCad draws it."""
     b = re.sub(r'^\(gr_text "[^"]*"', f'(gr_text "{text}"', block)
     if layer:
         b = re.sub(r'\(layer "[^"]+"', f'(layer "{layer}"', b, count=1)
-    b = re.sub(r"\(at ([\d.\-]+) ([\d.\-]+)( [\d.\-]+)?\)",
-               lambda m: f"(at {x} {y if y is not None else m.group(2)} 0)", b, count=1)
-    b = re.sub(r"\(justify[^)]*\)", "(justify bottom)", b)
-    if size:
-        b = re.sub(r"\(size [\d.]+ [\d.]+\)", f"(size {size} {size})", b)
-        b = re.sub(r"\(thickness [\d.]+\)", f"(thickness {size * 0.25:.3f})", b)
+    b = re.sub(r"\(at ([\d.\-]+) ([\d.\-]+)( [\d.\-]+)?\)", f"(at {x} {y} 0)", b, count=1)
+    b = re.sub(r"\s*\(justify[^)]*\)", "", b)  # centred both ways, KiCad's default
+    b = re.sub(r'\s*\(face "[^"]*"\)', "", b)  # no face: KiCad's stroke font
+    b = re.sub(r"\(size [\d.]+ [\d.]+\)", f"(size {size} {size * WIDTH_RATIO:.4f})", b)  # height, width
+    b = re.sub(r"\(thickness [\d.]+\)", f"(thickness {size * THICK_RATIO:.3f})", b)
     b = re.sub(r'\(uuid "[^"]*"\)', f'(uuid "{uuid.uuid4()}")', b)
     i = b.find("(render_cache")
     if i != -1:
@@ -191,11 +208,11 @@ def main():
         new = label_for(text, x, y)
         if new is None:
             continue
-        label, cx = new
+        label, cx, cy = new
         # Each of Hermetic's labels is there twice, as copper text and as the mask opening
         # over it. The copper copy becomes white silkscreen; the mask copy goes.
         silk = bool(label) and layer == "F.Cu"
-        edits.append((start, end, retext(b, label, cx, layer="F.SilkS") if silk else ""))
+        edits.append((start, end, retext(b, label, cx, cy, LABEL_SIZE, layer="F.SilkS") if silk else ""))
         done.setdefault(label or "(removed)", []).append("F.SilkS" if silk else f"{layer} removed")
         if text == "KNOB LABEL" and pair is None:
             pair = {}
@@ -206,8 +223,8 @@ def main():
     s, extra, holes, slots, marks = drilled(s)
 
     # The module name and the maker, in white silkscreen like the labels.
-    for txt, x, y, size in (TITLE, MAKER):
-        extra += "\t" + retext(pair["F.Cu"], txt, x, y, size, layer="F.SilkS") + "\n"
+    for txt, x, y in (TITLE, MAKER):
+        extra += "\t" + retext(pair["F.Cu"], txt, x, y, BRAND_SIZE, layer="F.SilkS") + "\n"
     s = s.rstrip()
     assert s.endswith(")")
     s = s[:-1].rstrip() + "\n" + extra + ")\n"
