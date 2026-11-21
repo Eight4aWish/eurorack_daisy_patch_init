@@ -695,7 +695,7 @@ int main(void)
     // Splash screen — product name (see README: "two for joy"). The upstream
     // Braids name is credited in the docs, not shown on the panel.
     display.DrawStringLargeCentered(10, "JOY", false);
-    display.DrawStringCentered(34, "v1.4", false);
+    display.DrawStringCentered(34, "v1.5", false);
     display.Update();
     System::Delay(800);
     

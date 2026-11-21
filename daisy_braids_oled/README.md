@@ -109,6 +109,10 @@ ran twice as fast, and the band-limited tables were chosen for a Nyquist twice
 as high as the one actually in use, so bright models aliased more than they
 should.
 
+> **v1.5 (2026-11-21):** the V/Oct calibration is the module's, kept once for Joy, Joy Lite, Wish and
+> MultiOsc (see [Calibration](#calibration)); a calibration v1.4 saved is carried over the first time v1.5
+> starts. Built on libDaisy v9.0.0. Not yet released: the splash reads v1.5 so the build can be told apart.
+
 > **Upgrading from v1.3 or earlier:** pitch drops an octave. Your saved V/Oct
 > calibration is unaffected and carries over — the calibration is in the CV
 > domain. If you would rather keep the pitch older builds produced, rebuild with
