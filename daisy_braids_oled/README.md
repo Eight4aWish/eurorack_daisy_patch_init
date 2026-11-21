@@ -116,6 +116,8 @@ should.
 > starts, converted to libDaisy v9's scaling. Calibration also measures the empty FM jack, whose offset
 > detuned each module by its own amount, and a capture that doesn't make sense now says FAIL and saves
 > nothing. Built on libDaisy v9.0.0. Not yet released: the splash reads v1.5 so the build can be told apart.
+> On the bench (2026-11-21), three modules calibrated from Boy showed corrections of the order of 50
+> cents on DONE (not written down), and afterwards all three were in tune on a tuner to within 6 cents.
 
 > **Upgrading from v1.3 or earlier:** pitch drops an octave. Your saved V/Oct
 > calibration is unaffected and carries over — the calibration is in the CV
