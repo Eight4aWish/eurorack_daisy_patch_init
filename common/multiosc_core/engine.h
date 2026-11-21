@@ -30,6 +30,11 @@ enum AdcChan {
     CV_MOD3   = 7, // CV_8
 };
 
+// V/OCT in semitones above 0 V, through the unit's calibration (common/unit_cal.h, shared with Joy, Joy Lite
+// and Wish; hold B7 at power-up to calibrate): what every engine adds to its TUNE note. With nothing measured
+// on the unit it is the old law exactly, adc * 60 (libDaisy reads the CV as -1..1, so a volt is 0.2).
+float VoctSemitones(DaisyPatchSM& hw);
+
 // Per-block state the host hands to the active engine.
 struct EngineContext {
     bool edit_page    = false; // false = Play page, true = Edit page

@@ -27,6 +27,14 @@ void Host::AddEngine(Engine* e)
         engines_[engine_count_++] = e;
 }
 
+// The unit's V/OCT calibration, the old law (adc * 60, through 0 V at adc 0) until one is found.
+static joy::VoctCal g_voct_cal{0.f, 60.f};
+
+float VoctSemitones(DaisyPatchSM& hw)
+{
+    return joy::VoctToSemitones(g_voct_cal, hw.GetAdcValue(CV_VOCT));
+}
+
 void Host::InitHardware()
 {
     hw_.Init();
@@ -43,6 +51,65 @@ void Host::InitHardware()
     System::Delay(700);
 
     hw_.StartAdc();
+
+    // V/OCT calibration: the unit's (unit_cal.h), so one calibration serves every app on this unit that reads
+    // V/OCT. MultiOsc runs from SRAM (APP_TYPE = BOOT_SRAM) so that it can save one. B7 held at power-up runs
+    // the two-point routine, as on Joy.
+    unit_cal_.Init();
+    g_voct_cal = unit_cal_.Load(g_voct_cal);
+    for(int i = 0; i < 40; i++)
+    {
+        hw_.ProcessAllControls();
+        button_.Debounce();
+        System::Delay(1);
+    }
+    if(button_.Pressed())
+        RunCalibration();
+}
+
+void Host::RunCalibration()
+{
+    auto prompt = [this](const char* volts) {
+        display_.Clear();
+        display_.DrawStringCentered(0, "CALIBRATE", false);
+        display_.DrawStringLargeCentered(15, volts, false);
+        display_.DrawStringCentered(38, "patch+B7", false);
+        display_.Update();
+    };
+    // a press that starts after this point: let go first, then press
+    auto fresh_press = [this]() {
+        do { hw_.ProcessAllControls(); button_.Debounce(); System::Delay(1); } while(button_.Pressed());
+        do { hw_.ProcessAllControls(); button_.Debounce(); System::Delay(1); } while(!button_.Pressed());
+    };
+    auto capture = [this]() {
+        constexpr int kN  = 200;
+        float         acc = 0.f;
+        for(int i = 0; i < kN; i++)
+        {
+            hw_.ProcessAllControls();
+            acc += hw_.GetAdcValue(CV_VOCT);
+            System::Delay(1);
+        }
+        return acc / kN;
+    };
+
+    prompt("1V");
+    fresh_press();
+    const float adc_1v = capture();
+    prompt("3V");
+    fresh_press();
+    const float adc_3v = capture();
+
+    // A bad capture (nothing patched, a slip) keeps what was there (voct_cal.h falls back).
+    g_voct_cal = joy::ComputeVoctCal(adc_1v, adc_3v, g_voct_cal);
+    unit_cal_.Save(g_voct_cal);
+
+    display_.Clear();
+    display_.DrawStringLargeCentered(15, "DONE", false);
+    display_.Update();
+    // let go before the chooser, so the release isn't read as a choice
+    do { hw_.ProcessAllControls(); button_.Debounce(); System::Delay(1); } while(button_.Pressed());
+    System::Delay(600);
 }
 
 void Host::DrawMenu(int sel)

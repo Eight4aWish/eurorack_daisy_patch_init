@@ -156,12 +156,12 @@ void IntervalOscVoice::Process(DaisyPatchSM&             hw,
     else
     {
         const float k_tune  = hw.GetAdcValue(KNOB_TUNE);
-        const float cv_voct = hw.GetAdcValue(CV_VOCT);
+        const float cv_voct = VoctSemitones(hw);  // semitones, through the unit's calibration
         const float k1      = hw.GetAdcValue(KNOB_MOD1);
         const float k2      = hw.GetAdcValue(KNOB_MOD2);
         const float k3      = hw.GetAdcValue(KNOB_MOD3);
 
-        base_in_ = fmap(k_tune, 28.f, 84.f) + cv_voct * 60.f;
+        base_in_ = fmap(k_tune, 28.f, 84.f) + cv_voct;
 
         float off = harmonic_mode_ ? roundf(fmap(k1, 0.f, kNumRatios - 1))
                                    : roundf(fmap(k1, -24.f, 24.f));

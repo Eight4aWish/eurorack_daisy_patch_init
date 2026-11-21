@@ -85,6 +85,7 @@
 
 #include "pot_laws.h"
 #include "voct_cal.h"
+#include "unit_cal.h"
 
 using namespace daisy;
 using namespace patch_sm;
@@ -203,7 +204,7 @@ struct WishSettings
     uint32_t magic;
     uint8_t  media, input, gate_out, pad;
     float    param[kNumParams];
-    float    voct_center, voct_slope;
+    float    voct_center, voct_slope;  // mirror the unit's calibration (unit_cal.h); read once to carry an old one over
 
     bool operator!=(const WishSettings& o) const { return memcmp(this, &o, sizeof *this) != 0; }
 };
@@ -212,6 +213,7 @@ static constexpr uint32_t kSettingsMagic      = 0x57495350u;   // "WISP"
 // Joy's model and V/OCT calibration through a visit from Wish, and the reverse.
 static constexpr uint32_t kSettingsQspiOffset = 0x7E0000;
 static PersistentStorage<WishSettings> storage(hw.qspi);
+static unitcal::Store unit_cal(hw.qspi);  // the unit's V/OCT calibration, shared with the other apps
 
 static bool     s_dirty      = false;
 static uint32_t s_dirtySince = 0;
@@ -611,6 +613,7 @@ static void RunCalibration()
     WaitForFreshPress(true);    // LED blinking: patch 3 V, press
     const float adc3 = CaptureVoct();
     g_voct_cal = joy::ComputeVoctCal(adc1, adc3, g_voct_cal);
+    unit_cal.Save(g_voct_cal);   // the unit's calibration (unit_cal.h), for every app that reads V/OCT
     for (int i = 0; i < 10; i++)   // done: a flurry
     {
         SetLed((i & 1) ? kLedOn : 0.0f);
@@ -639,10 +642,15 @@ static void LoadSettings()
 {
     WishSettings defaults = Snapshot();   // the compiled-in values, set before this
     storage.Init(defaults, kSettingsQspiOffset);
+    // V/OCT calibration: the unit's (unit_cal.h), so one calibration serves every app that reads V/OCT. One
+    // Wish kept in its own settings before then is carried over the first time.
+    const joy::VoctCal app_default{kVoctCenterDefault, kVoctSlopeDefault};
+    unit_cal.Init();
     const WishSettings& s = storage.GetSettings();
     if (s.magic != kSettingsMagic || s.media > 3 || s.input >= kNumInputs || s.gate_out > 1)
     {
         storage.RestoreDefaults();
+        g_voct_cal = unit_cal.Load(app_default);
         return;
     }
     s_media   = s.media;
@@ -650,7 +658,8 @@ static void LoadSettings()
     s_gateOut = s.gate_out != 0;
     for (uint8_t i = 0; i < kNumParams; i++)
         if (s.param[i] >= 0.0f && s.param[i] <= 1.0f) s_param[i] = s.param[i];
-    g_voct_cal = {s.voct_center, s.voct_slope};
+    unit_cal.Adopt({s.voct_center, s.voct_slope}, app_default);
+    g_voct_cal = unit_cal.Load(app_default);
 }
 
 // Worth a QSPI write: a setting changed, or a knob value moved past ADC noise.

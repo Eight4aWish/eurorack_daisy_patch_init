@@ -30,10 +30,20 @@ panel works for every engine. Control contract and panel layout:
 To add an engine: implement `multiosc::Engine` in its folder, add its source to
 `CPP_SOURCES`, and `host.AddEngine(&inst)` in `main.cpp`.
 
+## Calibration
+
+Hold **B7 at power-up** to calibrate V/OCT, before the chooser: the OLED asks for **1 V** into
+V/OCT, press B7, then **3 V**, press B7, then shows DONE. A bad capture keeps what was there.
+Every engine adds V/OCT to its TUNE note through it (`multiosc::VoctSemitones`); until a
+calibration is taken it is the old law exactly, the reading times 60.
+
+**The calibration is the module's, not the app's** (since 2026-11-21): it is stored once, in its own block of the QSPI flash ([`../common/unit_cal.h`](../common/unit_cal.h)), and Joy, Joy Lite, Wish and MultiOsc all read it. Calibrate a module once with any of them and the others track too, and loading another app from the SD card keeps it, because the bootloader only erases as far as the new program reaches. A calibration an app kept in its own settings before then is carried over the first time it starts. MultiOsc runs from SRAM for this (it was `BOOT_QSPI`, which can't write
+the flash it runs from); it uses 22 % of SRAM.
+
 ## Build & flash
 
 ```sh
-make                 # build/daisy_multiosc.bin (APP_TYPE=BOOT_QSPI)
+make                 # build/daisy_multiosc.bin (APP_TYPE=BOOT_SRAM, so it can save a calibration)
 make program-dfu     # flash via DFU during the bootloader grace period
 ```
 
@@ -65,6 +75,6 @@ taste; converge the standalone `fm4op.cpp` /
 
 **Joy and Sorrow stay separate firmwares** on their own SD cards, not engines
 here: the host runs every engine at 48 kHz (Joy needs 96 kHz, Sorrow 32 kHz),
-`BOOT_QSPI` cannot save Joy's patch and calibration, Joy spends all four knobs
+Joy spends all four knobs
 on its voice so it has no TUNE knob, Sorrow's kit roll is on B8, which the OLED
 panel lacks, and Sorrow's GPL would cover the whole image.

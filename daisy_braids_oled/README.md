@@ -396,10 +396,12 @@ calibration. The OLED prompts a two-point routine:
 2. `CALIBRATE 3V` — patch **3 V** (C3, two octaves up), press **B7**.
 3. `DONE` — the calibration is solved, **saved to flash**, and used immediately.
 
-It persists across power cycles (stored alongside the last-patch setting). A
-bad capture (e.g. nothing patched) is rejected and the previous calibration is
-kept, so the routine can't leave the module mistracking. If you never calibrate,
-the firmware uses sensible measured defaults.
+It persists across power cycles. A bad capture (e.g. nothing patched) is
+rejected and the previous calibration is kept, so the routine can't leave the
+module mistracking. If you never calibrate, the firmware uses sensible measured
+defaults.
+
+**The calibration is the module's, not the app's** (since 2026-11-21): it is stored once, in its own block of the QSPI flash ([`../common/unit_cal.h`](../common/unit_cal.h)), and Joy, Joy Lite, Wish and MultiOsc all read it. Calibrate a module once with any of them and the others track too, and loading another app from the SD card keeps it, because the bootloader only erases as far as the new program reaches. A calibration an app kept in its own settings before then is carried over the first time it starts.
 
 **Compile-time defaults / overrides** (used as the fallback and for hard-coded
 builds) can be set before `#include`:

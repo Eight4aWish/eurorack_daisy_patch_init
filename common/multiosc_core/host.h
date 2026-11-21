@@ -14,6 +14,7 @@
 #include "oled_soft_i2c.h"
 #include "engine.h"
 #include "legend_layout.h"
+#include "unit_cal.h"
 
 namespace multiosc {
 
@@ -35,6 +36,7 @@ class Host {
 
   private:
     void InitHardware();
+    void RunCalibration();  // B7 held at power-up: the unit's two-point V/OCT calibration
     int  RunBootMenu();   // returns selected engine index
     void DrawMenu(int sel);
     void UpdateButton();  // gesture decode, called from ProcessAudio
@@ -43,6 +45,7 @@ class Host {
     daisy::patch_sm::DaisyPatchSM hw_;
     oled::SSD1306                 display_;
     daisy::Switch                 button_;
+    unitcal::Store                unit_cal_{hw_.qspi};  // the unit's V/OCT calibration (unit_cal.h)
 
     Engine* engines_[kMaxEngines] = {nullptr};
     int     engine_count_         = 0;

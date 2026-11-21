@@ -80,14 +80,16 @@ only once it is turned, and the LED blinks the new value's number.
 | **KNOB 3** | GATE OUT | 1 off · 2 on: GATE OUT 1 carries the grain gates, and both audio outs Beads' mono mix |
 
 A new quality or input waits while frozen, as on Beads. Settings, the values of the two
-layers not under the hand, and the calibration are saved to QSPI a few seconds after the
-last change. At power-on the layer the toggle picks takes the knobs as they are.
+layers not under the hand are saved to QSPI a few seconds after the last change; the
+calibration as soon as it's taken. At power-on the layer the toggle picks takes the knobs as they are.
 
 ## Calibration
 
 As Joy Lite, with Joy's two-point routine (`common/voct_cal.h`): hold B7 through
 power-on. LED solid: patch 1 V into CV_5 and press B7. LED blinking: patch 3 V and
 press. A flurry means done. Until then it uses Joy Lite's defaults.
+
+**The calibration is the module's, not the app's** (since 2026-11-21): it is stored once, in its own block of the QSPI flash ([`../common/unit_cal.h`](../common/unit_cal.h)), and Joy, Joy Lite, Wish and MultiOsc all read it. Calibrate a module once with any of them and the others track too, and loading another app from the SD card keeps it, because the bootloader only erases as far as the new program reaches. A calibration an app kept in its own settings before then is carried over the first time it starts.
 
 ## Build & flash
 

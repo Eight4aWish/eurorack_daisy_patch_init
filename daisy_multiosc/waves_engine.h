@@ -49,7 +49,7 @@ class WavesEngine : public Engine {
         if(!ctx.edit_page)
         {
             const float midi = daisysp::fmap(hw.GetAdcValue(KNOB_TUNE), 28.f, 88.f)
-                               + hw.GetAdcValue(CV_VOCT) * 60.f;
+                               + VoctSemitones(hw);
             float freq = daisysp::mtof(midi);
             if(freq < 20.0f)
                 freq = 20.0f; // no sub-audio rumble

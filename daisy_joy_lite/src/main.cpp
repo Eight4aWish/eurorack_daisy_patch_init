@@ -22,6 +22,7 @@
 
 #include "daisy_patch_sm.h"
 #include "voct_cal.h"
+#include "unit_cal.h"
 #include "joy_dsp.h"
 
 #include <braids/macro_oscillator.h>
@@ -88,8 +89,8 @@ struct JoyLiteSettings
 {
     int   version;
     int   model[kBanks];
-    float voct_center;
-    float voct_slope;
+    float voct_center;  // the V/Oct calibration before it moved to the unit's own record (unit_cal.h):
+    float voct_slope;   // read once to carry it over, no longer written
     bool operator!=(const JoyLiteSettings &r) const
     {
         return version != r.version || model[0] != r.model[0]
@@ -112,6 +113,7 @@ uint8_t sync_buffer[kBraidsBlockSize];
 int16_t render_buffer[kBraidsBlockSize];
 
 PersistentStorage<JoyLiteSettings> settings_storage(hw.qspi);
+unitcal::Store unit_cal(hw.qspi);  // the unit's V/Oct calibration, shared with the other apps
 volatile bool     settings_dirty      = false;
 volatile uint32_t settings_dirty_time = 0;
 constexpr uint32_t kSettingsSaveDelayMs = 2000;
@@ -323,10 +325,7 @@ void RunCalibration()
     const float adc_3v = CaptureVoct();
 
     g_voct_cal = joy::ComputeVoctCal(adc_1v, adc_3v, g_voct_cal);
-    JoyLiteSettings &s = settings_storage.GetSettings();
-    s.voct_center      = g_voct_cal.center;
-    s.voct_slope       = g_voct_cal.slope;
-    settings_storage.Save();
+    unit_cal.Save(g_voct_cal);  // the unit's calibration (unit_cal.h), for every app that reads V/Oct
 
     for(int i = 0; i < 10; i++)  // done: rapid flurry
     {
@@ -368,7 +367,12 @@ int main(void)
     const JoyLiteSettings &saved = settings_storage.GetSettings();
     model_idx[0] = saved.model[0] % kModelsPerBank;
     model_idx[1] = saved.model[1] % kModelsPerBank;
-    g_voct_cal   = {saved.voct_center, saved.voct_slope};
+    // V/Oct calibration: the unit's (unit_cal.h). One Joy Lite kept in its own settings before then is
+    // carried over the first time.
+    const joy::VoctCal app_default{kVoctCenterNorm, kVoctSlope};
+    unit_cal.Init();
+    unit_cal.Adopt({saved.voct_center, saved.voct_slope}, app_default);
+    g_voct_cal = unit_cal.Load(app_default);
     settings_dirty = false;
 
     SetPanelLed(false);

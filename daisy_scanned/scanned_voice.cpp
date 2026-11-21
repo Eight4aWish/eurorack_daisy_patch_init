@@ -119,7 +119,7 @@ void ScannedVoice::Process(DaisyPatchSM&             hw,
     {
         const float midi
             = fmap(hw.GetAdcValue(KNOB_TUNE), 28.f, 88.f)
-              + hw.GetAdcValue(CV_VOCT) * 60.f;
+              + VoctSemitones(hw);
         float f = mtof(midi);
         if(f < 20.f)
             f = 20.f;

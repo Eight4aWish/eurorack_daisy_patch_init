@@ -84,7 +84,7 @@ void FmFourOp::Process(DaisyPatchSM&             hw,
     const float k2       = hw.GetAdcValue(KNOB_MOD2);
     const float k3       = hw.GetAdcValue(KNOB_MOD3);
     const float k_tune   = hw.GetAdcValue(KNOB_TUNE);
-    const float cv_pitch = hw.GetAdcValue(CV_VOCT);
+    const float cv_pitch = VoctSemitones(hw);  // semitones, through the unit's calibration
 
     if(ctx.short_press)
         algo_ = (algo_ + 1) % 3;
@@ -108,7 +108,7 @@ void FmFourOp::Process(DaisyPatchSM&             hw,
     // same law as SCAN, INTVL and WAVES.
     if(!ctx.edit_page)
     {
-        float bf = mtof(fmap(k_tune, 28.f, 88.f) + cv_pitch * 60.f);
+        float bf = mtof(fmap(k_tune, 28.f, 88.f) + cv_pitch);
         if(bf < 20.0f)
             bf = 20.0f;
         if(bf > 8000.0f)

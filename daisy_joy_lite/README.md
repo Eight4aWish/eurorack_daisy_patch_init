@@ -57,7 +57,11 @@ Hold **B7 at power-up** to calibrate V/Oct (no screen needed):
 3. **Rapid flurry** — done; saved to flash and used immediately.
 
 A bad capture is rejected (keeps the previous calibration). If never calibrated,
-sensible measured defaults are used. Compile-time overrides: `VOCT_CENTER_NORM`,
+sensible measured defaults are used.
+
+**The calibration is the module's, not the app's** (since 2026-11-21): it is stored once, in its own block of the QSPI flash ([`../common/unit_cal.h`](../common/unit_cal.h)), and Joy, Joy Lite, Wish and MultiOsc all read it. Calibrate a module once with any of them and the others track too, and loading another app from the SD card keeps it, because the bootloader only erases as far as the new program reaches. A calibration an app kept in its own settings before then is carried over the first time it starts.
+
+ Compile-time overrides: `VOCT_CENTER_NORM`,
 `VOCT_SLOPE`, `VOCT_BASE_MIDI`.
 
 ## Build & flash

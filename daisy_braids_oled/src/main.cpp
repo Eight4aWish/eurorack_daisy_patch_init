@@ -15,7 +15,8 @@
  *   
  *   B7 Short Press: Cycle through patches (in Patch mode) or banks (in Bank mode)
  *   B7 Long Press:  Toggle between Patch and Bank navigation modes
- *   B7 held at power-up: enter V/Oct calibration (patch 1V, press; 3V, press)
+ *   B7 held at power-up: enter V/Oct calibration (patch 1V, press; 3V, press). It is the unit's:
+ *                   stored once (common/unit_cal.h) for Joy, Joy Lite, Wish and MultiOsc alike
  *
  *   CV_5: V/Oct pitch input (-5V to +5V)
  *   CV_6: Timbre modulation input
@@ -38,6 +39,7 @@
 #include "oled_soft_i2c.h"
 #include "joy_dsp.h"
 #include "voct_cal.h"
+#include "unit_cal.h"
 
 #include <braids/macro_oscillator.h>
 
@@ -279,8 +281,8 @@ struct JoySettings
     int   version;
     int   bank;
     int   patch;
-    float voct_center; // stored 1V/oct calibration (see voct_cal.h)
-    float voct_slope;
+    float voct_center; // the V/Oct calibration before it moved to the unit's own record (unit_cal.h): read
+    float voct_slope;  // once to carry it over, no longer written
     bool operator!=(const JoySettings &rhs) const
     {
         return version != rhs.version || bank != rhs.bank
@@ -290,6 +292,7 @@ struct JoySettings
 };
 
 PersistentStorage<JoySettings> settings_storage(hw.qspi);
+unitcal::Store unit_cal(hw.qspi);  // the unit's V/Oct calibration, shared with the other apps
 volatile bool     settings_dirty      = false;
 volatile uint32_t settings_dirty_time = 0;
 constexpr uint32_t kSettingsSaveDelayMs = 2000;  // debounce to limit wear
@@ -623,8 +626,8 @@ float CaptureVoct()
 
 // Two-point 1V/oct calibration (entered by holding B7 at power-up). Requires
 // StartAdc() already running. Prompts on the OLED, captures 1 V then 3 V, stores
-// the result to persistent settings and updates g_voct_cal. A bad capture keeps
-// the previous/default calibration (ComputeVoctCal falls back).
+// the result as the unit's calibration (unit_cal.h) and updates g_voct_cal. A bad
+// capture keeps the previous/default calibration (ComputeVoctCal falls back).
 void RunCalibration()
 {
     auto prompt = [](const char* volts) {
@@ -645,10 +648,7 @@ void RunCalibration()
 
     g_voct_cal = joy::ComputeVoctCal(adc_1v, adc_3v, g_voct_cal);
 
-    JoySettings &s = settings_storage.GetSettings();
-    s.voct_center  = g_voct_cal.center;
-    s.voct_slope   = g_voct_cal.slope;
-    settings_storage.Save();
+    unit_cal.Save(g_voct_cal);
 
     display.Clear();
     display.DrawStringLargeCentered(15, "DONE", false);
@@ -711,7 +711,12 @@ int main(void)
         settings_storage.RestoreDefaults();
     const JoySettings &saved = settings_storage.GetSettings();
     SetPatch(saved.bank, saved.patch);
-    g_voct_cal = {saved.voct_center, saved.voct_slope};
+    // V/Oct calibration: the unit's (unit_cal.h), so one calibration serves every app that reads V/Oct. One
+    // Joy kept in its own settings before then is carried over the first time.
+    const joy::VoctCal app_default{kVoctCenterNorm, kVoctSlope};
+    unit_cal.Init();
+    unit_cal.Adopt({saved.voct_center, saved.voct_slope}, app_default);
+    g_voct_cal = unit_cal.Load(app_default);
     settings_dirty = false;  // restoring is not a change worth saving
 
     SetPanelLed(false);

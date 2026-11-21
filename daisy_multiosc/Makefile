@@ -49,7 +49,8 @@ OPT = -O2
 SYSTEM_FILES_DIR = $(LIBDAISY_DIR)/core
 
 # App type / linker selection (QSPI for bootloader support)
-APP_TYPE ?= BOOT_QSPI
+# From SRAM, so QSPI is writable: the unit's V/OCT calibration (common/unit_cal.h). It was BOOT_QSPI.
+APP_TYPE ?= BOOT_SRAM
 
 ifeq ($(APP_TYPE),BOOT_QSPI)
 LDSCRIPT ?= $(SYSTEM_FILES_DIR)/STM32H750IB_qspi.lds

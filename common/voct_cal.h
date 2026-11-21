@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 David Baghurst
 //
-// voct_cal.h — shared 1V/oct calibration for the Joy family (Joy + Joy Lite).
+// voct_cal.h — the two-point 1V/oct calibration (Joy, Joy Lite, Wish on patch.Init(), MultiOsc). Each unit keeps
+// one, shared by those apps: common/unit_cal.h.
 //
 // A simple two-point linear calibration in the same terms the pitch code already
 // uses:  semitones = (adc - center) * slope, where `adc` is GetAdcValue(CV_5).
