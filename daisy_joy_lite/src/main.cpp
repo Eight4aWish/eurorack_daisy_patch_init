@@ -39,7 +39,9 @@ namespace {
 
 constexpr size_t kBraidsBlockSize = 24;
 
-// V/Oct calibration defaults (also the fallback / per-build overrides).
+// V/Oct calibration defaults, for a unit never calibrated (per-build overrides via -D). The values are
+// Joy's, measured under libDaisy v8, whose ADC read 31/32 of true (voct_cal.h): kept as measured, as an old
+// Joy Lite's settings hold values in the same terms, and converted to today's scaling below.
 #ifndef VOCT_BASE_MIDI
 #define VOCT_BASE_MIDI 48
 #endif
@@ -49,10 +51,13 @@ constexpr size_t kBraidsBlockSize = 24;
 #ifndef VOCT_SLOPE
 #define VOCT_SLOPE 60.73f
 #endif
-constexpr int32_t kBaseNoteQ7     = (static_cast<int32_t>(VOCT_BASE_MIDI) << 7);
-constexpr float   kVoctCenterNorm = static_cast<float>(VOCT_CENTER_NORM);
-constexpr float   kVoctSlope      = static_cast<float>(VOCT_SLOPE);
-joy::VoctCal      g_voct_cal      = {kVoctCenterNorm, kVoctSlope};
+constexpr int32_t      kBaseNoteQ7     = (static_cast<int32_t>(VOCT_BASE_MIDI) << 7);
+constexpr float        kVoctCenterNorm = static_cast<float>(VOCT_CENTER_NORM);
+constexpr float        kVoctSlope      = static_cast<float>(VOCT_SLOPE);
+constexpr joy::VoctCal kV8Default{kVoctCenterNorm, kVoctSlope};
+constexpr joy::VoctCal kAppDefault = joy::FromLibDaisy8(kV8Default);
+joy::VoctCal           g_voct_cal  = kAppDefault;  // the unit's (unit_cal.h) once main() has read it
+float                  g_fm_zero   = 0.0f;         // the FM jack's empty reading, taken off every reading
 
 // The curated 16: Braids models not really covered by Plaits, two banks of 8.
 constexpr int kBanks         = 2;
@@ -226,10 +231,11 @@ void ProcessControls()
     const float   voct_cv        = joy::Clamp11(hw.GetAdcValue(CV_5));
     const float   voct_semitones = joy::VoctToSemitones(g_voct_cal, voct_cv);
 
-    // FM from CV_8 — Braids' FM input at full attenuverter. Uncalibrated and
-    // intentionally not 1 V/oct: it is a depth control, not a pitch input.
+    // FM from CV_8 — Braids' FM input at full attenuverter. Not 1 V/oct: it is a
+    // depth control, not a pitch input. Less the unit's empty-jack reading, which
+    // would otherwise detune it by 6 cents for every 10 mV.
     const float fm_semitones
-        = joy::Clamp11(hw.GetAdcValue(CV_8)) * joy::kFmDepthSemitones;
+        = joy::Clamp11(hw.GetAdcValue(CV_8) - g_fm_zero) * joy::kFmDepthSemitones;
 
     const int32_t pitch_q7
         = kBaseNoteQ7
@@ -303,29 +309,52 @@ void WaitForFreshPress(bool blink)
     } while(!nav_button.Pressed());
 }
 
-float CaptureVoct()
+// CV_5 (V/Oct) and CV_8 (FM, empty), averaged over ~200 ms.
+struct Capture
+{
+    float voct, fm;
+};
+Capture CaptureInputs()
 {
     constexpr int kN = 200;
-    float         acc = 0.0f;
+    float         voct = 0.0f, fm = 0.0f;
     for(int i = 0; i < kN; i++)
     {
         hw.ProcessAllControls();
-        acc += joy::Clamp11(hw.GetAdcValue(CV_5));
+        voct += joy::Clamp11(hw.GetAdcValue(CV_5));
+        fm += joy::Clamp11(hw.GetAdcValue(CV_8));
         System::Delay(1);
     }
-    return acc / static_cast<float>(kN);
+    return {voct / static_cast<float>(kN), fm / static_cast<float>(kN)};
 }
 
+// 1 V then 3 V into V/Oct, with the FM jack empty. Done: a rapid flurry. A capture that doesn't make sense
+// saves nothing: three long blinks.
 void RunCalibration()
 {
     WaitForFreshPress(false);  // LED solid: patch 1 V, press
-    const float adc_1v = CaptureVoct();
+    const Capture at_1v = CaptureInputs();
 
     WaitForFreshPress(true);   // LED blinking: patch 3 V, press
-    const float adc_3v = CaptureVoct();
+    const Capture at_3v = CaptureInputs();
 
-    g_voct_cal = joy::ComputeVoctCal(adc_1v, adc_3v, g_voct_cal);
-    unit_cal.Save(g_voct_cal);  // the unit's calibration (unit_cal.h), for every app that reads V/Oct
+    joy::VoctCal cal;
+    if(!joy::ComputeVoctCal(at_1v.voct, at_3v.voct, cal))
+    {
+        for(int i = 0; i < 3; i++)  // failed: three long blinks
+        {
+            SetPanelLed(true);
+            System::Delay(500);
+            SetPanelLed(false);
+            System::Delay(300);
+        }
+        return;
+    }
+    // FM's zero from both captures; past kMaxFmZero something was patched into FM, and it isn't stored
+    const float fm_zero = 0.5f * (at_1v.fm + at_3v.fm);
+    unit_cal.Save(cal, std::fabs(fm_zero) <= unitcal::kMaxFmZero ? fm_zero : NAN);  // the unit's (unit_cal.h)
+    g_voct_cal = cal;
+    g_fm_zero  = unit_cal.FmZero();
 
     for(int i = 0; i < 10; i++)  // done: rapid flurry
     {
@@ -369,10 +398,10 @@ int main(void)
     model_idx[1] = saved.model[1] % kModelsPerBank;
     // V/Oct calibration: the unit's (unit_cal.h). One Joy Lite kept in its own settings before then is
     // carried over the first time.
-    const joy::VoctCal app_default{kVoctCenterNorm, kVoctSlope};
     unit_cal.Init();
-    unit_cal.Adopt({saved.voct_center, saved.voct_slope}, app_default);
-    g_voct_cal = unit_cal.Load(app_default);
+    unit_cal.Adopt({saved.voct_center, saved.voct_slope}, kV8Default);
+    g_voct_cal = unit_cal.Load(kAppDefault);
+    g_fm_zero  = unit_cal.FmZero();
     settings_dirty = false;
 
     SetPanelLed(false);

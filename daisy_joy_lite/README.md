@@ -52,12 +52,16 @@ stopped sequencer patched, just send one gate.
 
 Hold **B7 at power-up** to calibrate V/Oct (no screen needed):
 
-1. **LED solid** — patch **1 V** (C1) to V/Oct, press **B7**.
+1. **LED solid** — leave **FM** (CV_8) unpatched, patch **1 V** (C1) to V/Oct, press **B7**.
 2. **LED blinking** — patch **3 V** (C3), press **B7**.
 3. **Rapid flurry** — done; saved to flash and used immediately.
+   **Three long blinks** — the capture didn't make sense (nothing patched, the wrong voltage, a slip):
+   nothing is saved, and the module keeps what it had.
 
-A bad capture is rejected (keeps the previous calibration). If never calibrated,
-sensible measured defaults are used.
+Calibration also measures the empty FM jack, and Joy Lite takes that reading off FM: each module's
+input reads a little off 0 V, which FM's 6 semitones a volt turned into a fixed detune of its own (since
+2026-11-21; see Joy's README). If never calibrated, defaults measured on one module are used. A
+calibration from before libDaisy v9 is converted when it is carried over, as Joy's is.
 
 **The calibration is the module's, not the app's** (since 2026-11-21): it is stored once, in its own block of the QSPI flash ([`../common/unit_cal.h`](../common/unit_cal.h)), and Joy, Joy Lite, Wish and MultiOsc all read it. Calibrate a module once with any of them and the others track too, and loading another app from the SD card keeps it, because the bootloader only erases as far as the new program reaches. A calibration an app kept in its own settings before then is carried over the first time it starts.
 

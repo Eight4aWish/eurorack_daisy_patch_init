@@ -77,7 +77,9 @@ The display highlights the currently active navigation level:
 **FM (CV_8)** is Braids' FM input, ported at the depth Braids gives it with the
 MOD attenuverter fully clockwise — `adc_to_fm()` scales a full-scale swing to
 ±30 semitones. It is deliberately *not* 1 V/oct: it's a depth control, not a
-second pitch input, so it takes the raw CV rather than the V/Oct calibration.
+second pitch input, so it takes the raw CV rather than the V/Oct calibration,
+less the module's own reading with nothing patched, which calibration measures
+(see [Calibration](#calibration)).
 Braids has an attenuverter knob for this and Joy has no knob to spare, so the
 depth is fixed — attenuate at the source for less. Like Braids, FM is applied
 once per render block, so it is control-rate FM.
@@ -111,7 +113,9 @@ should.
 
 > **v1.5 (2026-11-21):** the V/Oct calibration is the module's, kept once for Joy, Joy Lite, Wish and
 > MultiOsc (see [Calibration](#calibration)); a calibration v1.4 saved is carried over the first time v1.5
-> starts. Built on libDaisy v9.0.0. Not yet released: the splash reads v1.5 so the build can be told apart.
+> starts, converted to libDaisy v9's scaling. Calibration also measures the empty FM jack, whose offset
+> detuned each module by its own amount, and a capture that doesn't make sense now says FAIL and saves
+> nothing. Built on libDaisy v9.0.0. Not yet released: the splash reads v1.5 so the build can be told apart.
 
 > **Upgrading from v1.3 or earlier:** pitch drops an octave. Your saved V/Oct
 > calibration is unaffected and carries over — the calibration is in the CV
@@ -396,14 +400,34 @@ This is how you install Joy and how you'll update it later — no cables or extr
 **On-module (no recompile).** Hold **B7 while powering up** to enter V/Oct
 calibration. The OLED prompts a two-point routine:
 
-1. `CALIBRATE 1V` — patch a **1 V** reference (C1) to V/Oct, press **B7**.
+1. `CALIBRATE 1V` (`FM empty`) — leave **FM** (CV_8) unpatched, patch a **1 V**
+   reference (C1) to V/Oct, press **B7**.
 2. `CALIBRATE 3V` — patch **3 V** (C3, two octaves up), press **B7**.
 3. `DONE` — the calibration is solved, **saved to flash**, and used immediately.
+   Two figures show what it corrects, in cents:
+   - `OCT`: how far this module's V/Oct input is from an ideal 1 V/oct, per
+     octave. A few tens of cents is normal, and modules read alike.
+   - `FM`: the detune the empty FM jack was adding, now taken off every reading.
+     `FM patched` means FM read more than 0.5 V, so it wasn't stored: unpatch it
+     and calibrate again.
 
-It persists across power cycles. A bad capture (e.g. nothing patched) is
-rejected and the previous calibration is kept, so the routine can't leave the
-module mistracking. If you never calibrate, the firmware uses sensible measured
-defaults.
+It persists across power cycles. A capture that doesn't make sense (nothing
+patched, the wrong voltage, a slip: a slope more than 10 % from nominal) shows
+`FAIL` and saves nothing, so the module keeps what it had and the routine can't
+leave it mistracking. If you never calibrate, the firmware uses defaults measured
+on one module.
+
+**FM's zero (since 2026-11-21).** Every module's inputs read a little off 0 V
+with nothing patched, and FM's 6 semitones a volt turned that into a fixed
+detune: about 6 cents for every 10 mV, different on each module. Calibration now
+measures the empty FM jack as well, and Joy takes it off. A module calibrated
+before then has no FM zero until it is calibrated again.
+
+**libDaisy v9.** Before v9.0.0, libDaisy read every ADC at 31/32 of its true
+value (libDaisy #695), so a calibration measured then is in different terms: 3 %
+less gain, and 0 V about 0.03 higher. One carried over from an app's own settings
+is converted (`joy::FromLibDaisy8` in [`../common/voct_cal.h`](../common/voct_cal.h)),
+and so are the defaults.
 
 **The calibration is the module's, not the app's** (since 2026-11-21): it is stored once, in its own block of the QSPI flash ([`../common/unit_cal.h`](../common/unit_cal.h)), and Joy, Joy Lite, Wish and MultiOsc all read it. Calibrate a module once with any of them and the others track too, and loading another app from the SD card keeps it, because the bootloader only erases as far as the new program reaches. A calibration an app kept in its own settings before then is carried over the first time it starts.
 

@@ -87,7 +87,10 @@ calibration as soon as it's taken. At power-on the layer the toggle picks takes 
 
 As Joy Lite, with Joy's two-point routine (`common/voct_cal.h`): hold B7 through
 power-on. LED solid: patch 1 V into CV_5 and press B7. LED blinking: patch 3 V and
-press. A flurry means done. Until then it uses Joy Lite's defaults.
+press. A flurry means done. Three long blinks mean the capture didn't make sense (nothing patched, the
+wrong voltage, a slip): nothing is saved, and the module keeps what it had. Until then it uses Joy Lite's
+defaults, converted to libDaisy v9's scaling, as is any calibration an old Wish carried over (see Joy's
+README).
 
 **The calibration is the module's, not the app's** (since 2026-11-21): it is stored once, in its own block of the QSPI flash ([`../common/unit_cal.h`](../common/unit_cal.h)), and Joy, Joy Lite, Wish and MultiOsc all read it. Calibrate a module once with any of them and the others track too, and loading another app from the SD card keeps it, because the bootloader only erases as far as the new program reaches. A calibration an app kept in its own settings before then is carried over the first time it starts.
 

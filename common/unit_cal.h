@@ -17,8 +17,14 @@
 // The calibration itself is voct_cal.h's two-point line, in the raw GetAdcValue(CV_5) domain every app
 // already reads: semitones above 0 V = (adc - center) * slope. With nothing measured on this unit, an
 // app keeps its own defaults.
+//
+// Version 2 (2026-11-21) adds the FM jack's zero: GetAdcValue(CV_8) with nothing patched, measured in the
+// same run by the apps with an FM input (Joy, Joy Lite). Each unit's input reads a little off 0 V, and at
+// FM's 6 semitones a volt every 10 mV of it detuned the unit by 6 cents. A version 1 record keeps its V/OCT
+// calibration and has no FM zero until the next calibration.
 
 #pragma once
+#include <cmath>
 #include <cstdint>
 #include "daisy_patch_sm.h"
 #include "voct_cal.h"
@@ -27,7 +33,10 @@ namespace unitcal {
 
 constexpr uint32_t kQspiOffset = 0x7D0000;
 constexpr uint32_t kMagic      = 0x4C414356;  // "VCAL"
-constexpr uint32_t kVersion    = 1;
+constexpr uint32_t kVersion    = 2;
+// 0.5 V: past this the FM jack was patched during the capture. An empty input can read a few hundredths:
+// Joy's default calibration, converted to libDaisy v9, puts that unit's 0 V at -0.025 (voct_cal.h).
+constexpr float    kMaxFmZero  = joy::kMaxCenter;
 
 struct Record
 {
@@ -36,10 +45,13 @@ struct Record
     uint32_t measured;  // 1 once a calibration has been captured, or carried over, on this unit
     float    voct_center;
     float    voct_slope;
+    uint32_t fm_measured;  // 1 once the FM jack's zero has been captured on this unit (version 2)
+    float    fm_zero;
     bool     operator!=(const Record& r) const
     {
         return magic != r.magic || version != r.version || measured != r.measured
-               || voct_center != r.voct_center || voct_slope != r.voct_slope;
+               || voct_center != r.voct_center || voct_slope != r.voct_slope
+               || fm_measured != r.fm_measured || fm_zero != r.fm_zero;
     }
 };
 
@@ -48,13 +60,21 @@ class Store
   public:
     explicit Store(daisy::QSPIHandle& qspi) : storage_(qspi) {}
 
-    // Reads the record, starting a blank one on a unit that has never had it.
+    // Reads the record, starting a blank one on a unit that has never had it, and bringing a version 1
+    // record up to date (its last two fields read as erased flash).
     void Init()
     {
-        const Record blank{kMagic, kVersion, 0, 0.f, 0.f};
+        const Record blank{kMagic, kVersion, 0, 0.f, 0.f, 0, 0.f};
         storage_.Init(blank, kQspiOffset);
-        const Record& r = storage_.GetSettings();
-        if(r.magic != kMagic || r.version != kVersion)
+        Record& r = storage_.GetSettings();
+        if(r.magic == kMagic && r.version == 1)
+        {
+            r.version     = kVersion;
+            r.fm_measured = 0;
+            r.fm_zero     = 0.f;
+            storage_.Save();
+        }
+        else if(r.magic != kMagic || r.version != kVersion)
             storage_.RestoreDefaults();
     }
 
@@ -67,7 +87,16 @@ class Store
         return r.measured == 1 ? joy::VoctCal{r.voct_center, r.voct_slope} : app_default;
     }
 
-    void Save(const joy::VoctCal& c)
+    // The FM jack's reading with nothing patched, to take off every reading; 0 until measured.
+    float FmZero() const
+    {
+        const Record& r = Get();
+        return r.fm_measured == 1 && std::isfinite(r.fm_zero) ? r.fm_zero : 0.f;
+    }
+
+    // A measured calibration. `fm_zero`: the empty FM jack's reading from the same run, from the apps with an
+    // FM input; the others leave it out and keep what is stored.
+    void Save(const joy::VoctCal& c, float fm_zero = NAN)
     {
         Record& r     = storage_.GetSettings();
         r.magic       = kMagic;
@@ -75,20 +104,28 @@ class Store
         r.measured    = 1;
         r.voct_center = c.center;
         r.voct_slope  = c.slope;
+        if(std::isfinite(fm_zero))
+        {
+            r.fm_measured = 1;
+            r.fm_zero     = fm_zero;
+        }
         storage_.Save();
     }
 
-    // One-time carry-over: an app that kept its own calibration before this record existed hands it
-    // over, if it differs from that app's defaults (so it was measured) and nothing is here yet.
-    void Adopt(const joy::VoctCal& old_cal, const joy::VoctCal& app_default)
+    // One-time carry-over: an app that kept its own calibration before this record existed hands it over,
+    // if it differs from that app's own compiled-in values of then (so it was measured) and nothing is here
+    // yet. Those were all measured on libDaisy v8, so it is converted to today's scaling (voct_cal.h).
+    void Adopt(const joy::VoctCal& old_cal, const joy::VoctCal& old_default)
     {
         if(Measured())
             return;
-        if(old_cal.center == app_default.center && old_cal.slope == app_default.slope)
+        if(old_cal.center == old_default.center && old_cal.slope == old_default.slope)
             return;
-        if(old_cal.slope < 30.f || old_cal.slope > 120.f)  // voct_cal.h's sanity range
+        const joy::VoctCal c = joy::FromLibDaisy8(old_cal);
+        if(std::fabs(c.slope / joy::kNominalSlope - 1.0f) > joy::kSlopeTolerance
+           || std::fabs(c.center) > joy::kMaxCenter)
             return;
-        Save(old_cal);
+        Save(c);
     }
 
   private:

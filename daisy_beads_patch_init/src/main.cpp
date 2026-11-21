@@ -114,10 +114,13 @@ static constexpr float kTimeSizePerVolt  = 0.32f;
 static constexpr float kDensityPerVolt   = 0.2f;
 
 // V/OCT, CV_5: two-point calibration shared with Joy (common/voct_cal.h).
-// Joy Lite's defaults until a calibration is run.
-static constexpr float kVoctCenterDefault = 0.007074f;
-static constexpr float kVoctSlopeDefault  = 60.73f;
-static joy::VoctCal    g_voct_cal         = {kVoctCenterDefault, kVoctSlopeDefault};
+// Joy Lite's defaults until a calibration is run. They were measured under libDaisy v8, whose ADC read 31/32
+// of true: kept as measured, as an old Wish's settings hold values in the same terms, and converted.
+static constexpr joy::VoctCal kV8Default{0.007074f, 60.73f};
+static constexpr joy::VoctCal kAppDefault = joy::FromLibDaisy8(kV8Default);
+static joy::VoctCal           g_voct_cal  = kAppDefault;  // the unit's (unit_cal.h) once loaded
+// What an old Wish kept in its own settings, written back unchanged: only read once, to carry it over
+static joy::VoctCal s_oldCal = kV8Default;
 
 // SEED counts as patched for this long after a trigger, or four of its own
 // periods if longer (Beads' divider resets after the same four), capped.
@@ -204,7 +207,7 @@ struct WishSettings
     uint32_t magic;
     uint8_t  media, input, gate_out, pad;
     float    param[kNumParams];
-    float    voct_center, voct_slope;  // mirror the unit's calibration (unit_cal.h); read once to carry an old one over
+    float    voct_center, voct_slope;  // an old Wish's own calibration, before unit_cal.h: read once to carry it over
 
     bool operator!=(const WishSettings& o) const { return memcmp(this, &o, sizeof *this) != 0; }
 };
@@ -612,12 +615,26 @@ static void RunCalibration()
     const float adc1 = CaptureVoct();
     WaitForFreshPress(true);    // LED blinking: patch 3 V, press
     const float adc3 = CaptureVoct();
-    g_voct_cal = joy::ComputeVoctCal(adc1, adc3, g_voct_cal);
-    unit_cal.Save(g_voct_cal);   // the unit's calibration (unit_cal.h), for every app that reads V/OCT
-    for (int i = 0; i < 10; i++)   // done: a flurry
+    joy::VoctCal cal;
+    if (joy::ComputeVoctCal(adc1, adc3, cal))
     {
-        SetLed((i & 1) ? kLedOn : 0.0f);
-        System::Delay(60);
+        unit_cal.Save(cal);   // the unit's calibration (unit_cal.h), for every app that reads V/OCT
+        g_voct_cal = cal;
+        for (int i = 0; i < 10; i++)   // done: a flurry
+        {
+            SetLed((i & 1) ? kLedOn : 0.0f);
+            System::Delay(60);
+        }
+    }
+    else
+    {
+        for (int i = 0; i < 3; i++)   // a capture that doesn't make sense: nothing saved, three long blinks
+        {
+            SetLed(kLedOn);
+            System::Delay(500);
+            SetLed(0.0f);
+            System::Delay(300);
+        }
     }
     SetLed(0.0f);
     do { b7.Debounce(); System::Delay(1); } while (b7.Pressed());   // let go before playing
@@ -633,8 +650,8 @@ static WishSettings Snapshot()
     s.input    = s_input;
     s.gate_out = s_gateOut ? 1 : 0;
     for (uint8_t i = 0; i < kNumParams; i++) s.param[i] = s_param[i];
-    s.voct_center = g_voct_cal.center;
-    s.voct_slope  = g_voct_cal.slope;
+    s.voct_center = s_oldCal.center;
+    s.voct_slope  = s_oldCal.slope;
     return s;
 }
 
@@ -644,22 +661,22 @@ static void LoadSettings()
     storage.Init(defaults, kSettingsQspiOffset);
     // V/OCT calibration: the unit's (unit_cal.h), so one calibration serves every app that reads V/OCT. One
     // Wish kept in its own settings before then is carried over the first time.
-    const joy::VoctCal app_default{kVoctCenterDefault, kVoctSlopeDefault};
     unit_cal.Init();
     const WishSettings& s = storage.GetSettings();
     if (s.magic != kSettingsMagic || s.media > 3 || s.input >= kNumInputs || s.gate_out > 1)
     {
         storage.RestoreDefaults();
-        g_voct_cal = unit_cal.Load(app_default);
+        g_voct_cal = unit_cal.Load(kAppDefault);
         return;
     }
+    s_oldCal = {s.voct_center, s.voct_slope};
     s_media   = s.media;
     s_input   = s.input;
     s_gateOut = s.gate_out != 0;
     for (uint8_t i = 0; i < kNumParams; i++)
         if (s.param[i] >= 0.0f && s.param[i] <= 1.0f) s_param[i] = s.param[i];
-    unit_cal.Adopt({s.voct_center, s.voct_slope}, app_default);
-    g_voct_cal = unit_cal.Load(app_default);
+    unit_cal.Adopt(s_oldCal, kV8Default);
+    g_voct_cal = unit_cal.Load(kAppDefault);
 }
 
 // Worth a QSPI write: a setting changed, or a knob value moved past ADC noise.

@@ -33,7 +33,9 @@ To add an engine: implement `multiosc::Engine` in its folder, add its source to
 ## Calibration
 
 Hold **B7 at power-up** to calibrate V/OCT, before the chooser: the OLED asks for **1 V** into
-V/OCT, press B7, then **3 V**, press B7, then shows DONE. A bad capture keeps what was there.
+V/OCT, press B7, then **3 V**, press B7, then shows DONE, with `OCT`: how far the module's input is from
+an ideal 1 V/oct, in cents per octave, as on Joy. A capture that doesn't make sense shows FAIL and saves
+nothing, so the module keeps what it had.
 Every engine adds V/OCT to its TUNE note through it (`multiosc::VoctSemitones`); until a
 calibration is taken it is the old law exactly, the reading times 60.
 

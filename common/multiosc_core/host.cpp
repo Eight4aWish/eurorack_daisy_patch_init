@@ -100,13 +100,27 @@ void Host::RunCalibration()
     fresh_press();
     const float adc_3v = capture();
 
-    // A bad capture (nothing patched, a slip) keeps what was there (voct_cal.h falls back).
-    g_voct_cal = joy::ComputeVoctCal(adc_1v, adc_3v, g_voct_cal);
-    unit_cal_.Save(g_voct_cal);
-
+    // A capture that doesn't make sense (nothing patched, a slip) saves nothing and says so.
+    joy::VoctCal cal;
     display_.Clear();
-    display_.DrawStringLargeCentered(15, "DONE", false);
+    if(joy::ComputeVoctCal(adc_1v, adc_3v, cal))
+    {
+        unit_cal_.Save(cal);
+        g_voct_cal = cal;
+        // what it corrects: the input's octave against the nominal law, in cents
+        char line[16];
+        snprintf(line, sizeof(line), "OCT %+dc", joy::CentsPerOctaveFromNominal(cal));
+        display_.DrawStringLargeCentered(6, "DONE", false);
+        display_.DrawStringCentered(30, line, false);
+    }
+    else
+    {
+        display_.DrawStringLargeCentered(4, "FAIL", false);
+        display_.DrawStringCentered(26, "not saved", false);
+        display_.DrawStringCentered(38, "redo 1V/3V", false);
+    }
     display_.Update();
+    System::Delay(2400);
     // let go before the chooser, so the release isn't read as a choice
     do { hw_.ProcessAllControls(); button_.Debounce(); System::Delay(1); } while(button_.Pressed());
     System::Delay(600);

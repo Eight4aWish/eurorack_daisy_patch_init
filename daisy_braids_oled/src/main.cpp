@@ -47,6 +47,7 @@
 #include <cstring>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 
 using namespace daisy;
 using namespace patch_sm;
@@ -55,14 +56,16 @@ namespace {
 
 constexpr size_t kBraidsBlockSize = 24;
 
-// V/Oct calibration — these are the compile-time DEFAULTS (also the fallback if
-// an end user never runs the calibration routine, and overridable per build via
-// -D). At runtime they can be replaced by a stored two-point calibration
-// (hold B7 at power-up); see RunCalibration() and g_voct_cal.
+// V/Oct calibration defaults, for a unit that has never been calibrated. At
+// runtime the unit's own two-point calibration replaces them (hold B7 at
+// power-up); see RunCalibration() and g_voct_cal.
 #ifndef VOCT_BASE_MIDI
 #define VOCT_BASE_MIDI 48
 #endif
 
+// Measured on one unit under libDaisy v8 (Joy 1.4), whose ADC read 31/32 of true
+// (voct_cal.h): kept as measured, since an old Joy's settings hold values in the
+// same terms, and converted to today's scaling below.
 #ifndef VOCT_CENTER_NORM
 #define VOCT_CENTER_NORM 0.007074f   // measured cal: nulls intercept (0.002133f left C1-C4 +30c; +0.30 st / 0.30/60.73)
 #endif
@@ -74,9 +77,13 @@ constexpr size_t kBraidsBlockSize = 24;
 constexpr int32_t kBaseNoteQ7 = (static_cast<int32_t>(VOCT_BASE_MIDI) << 7);
 constexpr float   kVoctCenterNorm = static_cast<float>(VOCT_CENTER_NORM);
 constexpr float   kVoctSlope      = static_cast<float>(VOCT_SLOPE);
+constexpr joy::VoctCal kV8Default{kVoctCenterNorm, kVoctSlope};
+constexpr joy::VoctCal kAppDefault = joy::FromLibDaisy8(kV8Default);
 
-// Active calibration, loaded from persistent settings at boot (defaults above).
-joy::VoctCal g_voct_cal = {kVoctCenterNorm, kVoctSlope};
+// Active calibration, the unit's (unit_cal.h) once main() has read it.
+joy::VoctCal g_voct_cal = kAppDefault;
+// The FM jack's reading with nothing patched, taken off every reading (unit_cal.h).
+float g_fm_zero = 0.0f;
 
 // Bank/Patch organization: 8 banks of 4-8 patches = 48 shapes.
 // Banks follow the Braids manual's own section groupings, so sizes vary.
@@ -544,9 +551,10 @@ void ProcessControls()
     const float voct_semitones = joy::VoctToSemitones(g_voct_cal, voct_cv);
 
     // FM from CV_8 — Braids' FM input at full attenuverter (joy::kFmDepth-
-    // Semitones). Uncalibrated and intentionally not 1 V/oct: it is a depth
-    // control, so it takes the raw CV rather than the V/Oct calibration.
-    const float fm_semitones = Clamp11(hw.GetAdcValue(CV_8)) * joy::kFmDepthSemitones;
+    // Semitones). Not 1 V/oct: it is a depth control, so it takes the raw CV
+    // rather than the V/Oct calibration, less the unit's empty-jack reading,
+    // which would otherwise detune it by 6 cents for every 10 mV.
+    const float fm_semitones = Clamp11(hw.GetAdcValue(CV_8) - g_fm_zero) * joy::kFmDepthSemitones;
 
     // Summed before the Q7 conversion so the two contributions round once.
     const int32_t pitch_q7
@@ -610,50 +618,81 @@ void WaitForFreshPress()
     } while(!nav_button.Pressed());
 }
 
-// Average the CV_5 reading over a short window for a stable capture.
-float CaptureVoct()
+// Average CV_5 (V/Oct) and CV_8 (FM, empty) over a short window for a stable capture.
+struct Capture
+{
+    float voct, fm;
+};
+Capture CaptureInputs()
 {
     constexpr int kN = 200; // ~200 ms
-    float acc = 0.0f;
+    float voct = 0.0f, fm = 0.0f;
     for(int i = 0; i < kN; i++)
     {
         hw.ProcessAllControls();
-        acc += Clamp11(hw.GetAdcValue(CV_5));
+        voct += Clamp11(hw.GetAdcValue(CV_5));
+        fm += Clamp11(hw.GetAdcValue(CV_8));
         System::Delay(1);
     }
-    return acc / static_cast<float>(kN);
+    return {voct / static_cast<float>(kN), fm / static_cast<float>(kN)};
 }
 
 // Two-point 1V/oct calibration (entered by holding B7 at power-up). Requires
-// StartAdc() already running. Prompts on the OLED, captures 1 V then 3 V, stores
-// the result as the unit's calibration (unit_cal.h) and updates g_voct_cal. A bad
-// capture keeps the previous/default calibration (ComputeVoctCal falls back).
+// StartAdc() already running. Prompts on the OLED, captures 1 V then 3 V into
+// V/OCT, with the FM jack empty, and stores the result as the unit's calibration
+// (unit_cal.h). A capture that doesn't make sense saves nothing and says FAILED.
 void RunCalibration()
 {
     auto prompt = [](const char* volts) {
         display.Clear();
+        // 64x48: ten small characters a row, five large
         display.DrawStringCentered(0, "CALIBRATE", false);
-        display.DrawStringLargeCentered(15, volts, false);
-        display.DrawStringCentered(38, "patch+B7", false);
+        display.DrawStringLargeCentered(11, volts, false);
+        display.DrawStringCentered(29, "patch+B7", false);
+        display.DrawStringCentered(40, "FM empty", false);
         display.Update();
     };
 
     prompt("1V");
     WaitForFreshPress();
-    const float adc_1v = CaptureVoct();
+    const Capture at_1v = CaptureInputs();
 
     prompt("3V");
     WaitForFreshPress();
-    const float adc_3v = CaptureVoct();
-
-    g_voct_cal = joy::ComputeVoctCal(adc_1v, adc_3v, g_voct_cal);
-
-    unit_cal.Save(g_voct_cal);
+    const Capture at_3v = CaptureInputs();
 
     display.Clear();
-    display.DrawStringLargeCentered(15, "DONE", false);
+    joy::VoctCal cal;
+    if(!joy::ComputeVoctCal(at_1v.voct, at_3v.voct, cal))
+    {
+        display.DrawStringLargeCentered(4, "FAIL", false);
+        display.DrawStringCentered(26, "not saved", false);
+        display.DrawStringCentered(38, "redo 1V/3V", false);
+        display.Update();
+        System::Delay(3000);
+        return;
+    }
+    // FM's zero from both captures; past kMaxFmZero something was patched into FM, and it isn't stored
+    const float fm_zero = 0.5f * (at_1v.fm + at_3v.fm);
+    const bool  fm_ok   = std::fabs(fm_zero) <= unitcal::kMaxFmZero;
+    unit_cal.Save(cal, fm_ok ? fm_zero : NAN);
+    g_voct_cal = cal;
+    g_fm_zero  = unit_cal.FmZero();
+
+    // what the calibration corrects, in cents: the input's octave against the nominal law, and the
+    // detune the empty FM jack added
+    char line[24];
+    display.DrawStringLargeCentered(2, "DONE", false);
+    snprintf(line, sizeof(line), "OCT %+dc", joy::CentsPerOctaveFromNominal(cal));
+    display.DrawStringCentered(24, line, false);
+    if(fm_ok)
+        snprintf(line, sizeof(line), "FM %+dc",
+                 static_cast<int>(std::lround(fm_zero * joy::kFmDepthSemitones * 100.0f)));
+    else
+        snprintf(line, sizeof(line), "FM patched");
+    display.DrawStringCentered(36, line, false);
     display.Update();
-    System::Delay(900);
+    System::Delay(4000);
 }
 
 int main(void)
@@ -713,10 +752,10 @@ int main(void)
     SetPatch(saved.bank, saved.patch);
     // V/Oct calibration: the unit's (unit_cal.h), so one calibration serves every app that reads V/Oct. One
     // Joy kept in its own settings before then is carried over the first time.
-    const joy::VoctCal app_default{kVoctCenterNorm, kVoctSlope};
     unit_cal.Init();
-    unit_cal.Adopt({saved.voct_center, saved.voct_slope}, app_default);
-    g_voct_cal = unit_cal.Load(app_default);
+    unit_cal.Adopt({saved.voct_center, saved.voct_slope}, kV8Default);
+    g_voct_cal = unit_cal.Load(kAppDefault);
+    g_fm_zero  = unit_cal.FmZero();
     settings_dirty = false;  // restoring is not a change worth saving
 
     SetPanelLed(false);
