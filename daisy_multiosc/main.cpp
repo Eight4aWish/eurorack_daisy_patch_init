@@ -22,6 +22,7 @@ static WavesEngine      waves;
 
 int main(void)
 {
+    host.SetVersion("v2.0"); // the 2026-11-22 interface (docs/PANEL.md)
     host.AddEngine(&fm4op);
     host.AddEngine(&interval);
     host.AddEngine(&scanned);

@@ -64,7 +64,9 @@ Or drag `build/daisy_multiosc.bin` onto the SD card root and power-cycle. See
 
 ## Status
 
-**The 2026-11-22 interface is built, not yet flashed or played.** FM4OP's new
+**v2.0, the 2026-11-22 interface, is built, not yet flashed or played.** The
+splash shows MULTI OSC with v2.0 under it; the build before had no version and went
+to a SELECT list. FM4OP's new
 DSP ran on the Mac over every algorithm, ratio set, Index and Feedback at their
 ends and notes from C1 to C8: every sample finite and inside full scale. The panel
 check passes. To try on the module: load it by SD card; a module already

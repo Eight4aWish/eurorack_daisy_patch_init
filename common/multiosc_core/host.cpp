@@ -58,8 +58,11 @@ void Host::InitHardware()
     // OLED on soft I2C via the expansion header (A2 = SDA, A3 = SCL).
     display_.Init(hw_.A2, hw_.A3);
     display_.Clear();
-    display_.DrawStringLargeCentered(8, "MULTI", false);
-    display_.DrawStringLargeCentered(28, "OSC", false);
+    // 64x48: two large lines of 14 px, then the version in the small font
+    display_.DrawStringLargeCentered(2, "MULTI", false);
+    display_.DrawStringLargeCentered(18, "OSC", false);
+    if(version_)
+        display_.DrawStringCentered(38, version_, false);
     display_.Update();
     System::Delay(700);
 

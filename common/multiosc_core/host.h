@@ -29,6 +29,9 @@ class Host {
     // Register an engine before Run(). Order = the order a long hold steps through.
     void AddEngine(Engine* e);
 
+    // The firmware's version, shown under the power-up splash, e.g. "v2.0".
+    void SetVersion(const char* v) { version_ = v; }
+
     // Init hardware and the OLED, then run the saved engine, switching on a long hold. Does not return.
     void Run();
 
@@ -69,6 +72,8 @@ class Host {
     unitcal::Store                   unit_cal_{hw_.qspi}; // the unit's V/OCT calibration (unit_cal.h)
     daisy::PersistentStorage<Saved>  saved_{hw_.qspi};
     joy::AdEnvelope                  env_;
+
+    const char* version_ = nullptr;
 
     Engine* engines_[kMaxEngines] = {nullptr};
     int     engine_count_         = 0;
