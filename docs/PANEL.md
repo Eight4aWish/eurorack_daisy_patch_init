@@ -215,12 +215,12 @@ labels them for the active algorithm. `TRIG` (Gate In 1) = envelope trigger.
 | --- | --- | --- |
 | TUNE | Base freq | Envelope on/off |
 | MOD 1 | Interval (quantized offset) | **Mode** (Interval / Rational) |
-| MOD 2 | Detune | — (free) |
-| MOD 3 | Pulse width | — (free) |
+| MOD 2 | Detune | **Attack** |
+| MOD 3 | Pulse width | **Release** |
 | Short press | cycle Waveform | — |
 
 - `MOD 1` CV (CV_6) = offset CV; `MOD 3` CV (CV_8) = PWM CV (already wired).
-- `OUT L / OUT R` = osc 1 / osc 2. Free Edit slots show "—" on screen.
+- `OUT L / OUT R` = osc 1 / osc 2.
 
 ### WAVES (plain waveforms)
 
