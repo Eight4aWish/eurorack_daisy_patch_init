@@ -1,8 +1,8 @@
 // daisy_multiosc — boot-selectable multi-voice firmware for Daisy Patch Init.
 //
-// Hosts several small voice engines behind one universal panel (docs/PANEL.md).
-// Pick an engine at power-on; B7 cycles (short) and toggles Play/Edit (long).
-// Hold B7 for 3 s to go back to the chooser.
+// Hosts several small voice engines behind one panel (docs/PANEL.md). It starts in the
+// engine it was left in; hold B7 for 2 s without turning a knob for the next one, and
+// hold B7 while turning a knob for the second bank (Volume, -, Attack, Decay).
 //
 // Copyright (c) 2026 David Baghurst — MIT (see repo LICENSE).
 

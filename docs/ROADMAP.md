@@ -10,16 +10,19 @@ Mirrors the existing `common/multifx_core` + `daisy_multifx_oled`/`_seed`
 pattern (shared core, thin app wrapper):
 
 - **`common/multiosc_core/`** — host + shared UI: the `Engine` interface
-  (`Init / Process / control-map / MOD labels / Draw`), boot menu, OLED legend,
-  B7 gesture + Play/Edit page handling, soft-takeover.
+  (`Init / Process(Controls) / labels`), OLED legend, B7 gestures (tap, hold and
+  turn for the second bank, hold for the next engine), the shared envelope and
+  volume, saved settings, soft-takeover. The interface as of 2026-11-22 is in
+  [PANEL.md](PANEL.md).
 - **Each engine keeps its own directory** (`daisy_fm4op/`, `daisy_interval_osc/`,
   `daisy_scanned/`, …). Each exposes its DSP/voice as `*_voice.{h,cpp}`,
   decoupled from any standalone `main.cpp`. The standalone `main` **stays behind a
   build flag** for single-engine DFU testing — and so any engine that proves good
   enough can **graduate to its own dedicated hardware** with no untangling from
   the shared host.
-- **`daisy_multiosc/`** — the integrating app: builds `BOOT_QSPI`, compiles the
-  engine sources, lists them in the menu. Large buffers belong in SDRAM; audio
+- **`daisy_multiosc/`** — the integrating app: builds `BOOT_SRAM` (since
+  2026-11-21, so it can save to QSPI), compiles the engine sources and registers
+  them in the order a long hold steps through. Large buffers belong in SDRAM; audio
   engine re-inits per engine for native sample-rate/block-size.
 
 Provenance stays per-folder so vendored third-party code keeps its own license
@@ -31,10 +34,10 @@ and headers (see root README "Credits & Licenses").
 
 | Engine | Source | License | Notes |
 | --- | --- | --- | --- |
-| **FM4OP** | original (DaisySP) | MIT | 4-op FM; short-press = algorithm; edit = Vol/Atk/Rel |
-| **INTVL** | ndonald2/DaisyPatches (Donaldson) | MIT | dual osc; interval/detune/PW; mono sum; optional AR env |
-| **SCAN** | original | MIT | scanned synthesis; Tension/Damping/Hammer; evolving drone |
-| **WAVES** | original | MIT | plain VCO; short-press = Sin / Tri / Saw / Sqr; MOD1 = pulse width; grown from the SINE test voice |
+| **FM4OP** | original (DaisySP) | MIT | 4-op FM; pot 1 = eight algorithms; Ratio / Index / Feedback (2026-11-22) |
+| **INTVL** | ndonald2/DaisyPatches (Donaldson) | MIT | dual osc; pot 1 = Interval/Rational; interval/detune/PW; mono sum; tap = waveform pair |
+| **SCAN** | original | MIT | scanned synthesis; pot 1 = excitation; Tension/Hammer/Centring; Damping on hold + pot 4; drone until the first gate |
+| **WAVES** | original | MIT | plain VCO; pot 1 = Sin / Tri / Saw / Sqr; pot 2 = pulse width; grown from the SINE test voice |
 
 `daisy_fm4op/` and `daisy_interval_osc/` keep a `BOOT_NONE` standalone build for
 single-engine DFU testing; `daisy_scanned/` is engine-only.
@@ -66,11 +69,11 @@ Worthwhile "different" candidates, all clean from-scratch MIT builds:
 ## Build & flash (dev loop on the braids hardware)
 
 The braids unit is identical hardware and already has the Daisy bootloader
-flashed (it runs `BOOT_QSPI`), so `daisy_multiosc` runs on it as-is.
+flashed, so `daisy_multiosc` runs on it as-is.
 
 ```sh
 cd daisy_multiosc
-make                       # builds build/daisy_multiosc.bin (BOOT_QSPI)
+make                       # builds build/daisy_multiosc.bin (BOOT_SRAM)
 ```
 
 Flash either way:

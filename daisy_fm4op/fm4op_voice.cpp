@@ -1,226 +1,134 @@
-// fm4op multiosc engine — DSP ported verbatim from fm4op.cpp (MIT).
-//
-// Three algorithms (short press cycles): Parallel / Serial / Feedback.
-// Modulation is scaled by the carrier increment (original behaviour), which
-// keeps the timbre musical and limits aliasing. MOD labels are per-algorithm.
+// fm4op multiosc engine: eight algorithms, and Ratio, Index and Feedback the same in each. See
+// fm4op_voice.h.
 //
 // Copyright (c) 2026 David Baghurst — MIT (see repo LICENSE).
 
 #include "fm4op_voice.h"
 #include <cmath>
+#include "daisysp.h"
 
 using namespace daisysp;
 
 namespace multiosc {
 
-static constexpr float kTwoPi = 2.0f * static_cast<float>(M_PI);
+static constexpr float kTwoPi    = 6.283185307f;
+static constexpr float kMaxIndex = 8.0f; // as the original's Parallel depths
+static constexpr float kMaxFb    = 3.0f; // operator 4 swinging its own frequency to 3x: noisy at the top
+static constexpr float kSmooth   = 0.002f; // Index and Feedback, about 10 ms at 48 kHz
 
-static inline float WrapPhase(float p)
+static inline float Wrap(float p)
 {
-    if(p >= kTwoPi)
-        p -= kTwoPi;
-    if(p < 0.0f)
-        p += kTwoPi;
-    return p;
+    return p - kTwoPi * floorf(p * (1.0f / kTwoPi));
 }
 
-void FmFourOp::RecomputeIncrements(float base_freq)
-{
-    for(int i = 0; i < 4; i++)
-        ops_[i].incr = kTwoPi * (base_freq * ops_[i].ratio) / sample_rate_;
-}
+// For each operator, which operators modulate it (bit k = operator k + 1), and which operators are carriers.
+struct Algorithm {
+    uint8_t mods[4];
+    uint8_t carriers;
+};
+static constexpr uint8_t OP1 = 1, OP2 = 2, OP3 = 4, OP4 = 8;
+static const Algorithm kAlgo[FmFourOp::kAlgorithms] = {
+    {{OP2, OP3, OP4, 0}, OP1},                   // 1  4 > 3 > 2 > 1          one deep stack
+    {{OP2, OP3 | OP4, 0, 0}, OP1},               // 2  (3 + 4) > 2 > 1        two modulators feeding a stack
+    {{OP2 | OP3, 0, OP4, 0}, OP1},               // 3  (4 > 3) + 2 > 1        a pair and a single into one
+    {{OP2 | OP3 | OP4, 0, 0, 0}, OP1},           // 4  (2 + 3 + 4) > 1        three side by side
+    {{OP2, 0, OP4, 0}, OP1 | OP3},               // 5  4 > 3, 2 > 1           two pairs
+    {{OP4, OP4, OP4, 0}, OP1 | OP2 | OP3},       // 6  4 > 1, 2, 3            one modulator, three carriers
+    {{0, 0, OP4, 0}, OP1 | OP2 | OP3},           // 7  4 > 3, plus 2 and 1    a pair and two sines
+    {{0, 0, 0, 0}, OP1 | OP2 | OP3 | OP4},       // 8  1 + 2 + 3 + 4          four sines, an organ
+};
+static const char* const kAlgoName[FmFourOp::kAlgorithms]
+    = {"Alg1", "Alg2", "Alg3", "Alg4", "Alg5", "Alg6", "Alg7", "Alg8"};
 
-void FmFourOp::Init(DaisyPatchSM& hw, float sample_rate)
+// Operators 2, 3 and 4 against operator 1 at the note: harmonic sets, then inharmonic (agreed with David,
+// 2026-11-22, as a starting table to tune by ear). In algorithm 8 they act like drawbars.
+static const float kRatio[FmFourOp::kRatioSets][3] = {
+    {1.f, 1.f, 1.f},
+    {1.f, 1.f, 2.f},
+    {2.f, 2.f, 2.f},
+    {2.f, 3.f, 4.f},         // the original's Parallel
+    {0.5f, 1.f, 2.f},
+    {3.f, 5.f, 7.f},         // odd harmonics: hollow, as drawbars
+    {2.f, 4.f, 8.f},
+    {1.f, 2.f, 3.f},
+    {1.41421f, 1.f, 1.f},    // root 2: metallic
+    {3.5f, 1.f, 1.f},
+    {2.76f, 5.40f, 8.93f},   // a struck bar's overtones: marimba, glockenspiel
+};
+
+void FmFourOp::Init(float sample_rate)
 {
-    (void)hw;
     sample_rate_ = sample_rate;
-
-    const float ratios[4] = {1.0f, 2.0f, 3.0f, 4.0f};
     for(int i = 0; i < 4; i++)
-        ops_[i] = {0.0f, ratios[i], 0.0f, 0.0f, 0.0f};
-
-    env_.Init(sample_rate_);
-    env_.SetTime(ADSR_SEG_ATTACK, 0.01f);
-    env_.SetTime(ADSR_SEG_DECAY, 0.15f);
-    env_.SetTime(ADSR_SEG_RELEASE, 0.4f);
-    env_.SetSustainLevel(0.7f);
-
-    algo_ = 0;
-
-    st_a_.Set(a_norm_);
-    st_r_.Set(r_norm_);
-    st_v_.Set(v_norm_);
+        phase_[i] = out_[i] = 0.f;
+    fb_[0] = fb_[1] = 0.f;
+    index_ = feedback_ = 0.f;
 }
 
-const char* FmFourOp::ModLabel(int idx, bool edit) const
+const char* FmFourOp::Choice() const
 {
-    static const char* kEdit[3] = {"Vol", "Atk", "Rel"};
-    static const char* kPlay[3][3] = {
-        {"Low", "Mid", "Hi"},     // Parallel: depth of 2x/3x/4x modulators
-        {"Rat1", "Rat2", "Rat3"}, // Serial:   ratios of the three operators
-        {"Fbk", "Mid", "Hi"},     // Feedback: feedback + 2x/3x modulator depth
-    };
-    if(idx < 0 || idx > 2)
-        return "";
-    return edit ? kEdit[idx] : kPlay[algo_][idx];
+    return kAlgoName[algo_.index()];
 }
 
-const char* FmFourOp::Selection() const
+const char* FmFourOp::PotLabel(int pot) const
 {
-    // Short tag for the "NAME:SEL" title line.
-    static const char* kTag[3] = {"PARA", "SERI", "FDBK"};
-    return kTag[algo_];
+    switch(pot)
+    {
+        case 1: return "Rat";
+        case 2: return "Idx";
+        case 3: return "Fbk";
+        default: return "";
+    }
 }
 
-void FmFourOp::Process(DaisyPatchSM&             hw,
-                       const EngineContext&      ctx,
-                       AudioHandle::InputBuffer  in,
-                       AudioHandle::OutputBuffer out,
-                       size_t                    size)
+void FmFourOp::Process(const Controls& c, AudioHandle::OutputBuffer out, size_t size)
 {
-    (void)in;
+    const Algorithm& alg = kAlgo[algo_.Process(c.pot[0])];
+    const float*     r   = kRatio[ratio_.Process(c.pot[1])];
+    const float index_target = kMaxIndex * c.pot[2] * c.pot[2];
+    const float fb_target    = kMaxFb * c.pot[3] * c.pot[3];
 
-    const float k1       = hw.GetAdcValue(KNOB_MOD1);
-    const float k2       = hw.GetAdcValue(KNOB_MOD2);
-    const float k3       = hw.GetAdcValue(KNOB_MOD3);
-    const float k_tune   = hw.GetAdcValue(KNOB_TUNE);
-    const float cv_pitch = VoctSemitones(hw);  // semitones, through the unit's calibration
+    float f = mtof(c.note);
+    if(f < 20.f)
+        f = 20.f;
+    if(f > 8000.f)
+        f = 8000.f;
+    const float base     = kTwoPi * f / sample_rate_;
+    const float incr[4]  = {base, base * r[0], base * r[1], base * r[2]};
 
-    if(ctx.short_press)
-        algo_ = (algo_ + 1) % 3;
-
-    if(ctx.page_changed && ctx.edit_page)
-    {
-        st_a_.Reset(a_norm_);
-        st_r_.Reset(r_norm_);
-        st_v_.Reset(v_norm_);
-    }
-
-    // Read the gate once per block: level OR latched edge, so sub-block
-    // triggers still register. Drive the ADSR through Process(gate) alone — a
-    // hard Retrigger() would zero the level and click on overlapping notes.
-    // No "play before first gate" drone: the voice is silent until gated.
-    const bool gate = hw.gate_in_1.State() || hw.gate_in_1.Trig();
-
-    // Pitch (frozen on the Edit page, where TUNE is the env on/off control):
-    // knob = five octaves, CV = ±5 V at 1 V/oct, clamped to the audible range.
-    // libDaisy reads the CV as -1..1, so a volt is 0.2 and 12 semitones. The
-    // same law as SCAN, INTVL and WAVES.
-    if(!ctx.edit_page)
-    {
-        float bf = mtof(fmap(k_tune, 28.f, 88.f) + cv_pitch);
-        if(bf < 20.0f)
-            bf = 20.0f;
-        if(bf > 8000.0f)
-            bf = 8000.0f;
-        base_freq_ = bf;
-    }
-    const float base_freq = base_freq_;
-
-    if(ctx.edit_page)
-    {
-        // Edit page (FM controls frozen). Grid: MOD1=Vol, MOD2=Atk, MOD3=Rel
-        // so Atk/Rel sit together on the bottom row.
-        v_norm_ = st_v_.Process(k1);
-        a_norm_ = st_a_.Process(k2);
-        r_norm_ = st_r_.Process(k3);
-        env_.SetTime(ADSR_SEG_ATTACK, 0.001f + a_norm_ * 0.5f);
-        env_.SetTime(ADSR_SEG_RELEASE, 0.02f + r_norm_ * 1.2f);
-        master_gain_ = 0.2f + v_norm_ * 0.8f;
-    }
-    else if(algo_ == 0)
-    {
-        // Parallel: three modulators (2x/3x/4x) onto the carrier.
-        ops_[1].ratio     = 2.0f;
-        ops_[2].ratio     = 3.0f;
-        ops_[3].ratio     = 4.0f;
-        ops_[1].mod_index = k1 * 8.0f;
-        ops_[2].mod_index = k2 * 8.0f;
-        ops_[3].mod_index = k3 * 8.0f;
-    }
-    else if(algo_ == 1)
-    {
-        // Serial: chain op3->op2->op1->carrier; knobs select ratios.
-        static const float harmonic[]
-            = {0.5f, 1.0f, 1.5f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 8.0f};
-        auto pick = [](float k) {
-            int idx = (int)(k * 8.999f);
-            if(idx < 0)
-                idx = 0;
-            if(idx > 8)
-                idx = 8;
-            return harmonic[idx];
-        };
-        ops_[1].ratio     = pick(k1);
-        ops_[2].ratio     = pick(k2);
-        ops_[3].ratio     = pick(k3);
-        ops_[1].mod_index = 4.0f;
-        ops_[2].mod_index = 3.0f;
-        ops_[3].mod_index = 2.0f;
-    }
-    else
-    {
-        // Feedback: op1 self-feedback (k1), plus 2x/3x modulators.
-        ops_[1].ratio     = 2.0f;
-        ops_[2].ratio     = 2.5f;
-        ops_[3].ratio     = 3.0f;
-        ops_[1].mod_index = 0.0f;
-        ops_[2].mod_index = k2 * 10.0f;
-        ops_[3].mod_index = k3 * 10.0f;
-        ops_[1].last_out  = k1 * 6.0f; // feedback depth
-    }
-
-    RecomputeIncrements(base_freq);
+    int carriers = 0;
+    for(int o = 0; o < 4; o++)
+        carriers += (alg.carriers >> o) & 1;
+    const float norm = 1.0f / static_cast<float>(carriers);
 
     for(size_t i = 0; i < size; i++)
     {
-        const float env_amp = ctx.env_on ? env_.Process(gate) : 1.0f;
+        index_ += kSmooth * (index_target - index_);
+        feedback_ += kSmooth * (fb_target - feedback_);
 
-        float mod = 0.0f;
-        if(algo_ == 0)
+        // Operators 4 down to 1: every modulator sits above its target, so its sample is already made.
+        for(int o = 3; o >= 0; o--)
         {
-            float m1 = sinf(ops_[1].phase);
-            ops_[1].phase = WrapPhase(ops_[1].phase + ops_[1].incr);
-            float m2 = sinf(ops_[2].phase);
-            ops_[2].phase = WrapPhase(ops_[2].phase + ops_[2].incr);
-            float m3 = sinf(ops_[3].phase);
-            ops_[3].phase = WrapPhase(ops_[3].phase + ops_[3].incr);
-            mod = (m1 * ops_[1].mod_index + m2 * ops_[2].mod_index
-                   + m3 * ops_[3].mod_index)
-                  * ops_[0].incr;
+            float m = 0.f;
+            for(int k = o + 1; k < 4; k++)
+                if(alg.mods[o] & (1 << k))
+                    m += out_[k];
+            float pm = incr[o] * m * index_;
+            if(o == 3)
+                pm += incr[3] * feedback_ * 0.5f * (fb_[0] + fb_[1]);
+            out_[o]   = sinf(phase_[o] + pm);
+            phase_[o] = Wrap(phase_[o] + incr[o] + pm);
         }
-        else if(algo_ == 1)
-        {
-            float m3 = sinf(ops_[3].phase);
-            ops_[3].phase = WrapPhase(ops_[3].phase + ops_[3].incr);
-            float m2_mod = m3 * ops_[3].mod_index * ops_[2].incr;
-            float m2     = sinf(ops_[2].phase + m2_mod);
-            ops_[2].phase = WrapPhase(ops_[2].phase + ops_[2].incr + m2_mod);
-            float m1_mod = m2 * ops_[2].mod_index * ops_[1].incr;
-            float m1     = sinf(ops_[1].phase + m1_mod);
-            ops_[1].phase = WrapPhase(ops_[1].phase + ops_[1].incr + m1_mod);
-            mod = (m1 * ops_[1].mod_index) * ops_[0].incr;
-        }
-        else
-        {
-            float fb_in = sinf(ops_[1].phase);
-            float m1
-                = sinf(ops_[1].phase + fb_in * ops_[1].last_out * ops_[1].incr);
-            ops_[1].phase = WrapPhase(ops_[1].phase + ops_[1].incr
-                                      + fb_in * ops_[1].last_out * ops_[1].incr);
-            float m2 = sinf(ops_[2].phase);
-            ops_[2].phase = WrapPhase(ops_[2].phase + ops_[2].incr);
-            float m3 = sinf(ops_[3].phase);
-            ops_[3].phase = WrapPhase(ops_[3].phase + ops_[3].incr);
-            mod = (m1 * ops_[1].last_out + m2 * ops_[2].mod_index
-                   + m3 * ops_[3].mod_index)
-                  * ops_[0].incr;
-        }
+        fb_[1] = fb_[0];
+        fb_[0] = out_[3];
 
-        const float sample = sinf(ops_[0].phase + mod) * env_amp * master_gain_;
-        ops_[0].phase      = WrapPhase(ops_[0].phase + ops_[0].incr + mod);
-        out[0][i]          = sample;
-        out[1][i]          = sample;
+        float s = 0.f;
+        for(int o = 0; o < 4; o++)
+            if(alg.carriers & (1 << o))
+                s += out_[o];
+        s *= norm;
+        out[0][i] = s;
+        out[1][i] = s;
     }
 }
 

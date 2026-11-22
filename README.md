@@ -92,7 +92,7 @@ make DAISY_ROOT=/path/to/daisy
 
 ## Projects
 
-- `daisy_multiosc/` – **boot-selectable multi-engine synth** for the Daisy Patch Init: pick a voice at power-up, all sharing one universal panel + OLED legend (`BOOT_QSPI`). Engines: **FM4OP** (4-op FM), **INTVL** (dual interval oscillator), **SCAN** (scanned synthesis), **WAVES** (plain VCO: sine, triangle, saw, square). See its [README](daisy_multiosc/README.md), the control contract in [docs/PANEL.md](docs/PANEL.md), and [docs/ROADMAP.md](docs/ROADMAP.md).
+- `daisy_multiosc/` – **multi-engine synth** for the Daisy Patch Init with an OLED: four voices on one panel, pot 1 picking and pots 2–4 shaping in each, B7 held 2 s for the next engine, held and turned for Volume, Attack and Decay (`BOOT_SRAM`). Engines: **FM4OP** (4-op FM, eight algorithms), **INTVL** (dual interval oscillator), **SCAN** (scanned synthesis), **WAVES** (plain VCO: sine, triangle, saw, square). See its [README](daisy_multiosc/README.md), the control contract in [docs/PANEL.md](docs/PANEL.md), and [docs/ROADMAP.md](docs/ROADMAP.md).
 - `daisy_grids/` – **Sorrow** — drum machine: a pool of ten DaisySP drum models rolled by the B8 toggle, four pattern banks (one Grids' own, three derived here from the Groove MIDI Dataset), per-part densities and automatic clock-resolution detection, based on Mutable Instruments Grids (**GPL-3.0-or-later**). Runs `BOOT_SRAM`, so it needs the Daisy bootloader.
 - `daisy_braids_oled/` – **Joy** — macro oscillator (48 models) with 64x48 OLED menu navigation, based on Mutable Instruments Braids; on-module V/Oct calibration (hold B7 at power-up)
 - `daisy_joy_lite/` – **Joy Lite** — screenless sibling: a curated 16 Braids models (the ones Plaits doesn't cover) in two toggle banks, model number shown by LED blink
@@ -109,7 +109,7 @@ make DAISY_ROOT=/path/to/daisy
 
 ## Shared code
 
-- `common/multiosc_core/` – host/framework for `daisy_multiosc`: the `Engine` interface, boot chooser, B7 gestures (short = cycle, long = Play/Edit), soft-takeover, and the OLED legend. See its [README](common/multiosc_core/README.md).
+- `common/multiosc_core/` – host/framework for `daisy_multiosc`: the `Engine` interface, B7 gestures (tap, hold and turn, hold for the next engine), Joy's envelope, the saved settings, soft-takeover, and the OLED legend. See its [README](common/multiosc_core/README.md).
 - `common/multifx_core/` – portable, DaisySP-only MultiFX DSP/UI core (reverb, delay, tone and misc effect banks, output voicing, and a Bank/Patch navigation model) shared by `daisy_multifx_oled` (and its homebrew Daisy Seed variant), and intended for reuse on other Daisy boards. See its [README](common/multifx_core/README.md).
 - `common/chaos_core/` – platform-independent chaotic-attractor DSP (`<math.h>` only): the `ChaosBase` interface, twelve RK4 attractors in two banks, the `Voice` renderer, and host tools (`characterise`, `periodmap`, `pitchmap`). Moved here from `eurorack_modules`. See its [README](common/chaos_core/README.md).
 - `common/voct_cal.h` + `common/joy_dsp.h` – shared by **Joy** and **Joy Lite**: the two-point V/Oct calibration math, and the envelope + fixed-point DSP helpers. Only each build's front-end (OLED navigator vs screenless LED/toggle) differs.

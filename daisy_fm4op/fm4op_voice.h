@@ -1,58 +1,48 @@
-// fm4op as a multiosc engine.
+// fm4op as a multiosc engine: a 4-operator FM voice.
 //
-// 4-operator FM voice mapped onto the universal panel (docs/PANEL.md):
-//   TUNE = pitch (+ V/OCT)        short press = cycle algorithm
-//   Play : MOD1..3 = per-algorithm FM controls (see ModLabel)
-//   Edit : MOD1 = Attack  MOD2 = Release  MOD3 = Volume  (soft-takeover)
-// Algorithms (short press): Parallel / Serial / Feedback. The original
-// frequency-scaled modulation is preserved (modulation scales with the carrier
-// increment), which keeps it musical and limits aliasing.
+// The panel (docs/PANEL.md, agreed with David on 2026-11-22):
+//   pot 1  Algorithm, eight of them, from one carrier with a deep stack to four sines mixed
+//   pot 2  Ratio: a set of ratios for operators 2, 3 and 4, harmonic first, then inharmonic
+//   pot 3  Index: how much modulation, every modulator together; at zero the carriers are plain sines
+//   pot 4  Feedback: operator 4 modulating itself, from a sine through saw-like to noisy
+// Pots 2-4 mean the same in every algorithm; the host gives them the MOD 1-3 jacks. The envelope and
+// volume are the host's. Operator 1 is always a carrier, and every routing runs from a higher operator to
+// a lower one, so operators are computed 4, 3, 2, 1 and each sees its modulators' current sample.
 //
-// DSP ported verbatim from daisy_fm4op/fm4op.cpp (original, MIT). The standalone
-// fm4op.cpp build is retained behind its own Makefile for single-engine DFU
-// testing; this class is the integrated form for daisy_multiosc.
+// The modulation is frequency-scaled, as the original fm4op: what a modulator adds to its target is scaled
+// by the target's own increment, so it moves the target's frequency in proportion to it and the timbre
+// holds across the keyboard. A rewrite to raw phase modulation with single-sample feedback aliased badly
+// and was reverted once; the feedback here is frequency-scaled too, and averages the last two samples.
 //
 // Copyright (c) 2026 David Baghurst — MIT (see repo LICENSE).
 
 #pragma once
 
-#include "daisysp.h"
 #include "multiosc_core/engine.h"
 
 namespace multiosc {
 
 class FmFourOp : public Engine {
   public:
-    void Init(DaisyPatchSM& hw, float sample_rate) override;
-    void Process(DaisyPatchSM&             hw,
-                 const EngineContext&      ctx,
-                 AudioHandle::InputBuffer  in,
-                 AudioHandle::OutputBuffer out,
-                 size_t                    size) override;
+    void Init(float sample_rate) override;
+    void Process(const Controls& c, AudioHandle::OutputBuffer out, size_t size) override;
 
     const char* Name() const override { return "FM4OP"; }
-    const char* ModLabel(int idx, bool edit) const override;
-    const char* ShortLabel() const override { return "ALGO"; }
-    const char* Selection() const override;
-    int         BlockSize() const override { return 48; }
+    const char* Choice() const override;
+    const char* PotLabel(int pot) const override;
+
+    static constexpr int kAlgorithms = 8;
+    static constexpr int kRatioSets  = 11;
 
   private:
-    struct Op {
-        float phase, ratio, mod_index, incr, last_out;
-    };
-
-    void RecomputeIncrements(float base_freq);
-
-    Op             ops_[4];
-    daisysp::Adsr  env_;
-    float          sample_rate_ = 48000.f;
-    float          master_gain_ = 0.6f;
-    uint8_t        algo_        = 0; // 0 Parallel, 1 Serial, 2 Feedback
-    float          base_freq_   = 110.0f; // held while on the Edit page
-
-    // Edit-page params (normalised 0..1) with soft-takeover.
-    float        a_norm_ = 0.02f, r_norm_ = 0.32f, v_norm_ = 0.5f;
-    SoftTakeover st_a_, st_r_, st_v_;
+    float   sample_rate_ = 48000.f;
+    float   phase_[4]    = {0, 0, 0, 0};
+    float   out_[4]      = {0, 0, 0, 0}; // this sample's outputs
+    float   fb_[2]       = {0, 0};       // operator 4's last two outputs
+    float   index_       = 0.f;          // smoothed
+    float   feedback_    = 0.f;          // smoothed
+    Stepper algo_{kAlgorithms};
+    Stepper ratio_{kRatioSets};
 };
 
 } // namespace multiosc

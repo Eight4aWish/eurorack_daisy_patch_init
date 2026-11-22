@@ -1,11 +1,14 @@
 // interval_osc as a multiosc engine.
 //
-// Dual oscillator with a quantized interval/ratio offset, mapped onto the
-// universal panel (docs/PANEL.md):
-//   TUNE = base pitch (+ V/OCT)     short press = cycle waveform
-//   Play : MOD1 = Interval/Ratio  MOD2 = Detune  MOD3 = Pulse width
-//   Edit : MOD1 = Interval/Rational mode
-// Continuous (VCO/drone): no envelope. Out L = osc 1, Out R = osc 2.
+// Dual oscillator with a quantized interval/ratio offset, on the panel agreed with David on 2026-11-22
+// (docs/PANEL.md):
+//   pot 1  Mode: Interval (semitones) or Rational (just ratios)
+//   pot 2  Interval, or the ratio in Rational mode      (+ the MOD 1 jack)
+//   pot 3  Detune, up to a semitone each way            (+ the MOD 2 jack)
+//   pot 4  Pulse width                                  (+ the MOD 3 jack)
+//   tap    the waveform pair
+// Pitch is V/OCT alone; the envelope and volume are the host's. Both oscillators are summed to both
+// outputs, so the interval and detune are heard on one.
 //
 // The oscillator behaviour, the interval/rational modes and the ratio table are
 // ported from IntervalOsc.cpp beside this file (Nick Donaldson,
@@ -29,19 +32,15 @@ namespace multiosc {
 
 class IntervalOscVoice : public Engine {
   public:
-    void Init(DaisyPatchSM& hw, float sample_rate) override;
-    void Process(DaisyPatchSM&             hw,
-                 const EngineContext&      ctx,
-                 AudioHandle::InputBuffer  in,
-                 AudioHandle::OutputBuffer out,
-                 size_t                    size) override;
+    void Init(float sample_rate) override;
+    void Process(const Controls& c, AudioHandle::OutputBuffer out, size_t size) override;
 
     const char* Name() const override { return "INTVL"; }
-    const char* ModLabel(int idx, bool edit) const override;
-    const char* ShortLabel() const override { return "WAVE"; }
-    const char* Selection() const override;
-    int         BlockSize() const override { return 48; }
-    bool        DefaultEnvOn() const override { return false; } // VCO/drone
+    const char* Choice() const override { return harmonic_mode_ ? "Ratl" : "Intv"; }
+    const char* PotLabel(int pot) const override;
+    const char* TapSelection() const override;
+    uint8_t     TapState() const override { return wave_mode_; }
+    void        SetTapState(uint8_t s) override;
 
   private:
     enum WaveMode {
@@ -64,16 +63,14 @@ class IntervalOscVoice : public Engine {
 
     daisysp::BlOsc      oscs_[2];
     daisysp::Oscillator sin_oscs_[2];
-    daisysp::Adsr       env_;
 
     uint8_t wave_mode_      = 0;
     bool    harmonic_mode_  = false;
+    Stepper mode_{2};
     float   sample_rate_    = 48000.f;
     float   smooth_coef_    = 0.2f;
     float   base_           = 56.f; // smoothed base note
-    float   base_in_        = 56.f; // base-note target (held on the Edit page)
     float   offset_         = 0.f;  // smoothed offset / ratio
-    float   offset_target_  = 0.f;  // held on the Edit page
     float   detune_         = 0.f;
     float   pw_             = 0.5f;
 };

@@ -1,94 +1,106 @@
 // multiosc_core — shared engine interface
 //
-// One boot-selectable host (see host.h) drives several voice "engines" over the
-// universal panel defined in docs/PANEL.md. Each engine implements this
-// interface; the host owns the hardware, OLED, button gestures and Play/Edit
-// page state, and dispatches audio to the active engine.
+// One host (host.h) drives several voice engines over one panel, the contract agreed with David on
+// 2026-11-22 (docs/PANEL.md). The host owns the hardware, the OLED, B7, the envelope and the volume, and
+// hands the active engine its controls already read, so an engine touches no hardware:
+//
+//   pot 1        the engine's selector. Knob only: the jack below it is V/OCT.
+//   pots 2-4     each knob plus the MOD 1-3 jack below it.
+//   hold + turn  a second bank: pot 1 Volume, pot 2 free, pot 3 Attack, pot 4 Decay (the host's).
+//   tap          the engine's, if it has a use for one.
+//   V/OCT        C3 at 0 V, through the module's calibration (common/unit_cal.h).
+//   GATE IN 1    the envelope: a drone until the first gate, then gated (Joy's AdEnvelope).
 //
 // Copyright (c) 2026 David Baghurst — MIT (see repo LICENSE).
 
 #pragma once
 
-#include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include "daisy_patch_sm.h"
 
 namespace multiosc {
 
 using daisy::AudioHandle;
-using daisy::patch_sm::DaisyPatchSM;
 
-// Universal control map (ADC indices). See docs/PANEL.md.
-//   Knobs : TUNE + MOD1..3        CV jacks : V/OCT + MOD1..3 CV
+// The patch.Init's ADC channels as this panel uses them.
 enum AdcChan {
-    KNOB_TUNE = 0, // CV_1
-    KNOB_MOD1 = 1, // CV_2
-    KNOB_MOD2 = 2, // CV_3
-    KNOB_MOD3 = 3, // CV_4
-    CV_VOCT   = 4, // CV_5
-    CV_MOD1   = 5, // CV_6
-    CV_MOD2   = 6, // CV_7
-    CV_MOD3   = 7, // CV_8
+    POT1    = 0, // CV_1
+    POT2    = 1, // CV_2
+    POT3    = 2, // CV_3
+    POT4    = 3, // CV_4
+    CV_VOCT = 4, // CV_5, under pot 1
+    CV_POT2 = 5, // CV_6, the MOD 1 jack
+    CV_POT3 = 6, // CV_7, the MOD 2 jack
+    CV_POT4 = 7, // CV_8, the MOD 3 jack
 };
 
-// V/OCT in semitones above 0 V, through the unit's calibration (common/unit_cal.h, shared with Joy, Joy Lite
-// and Wish; hold B7 at power-up to calibrate): what every engine adds to its TUNE note. With nothing measured
-// on the unit it is the old law exactly, adc * 60 (libDaisy reads the CV as -1..1, so a volt is 0.2).
-float VoctSemitones(DaisyPatchSM& hw);
+constexpr float kBaseNote = 48.0f; // C3 at 0 V, as Joy (David, 2026-11-22)
 
-// Per-block state the host hands to the active engine.
-struct EngineContext {
-    bool edit_page    = false; // false = Play page, true = Edit page
-    bool short_press  = false; // one-shot: B7 short press fired this block
-    bool page_changed = false; // one-shot: Play<->Edit toggled this block
-    bool env_on       = true;  // amplitude envelope enabled (else drone)
+// What the host hands an engine each block.
+struct Controls {
+    float pot[4];  // 0..1. pot[0] is the knob alone; pot[1..3] the knob plus its jack, clamped
+    float decay;   // hold + pot 4, 0..1: the envelope's decay, and SCAN's damping
+    float note;    // MIDI note: kBaseNote at 0 V plus V/OCT
+    bool  gate;    // GATE IN 1, high or an edge this block
+    bool  gated;   // a gate has arrived since this engine started: the drone has ended
+    bool  tap;     // one-shot: B7 tapped this block
 };
 
-// A selectable voice. Engines read the universal controls from `hw` themselves
-// (hw.GetAdcValue(KNOB_*/CV_*), hw.gate_in_1, audio in), so they keep their own
-// native scaling. The host only supplies page/gesture context and the labels
-// shown on screen.
 class Engine {
   public:
     virtual ~Engine() {}
 
-    // Called once before audio starts, after the host picks this engine.
-    virtual void Init(DaisyPatchSM& hw, float sample_rate) = 0;
+    // Before audio starts, each time the engine is chosen: it resets its own state.
+    virtual void Init(float sample_rate) = 0;
 
-    // Audio-rate render. Runs in the audio callback.
-    virtual void Process(DaisyPatchSM&             hw,
-                         const EngineContext&      ctx,
-                         AudioHandle::InputBuffer  in,
-                         AudioHandle::OutputBuffer out,
-                         size_t                    size) = 0;
+    // Audio rate, in the callback. Writes both outputs at the engine's own level, peaking near 1; the host
+    // then applies the envelope (if UsesEnvelope) and the volume.
+    virtual void Process(const Controls& c, AudioHandle::OutputBuffer out, size_t size) = 0;
 
-    // --- Screen legend (docs/PANEL.md control reminder) ---
-    virtual const char* Name() const = 0;
-    // Label for MOD1..3 (idx 0..2) on the given page.
-    virtual const char* ModLabel(int idx, bool edit) const = 0;
-    // What a short press does, and the current selection it cycles.
-    virtual const char* ShortLabel() const = 0;   // e.g. "ALGO", "MODEL"
-    virtual const char* Selection() const = 0;     // e.g. "Parallel"
+    // --- the screen. Every string a stable pointer: the redraw check compares pointers.
+    virtual const char* Name() const = 0;           // up to five characters (the large splash)
+    virtual const char* Choice() const = 0;         // pot 1's current choice, up to five characters
+    virtual const char* PotLabel(int pot) const = 0; // pots 1-3 as indices 1..3, up to four characters
+    virtual const char* DecayLabel() const { return "Dec"; }
+    virtual const char* TapSelection() const { return nullptr; } // nullptr: the tap does nothing
 
-    // What the short-press selection is *on the Edit page*, for engines where
-    // that page has its own state worth naming -- the BYTEBEAT engine's formula
-    // family was one, deciding what the short press then walked. No current
-    // engine uses it. Returning nullptr
-    // (the default) leaves the page reading plain "EDIT" as before. Must be a
-    // stable pointer for the same value: the redraw check compares by pointer.
-    virtual const char* EditSelection() const { return nullptr; }
+    // The tap's state, kept with the engine's settings across power cycles.
+    virtual uint8_t TapState() const { return 0; }
+    virtual void    SetTapState(uint8_t) {}
 
-    // Native audio block size for this engine.
+    // Whether the host's attack/decay envelope shapes the output. SCAN's decay is its own damping.
+    virtual bool  UsesEnvelope() const { return true; }
+    virtual float DefaultDecay() const { return 0.25f; } // 0..1, before the first time it is set
+
     virtual int BlockSize() const { return 48; }
-
-    // Whether the amplitude envelope is on by default for this engine
-    // (voices: true; free-running oscillators/drones: false). Toggled live by
-    // the Edit-page TUNE knob.
-    virtual bool DefaultEnvOn() const { return true; }
 };
 
-// Soft-takeover for a knob that changes meaning between pages: after Reset() the
-// knob is "uncaught" and the parameter holds until the physical knob sweeps
-// through the stored value, avoiding jumps. See docs/PANEL.md.
+// A stepped choice from a pot (pot 1's selectors, FM4OP's ratio sets), with hysteresis so a knob resting on
+// a boundary doesn't flicker between two.
+class Stepper {
+  public:
+    explicit Stepper(int steps) : steps_(steps) {}
+    int Process(float x)
+    {
+        const float pos = x * steps_;
+        if(pos < index_ - kHyst || pos > index_ + 1 + kHyst)
+        {
+            int i = static_cast<int>(pos);
+            index_ = i < 0 ? 0 : i >= steps_ ? steps_ - 1 : i;
+        }
+        return index_;
+    }
+    int index() const { return index_; }
+
+  private:
+    static constexpr float kHyst = 0.2f; // a fifth of a step either side
+    int                    steps_;
+    int                    index_ = 0;
+};
+
+// Soft-takeover ("catch"): after Reset() a knob doesn't move its parameter until it sweeps through the
+// value the parameter holds, so changing layer never makes anything jump (as Wish).
 class SoftTakeover {
   public:
     void Reset(float param_value)
@@ -96,7 +108,6 @@ class SoftTakeover {
         value_  = param_value;
         caught_ = false;
     }
-    // Force the parameter to a value and mark it already "caught" (live).
     void Set(float v)
     {
         value_  = v;
@@ -104,7 +115,7 @@ class SoftTakeover {
     }
     float Process(float knob)
     {
-        if(!caught_ && std::fabs(knob - value_) <= kThresh)
+        if(!caught_ && (knob - value_ <= kThresh && value_ - knob <= kThresh))
             caught_ = true;
         if(caught_)
             value_ = knob;

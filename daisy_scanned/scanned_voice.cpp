@@ -14,9 +14,8 @@ float ScannedVoice::NextRand()
     return (float)(rng_ >> 9) * (1.0f / 8388608.0f) - 1.0f; // -1..1
 }
 
-void ScannedVoice::Init(DaisyPatchSM& hw, float sample_rate)
+void ScannedVoice::Init(float sample_rate)
 {
-    (void)hw;
     sample_rate_ = sample_rate;
     for(int i = 0; i < kN; i++)
         pos_[i] = prev_[i] = 0.0f;
@@ -80,69 +79,51 @@ void ScannedVoice::UpdateDynamics()
     }
 }
 
-const char* ScannedVoice::ModLabel(int idx, bool edit) const
+const char* ScannedVoice::PotLabel(int pot) const
 {
-    if(edit)
-        return idx == 0 ? "Cntr" : "-";
-    switch(idx)
+    switch(pot)
     {
-        case 0: return "Tens";
-        case 1: return "Damp";
+        case 1: return "Tens";
         case 2: return "Hamr";
+        case 3: return "Cntr";
         default: return "";
     }
 }
 
-const char* ScannedVoice::Selection() const
+const char* ScannedVoice::Choice() const
 {
     static const char* kTag[kShapes] = {"Pulse", "Bump", "Two", "Noise"};
     return kTag[shape_];
 }
 
-void ScannedVoice::Process(DaisyPatchSM&             hw,
-                           const EngineContext&      ctx,
-                           AudioHandle::InputBuffer  in,
-                           AudioHandle::OutputBuffer out,
-                           size_t                    size)
+void ScannedVoice::Process(const Controls& c, AudioHandle::OutputBuffer out, size_t size)
 {
-    (void)in;
+    shape_   = static_cast<uint8_t>(shape_pot_.Process(c.pot[0]));
+    tension_ = fmap(c.pot[1], 0.02f, 0.45f);
+    hammer_  = c.pot[2];
+    center_  = fmap(c.pot[3], 0.0f, 0.02f);
+    // Decay is damping, turned round so clockwise rings longer; exponential, as decay time goes as its
+    // inverse: 0.03 (short) to 0.0005 (long), the first build's range.
+    damping_ = 0.03f * powf(0.0005f / 0.03f, c.decay);
 
-    if(ctx.short_press)
-        shape_ = (shape_ + 1) % kShapes;
+    float f = mtof(c.note);
+    if(f < 20.f)
+        f = 20.f;
+    if(f > 5000.f)
+        f = 5000.f;
+    freq_ = f;
 
-    if(ctx.edit_page)
-    {
-        // Pitch held (TUNE is the env on/off control on the Edit page).
-        center_ = fmap(hw.GetAdcValue(KNOB_MOD1), 0.0f, 0.02f);
-    }
-    else
-    {
-        const float midi
-            = fmap(hw.GetAdcValue(KNOB_TUNE), 28.f, 88.f)
-              + VoctSemitones(hw);
-        float f = mtof(midi);
-        if(f < 20.f)
-            f = 20.f;
-        if(f > 5000.f)
-            f = 5000.f;
-        freq_held_ = f;
-        tension_   = fmap(hw.GetAdcValue(KNOB_MOD1), 0.02f, 0.45f);
-        damping_   = fmap(hw.GetAdcValue(KNOB_MOD2), 0.0005f, 0.03f);
-        hammer_    = fmap(hw.GetAdcValue(KNOB_MOD3), 0.0f, 1.0f);
-    }
-
-    // Excitation: pluck on the gate edge; in drone mode keep feeding energy.
-    const bool gate   = hw.gate_in_1.State() || hw.gate_in_1.Trig();
-    const bool rising = gate && !prev_gate_;
-    prev_gate_        = gate;
-    if(!ctx.env_on)
+    // A drone until the first gate, fed all the time; from then on each gate strikes it.
+    const bool rising = c.gate && !prev_gate_;
+    prev_gate_        = c.gate;
+    if(!c.gated)
         Excite(hammer_ * 0.02f); // continuous self-excitation -> drone
     if(rising)
         Excite(hammer_);
 
     UpdateDynamics(); // one sub-audio tick per block
 
-    const float inc = freq_held_ / sample_rate_;
+    const float inc = freq_ / sample_rate_;
     for(size_t n = 0; n < size; n++)
     {
         scan_phase_ += inc;

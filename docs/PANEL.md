@@ -1,67 +1,16 @@
 # Universal Panel & Control Map
 
-Reference for a single physical panel shared by every selectable firmware on the
-hand-built Daisy Patch Init module. The panel labels are fixed; each firmware
-conforms to the roles below, and the OLED prints the exact per-app meaning of
-the variable controls.
+Reference for the panel shared by every firmware on the hand-built Daisy Patch Init modules with an
+OLED. The silk is fixed; each firmware gives the positions its own meaning, and the OLED prints it.
 
-This targets the "occasional-use" firmware family intended to be selectable at
-boot: `daisy_fm4op` (FM), `daisy_interval_osc` (dual osc), `daisy_scanned`
-(scanned synthesis). New synth-voice firmwares are expected to follow the same
-contract.
-
-> **Scope.** This document is the *design contract for that family*, not a
-> description of everything flashed on the module.
+> **Scope.**
 >
-> - The contract is **implemented** by [`daisy_multiosc/`](../daisy_multiosc/),
->   which hosts FM4OP, INTVL, SCAN and WAVES behind the boot-time
->   chooser described below.
-> - **Joy** (`daisy_braids_oled/`) and **Joy Lite** (`daisy_joy_lite/`) are
->   separate firmwares on this same panel that **do not follow the contract**.
->   They predate it and spend all four knobs on voice parameters, so there is
->   no `TUNE` knob and no Play/Edit page. Their actual map is under
->   [Per-firmware maps](#per-firmware-maps).
-
-## The next contract (agreed with David, 2026-11-22; not built yet)
-
-A redesign of MultiOsc's interface to work as David's other patch.Init apps do (Joy, Mirth, Wish,
-Sorrow). Everything below this section describes the firmware as it is today.
-
-- **No TUNE knob, and no transpose.** Pitch is V/OCT alone, through the module's calibration. All
-  four knobs go to the voice.
-- **Pot 1 picks, pots 2–4 shape.** Pot 1 sits over the V/OCT jack, so it is the one knob without
-  CV: it holds each engine's selector. Pots 2–4 take the MOD 1–3 jacks below them.
-- **B7:**
-  - **tap:** per engine (INTVL's waveform pair; free in the others);
-  - **hold and turn:** a second bank of four, with catch: pot 1 **Volume** in every engine, pot 2
-    per engine, pot 3 **Attack**, pot 4 **Decay**, the bottom row as on Joy;
-  - **hold without turning:** the next engine. No chooser: MultiOsc starts in the last engine,
-    saved to QSPI (it runs `BOOT_SRAM`);
-  - **held at power-up:** the module's V/OCT calibration, as now.
-
-| Engine | Pot 1 (no CV) | Pot 2 | Pot 3 | Pot 4 | Tap | Hold + pot 2 | Hold + pot 3 / 4 |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| FM4OP | **Algorithm**, eight | Ratio | Index | Feedback | — | — | Attack / Decay (release) |
-| INTVL | **Mode**: Interval, Rational | Interval | Detune | Pulse width | Waveform pair | — | Attack / Decay (release) |
-| SCAN | **Excitation**: Pulse, Bump, Two, Noise | Tension | Hammer | Centring | — | — | inactive / Decay = Damping |
-| WAVES | **Shape**: Sin, Tri, Saw, Sqr | Pulse width (Sqr) | — | — | — | — | Attack / Decay |
-
-- **FM4OP** gets new DSP: eight algorithms, and pots 2–4 meaning the same in every one, where today
-  they are depths in Parallel, ratios in Serial and feedback plus depths in Feedback, and Serial has
-  no depth at all. Ratio steps through sets of modulator ratios, harmonic first; Index is how much
-  modulation; Feedback is operator feedback. Keep the original frequency-scaled modulation (`mod *=
-  carrier increment`): a raw phase-mod rewrite aliased badly once and was reverted.
-- **SCAN's Damping is its decay**, so it moves to hold + pot 4. A struck ring has no attack, so
-  hold + pot 3 does nothing there (David). With no gates, Damping sets how the drone settles
-  against Hammer's constant feed rather than a decay.
-- **WAVES** needs an attack/decay envelope added: today a gate only fades it in and out over 5 ms.
-
-- **The envelope follows TRIG**, as on Joy: a drone until the first gate, gated from then on, until
-  the engine changes. No envelope switch.
-- **0 V is C3** (MIDI 48), as on Joy.
-- **The idle jacks stay idle:** GATE 2, both gate outs, CV OUT, audio IN and the LED (David: no).
-
-Still open: FM4OP's eight algorithms and its ratio table.
+> - **The contract below is implemented** by [`daisy_multiosc/`](../daisy_multiosc/), which hosts
+>   FM4OP, INTVL, SCAN and WAVES. It was redesigned with David on 2026-11-22 to work as his other
+>   patch.Init apps do (Joy, Mirth, Wish, Sorrow): built the same day, **not yet flashed or played**.
+> - **Joy** (`daisy_braids_oled/`) and **Joy Lite** (`daisy_joy_lite/`) are separate firmwares on
+>   this panel. The contract follows their layout, attack and decay at the bottom, where it can:
+>   their map is under [Joy and Joy Lite](#joy-and-joy-lite).
 
 ## Hardware surface (from `patch_init_schematic.pdf`)
 
@@ -78,21 +27,15 @@ Still open: FM4OP's eight algorithms and its ratio table.
 | Button | SW_1 minibutton (momentary) | **B7** |
 | OLED | SSD1306 64×48, soft I2C | **A2 = SDA, A3 = SCL** |
 
-The former **SW_2 ON-ON toggle (B8) is removed** — its panel position is taken
-by the OLED — for every firmware in this contract, and for Joy.
+The four knobs sit two by two, knobs 1 and 2 on top, each CV jack below its knob. The former
+**SW_2 ON-ON toggle (B8) is removed**: its panel position is taken by the OLED, for MultiOsc and for
+Joy.
 
-**Exception:** **Joy Lite** is screenless and uses B8 as its bank A/B toggle, so
-the claim "B8 is unused in firmware" holds for everything *except* Joy Lite. The
-toggle and the OLED compete for one panel position, so a given physical build
-picks one. Joy Lite still runs on a Joy panel, but with B8 unpopulated the
-internal pull-up reads as closed and it is stuck in **Bank B**.
+**Exception:** **Joy Lite** is screenless and uses B8 as its bank A/B toggle. The toggle and the OLED
+compete for one panel position, so a given physical build picks one. Joy Lite still runs on a Joy
+panel, but with B8 unpopulated the internal pull-up reads as closed and it is stuck in **Bank B**.
 
-## Label scheme (silk-ready)
-
-Mixed convention: **fixed semantic names** for things that never change across
-firmwares (and are unlikely to for future ones); **numbered `MOD n`** for things
-that do, with each variable CV jack sitting directly below its matching pot. The
-screen always shows what `MOD 1–3` currently mean.
+## The silk
 
 ```
  ( TUNE )    ( MOD 1 )   ( MOD 2 )   ( MOD 3 )      knobs   (CV_1..CV_4)
@@ -105,190 +48,131 @@ screen always shows what `MOD 1–3` currently mean.
                                        LED      hold = menu
 ```
 
-- **Fixed (named):** `TUNE`, `V/OCT`, `TRIG`, `IN`, `OUT L`, `OUT R`, `SEL`.
-- **Variable (numbered, screen-defined):** `MOD 1/2/3` (+ matching `MOD n` CV),
-  `GATE 2`, `GATE OUT 1/2`, `CV OUT`.
-- The red LED (CV Out 2) is an activity/indicator output, not jacked.
+The silk predates both maps below: neither firmware has a TUNE knob, and the screen names every
+knob. A printed face mask could relabel it, as Boy's do.
 
-What the Joy family makes of those same positions, since it is what is on the
-module most of the time:
+## The contract (MultiOsc)
 
-| Panel position | Contract meaning | Joy / Joy Lite |
+- **No TUNE knob, and no transpose.** Pitch is V/OCT alone, through the module's calibration
+  ([`../common/unit_cal.h`](../common/unit_cal.h)), with **C3 at 0 V** (MIDI 48), as on Joy.
+- **Pot 1 picks, pots 2–4 shape.** Pot 1 sits over the V/OCT jack, so it is the one knob without
+  CV: it holds each engine's selector. Pots 2–4 take the MOD 1–3 jacks below them, **±5 V moving
+  the parameter ±half the knob's travel**, as Joy's Timbre and Color CV.
+- **B7:**
+  - **tap:** the engine's (INTVL's waveform pair; nothing in the others);
+  - **hold and turn a knob:** a second bank of four, pot 1 **Volume** in every engine, pot 2 free,
+    pot 3 **Attack**, pot 4 **Decay**, attack and decay on the bottom row as on Joy. The screen shows
+    it from 0.3 s into a hold. Each knob **catches** its value before it moves it, and back on the
+    main page the knobs catch theirs, so nothing jumps (as Wish);
+  - **hold 2 s without turning:** the next engine, FM4OP → INTVL → SCAN → WAVES → FM4OP. No chooser:
+    MultiOsc starts in the engine it was left in. 2 s is Wish's hold for the same kind of gesture;
+  - **held at power-up:** the module's V/OCT calibration
+    ([`daisy_multiosc/README.md`](../daisy_multiosc/README.md#calibration)).
+- **The envelope follows TRIG**, Joy's own (`joy::AdEnvelope`, [`../common/joy_dsp.h`](../common/joy_dsp.h)):
+  a drone until the first gate, then attack while the gate is high and decay after it, until the
+  engine changes. Attack and decay run 1 ms to 6 s on Joy's squared law. No envelope switch.
+- **Volume** is squared, so the knob feels even; every engine peaks near full scale at full volume,
+  and starts at 0.8 of the knob.
+- **Saved** to QSPI at 0x7C0000, 3 s after the last change: the engine, and each engine's tap state
+  and second bank. MultiOsc runs `BOOT_SRAM` so it can write the flash.
+- **The idle jacks stay idle:** GATE 2, both gate outs, CV OUT, audio IN and the LED (David).
+
+| Engine | Pot 1 (no CV) | Pot 2 | Pot 3 | Pot 4 | Tap | Hold + pot 3 / 4 |
+| --- | --- | --- | --- | --- | --- | --- |
+| FM4OP | **Algorithm**, eight | Ratio | Index | Feedback | — | Attack / Decay |
+| INTVL | **Mode**: Interval, Rational | Interval, or the ratio | Detune | Pulse width | Waveform pair | Attack / Decay |
+| SCAN | **Excitation**: Pulse, Bump, Two, Noise | Tension | Hammer | Centring | — | inactive / Decay = Damping |
+| WAVES | **Shape**: Sin, Tri, Saw, Sqr | Pulse width (Sqr) | — | — | — | Attack / Decay |
+
+### FM4OP
+
+Eight algorithms, from one carrier with a deep stack to four sines mixed. Operator 1 is always a
+carrier, operator 4 carries the feedback, and every routing runs from a higher operator to a lower:
+
+| Pot 1 | Routing | Carriers |
 | --- | --- | --- |
-| `TUNE` knob | Coarse pitch | **Timbre** (no manual pitch control at all) |
-| `MOD 1` knob | Screen-defined | **Color** |
-| `MOD 2` / `MOD 3` knobs | Screen-defined | **Attack** / **Decay** |
-| `V/OCT` CV | 1 V/oct | 1 V/oct (as contract) |
-| `MOD 1` / `MOD 2` CV | Modulates matching knob | **Timbre CV** / **Color CV** (±50%) |
-| `MOD 3` CV | Modulates matching knob | **FM** (~6 semitones/V, not 1 V/oct) |
-| `TRIG` (Gate In 1) | Trigger | Trigger/gate — **unpatched = drone** |
-| `GATE 2` (Gate In 2) | Reserved / per-app | **Hard sync** |
-| `GATE OUT 1/2`, `CV OUT` | Per-app | Unused |
-| `IN` (audio in) | Per-app | Unused |
+| Alg1 | 4 → 3 → 2 → 1 | 1 |
+| Alg2 | (3 + 4) → 2 → 1 | 1 |
+| Alg3 | (4 → 3) + 2 → 1 | 1 |
+| Alg4 | (2 + 3 + 4) → 1 | 1 |
+| Alg5 | 4 → 3, 2 → 1 | 2 |
+| Alg6 | 4 → 1, 2, 3 | 3 |
+| Alg7 | 4 → 3, plus 2 and 1 | 3 |
+| Alg8 | 1 + 2 + 3 + 4 | 4 |
 
-If the panel is ever re-silked, `MOD 3` wants a `FM` sub-label and `GATE 2` a
-`SYNC` one for the Joy family's sake.
+Pots 2–4 mean the same in every algorithm:
 
-### The pitch pair (fixed)
+- **Ratio** steps through eleven sets for operators 2, 3 and 4 against operator 1 at the note:
+  1·1·1, 1·1·2, 2·2·2, 2·3·4, 0.5·1·2, 3·5·7, 2·4·8, 1·2·3, then inharmonic: 1.41·1·1 (root 2),
+  3.5·1·1, and 2.76·5.40·8.93 (a struck bar's overtones). In Alg8 they act like drawbars. A starting
+  table, to tune by ear.
+- **Index**, how much modulation, every modulator together, up to 8 on a squared law. At zero the
+  carriers are plain sines.
+- **Feedback**, operator 4 modulating itself, up to 3 on a squared law: from a sine through saw-like
+  to noisy.
 
-`TUNE` (manual coarse pitch) is **summed** with `V/OCT` (1 V/oct CV), in every
-firmware that follows this contract. The tune knob is required even when V/Oct
-is patched: it sets pitch when nothing is patched (standalone/drone/resonator
-use), and provides transpose / fine-tune against an external sequencer. The
-three firmwares listed above implement `pitch = TUNE_knob + V/OCT_cv`.
+The modulation stays **frequency-scaled**, as the original fm4op: what a modulator adds is scaled by
+its target's own increment, so the timbre holds across the keyboard. A rewrite to raw phase
+modulation with single-sample feedback aliased badly once and was reverted; the feedback here is
+frequency-scaled too, and averages operator 4's last two samples. Carriers are mixed and divided by
+their number. On the Mac (2026-11-22), every algorithm, ratio set, Index and Feedback at their ends
+and notes from C1 to C8 stayed finite and inside full scale.
 
-**Joy and Joy Lite are the exception**, and it is a real gap rather than an
-oversight in this document: their pitch is `fixed base note + V/OCT + FM`, with
-no manual pitch control, because all four knobs are spent on Timbre, Color,
-Attack and Decay. Unpatched, they drone at a fixed C. A real Braids has COARSE
-and FINE pots for this. Closing the gap needs either a knob freed up or a
-settings page — see the Joy README's "Differences from Braids".
+### INTVL (dual oscillator)
 
-## Button (B7) gesture budget — universal
+Nick Donaldson's IntervalOsc. Pot 1 picks **Interval** mode (pot 2 sets the second oscillator's
+offset, −24 to +24 semitones) or **Rational** (pot 2 steps through just ratios, 1/4 to 16). Pot 3
+detunes the two apart, up to a semitone each way; pot 4 is the pulse width. The tap steps through ten
+waveform pairs (Sin, Tri, Saw, Sqr, and Saw or Sqr against another), shown in the title. Both
+oscillators are summed to both outputs.
 
-| Gesture | Meaning |
-| --- | --- |
-| Short press | Primary cycle (model / algorithm / waveform) — stays instant |
-| Long press (~1 s) | Toggle **Play ↔ Edit** page (replaces the old B8 shift) |
-| Hold 3 s | Back to the firmware chooser (`daisy_multiosc`; the panel's "hold = menu") |
+### SCAN (scanned synthesis)
 
-Only these three, and the third leaves the app rather than doing anything in it. Deep/rare
-functions are not on a per-app gesture — they live in a deep menu (a final Edit-page item) or are
-hard-coded with sane defaults.
+A ring of 64 masses on springs, read round at the note's pitch, so the waveform is the ring's shape
+and keeps moving. Pot 1 is how it is struck (**Pulse**, one mass; **Bump**, a smooth hump; **Two**, a
+hump up and one down half a ring apart, odd harmonics only; **Noise**). **Tension** is how fast the
+shape changes, **Hammer** how hard each strike, **Centring** the pull back to rest. Its decay is its
+**Damping**, on hold + pot 4 (0.03 to 0.0005, exponential); a struck ring has no attack, so hold +
+pot 3 does nothing, and the host's envelope isn't used. Until the first gate it is a drone, fed all
+the time; from then on each gate strikes it. With no gates, Damping sets how the drone settles
+against the feed.
 
-There is no held "shift": the **Edit page is the shift layer**. On the Edit page
-the three MOD knobs address each firmware's secondary parameters. Because a knob
-changes meaning between pages, the Edit page uses **soft-takeover** (a knob does
-not grab a value until swept through it) — the same mechanism already in
-`daisy_braids_oled`. Play-page knobs stay live so performance feel is unaffected.
+### WAVES (plain waveforms)
 
-## Firmware selection — at power-on, or after a 3 s hold
+One oscillator: pot 1 the shape, pot 2 the pulse width (square only; anticlockwise a square,
+clockwise a 5 % pulse). Every shape peaks at the same level. Pots 3 and 4 are free.
 
-Implemented in [`daisy_multiosc/`](../daisy_multiosc/) (the Joy family is not
-part of that image). The app chooser is not a runtime gesture, so it never
-competes with B7:
+## Joy and Joy Lite
 
-- **At power-on:** B7 held through power-on runs the module's V/OCT
-  calibration first ([`daisy_multiosc/README.md`](../daisy_multiosc/README.md)).
-  Then the OLED lists the firmwares. The `TUNE` knob scrolls; a B7 short press
-  selects. There is no timeout and no last-used memory — the menu waits for the
-  press. With one engine registered it boots straight into it.
-- **During an app:** B7 is the app's, except a 3 s hold, which stops the app and
-  returns to the chooser (added 2026-11-01: David found power-cycling to change
-  engine a pain, and the panel already said "hold = menu"). The chooser waits
-  for a fresh press, so the hold never selects. Each engine's `Init()` resets its
-  own state, which is what lets one run again in the same session.
-
-Implementation note: combined, these firmwares exceed the 128 KB internal flash,
-so the unified image runs through the Daisy bootloader, like
-`daisy_braids_oled`/`daisy_multifx_oled`: `BOOT_SRAM` since 2026-11-21 (it was
-`BOOT_QSPI`, where libDaisy refuses QSPI writes), so it can save the module's
-V/OCT calibration. Switching apps re-initialises the audio
-engine (sample rate / block size / buffers) per firmware so each keeps its native
-DSP config; large buffers belong in SDRAM.
-
-## Per-firmware maps
-
-`TUNE` = pitch (+V/OCT) in all contract-following apps. `MOD n` CV jacks
-modulate the matching MOD knob's parameter. On every Edit page, `TUNE` switches
-the amplitude envelope (`common/multiosc_core/host.cpp`): clockwise of noon on,
-so `TRIG` gates the voice; anticlockwise off, a drone or plain VCO. The screen's
-top-left cell reads `EnvOn` or `EnvOf`. FM4OP starts with it on, the others off.
-
-### Joy / Joy Lite (macro oscillator) — does not follow the contract
-
-Documented here because it is what the module runs, not as a model to copy.
-
-| Slot | Joy | Joy Lite |
+| Knob | Joy | Joy Lite |
 | --- | --- | --- |
-| TUNE | Timbre | Timbre |
-| MOD 1 | Color | Color |
-| MOD 2 | Attack (1 ms – 6 s) | Attack (1 ms – 6 s) |
-| MOD 3 | Decay (1 ms – 6 s) | Decay (1 ms – 6 s) |
+| 1 | Timbre (+ CV_6, ±50 %) | Timbre (+ CV_6) |
+| 2 | Color (+ CV_7, ±50 %) | Color (+ CV_7) |
+| 3 | Attack (1 ms – 6 s) | Attack (1 ms – 6 s) |
+| 4 | Decay (1 ms – 6 s) | Decay (1 ms – 6 s) |
 | Short press | Next patch (or next bank, in Bank mode) | Next model in bank |
 | Long press | Toggle Patch ↔ Bank navigation | Re-blink model number |
 | B8 | *(removed — OLED occupies the position)* | **Toggle: bank A / B** |
 
-- No Play/Edit page and no soft-takeover: every knob is live at all times.
-- `MOD 3` CV is **FM**, not a Decay modulator — it is Braids' FM input at full
-  attenuverter depth (~6 semitones/V, deliberately not 1 V/oct).
-- `GATE 2` is **hard sync**, and only the analog-family models respond to it;
-  the digital, physical, percussion, wavetable and noise engines ignore sync,
-  exactly as on a real Braids.
-- Joy Lite keeps the B8 toggle, so it is the one firmware that still needs that
-  switch fitted; on a Joy panel (toggle removed for the OLED) it runs but stays
-  in Bank B.
+- Every knob is live at all times.
+- CV_8 is **FM**, Braids' FM input at full attenuverter depth (~6 semitones/V, deliberately not
+  1 V/oct), less the module's own empty-jack reading measured at calibration.
+- `GATE 2` is **hard sync**, and only the analog-family models respond to it, exactly as on a real
+  Braids.
+- Pitch is `C3 at 0 V + V/OCT + FM`: no manual pitch control, as MultiOsc now. Unpatched, they drone
+  at a fixed C.
 
-### SCAN (scanned synthesis)
+## Screen legend (MultiOsc)
 
-| Slot | Play page | Edit page |
-| --- | --- | --- |
-| TUNE | Pitch (scan rate) | Envelope on/off |
-| MOD 1 | Tension | **Centering** |
-| MOD 2 | Damping | — |
-| MOD 3 | Hammer | — |
-| Short press | cycle excitation shape (Pulse / Bump / Two / Noise) | — |
+The OLED shows the engine's name, then a 2×2 grid laid out as the knobs sit: pot 1's current choice
+and pot 2's label on the top row, pots 3 and 4 below. While B7 is held it shows the second bank
+instead (`Vol -` / `Atk Dec`, SCAN `- Damp`) and the title reads `NAME:EDIT`. Changing engine shows
+its name large for a moment. The screen redraws only when something on it changes: the bit-banged
+I2C couples into the codec as noise.
 
-- `GATE` (Gate In 1) plucks/excites the spring-mass string. `OUT L / OUT R` =
-  mono (same signal).
-- Env **off** (default) = continuous self-excitation → evolving drone; env
-  **on** = gated pluck that rings out per Damping.
-- The scan rate (pitch) is decoupled from the spring dynamics, so a held note
-  morphs organically. Spring constants are first-pass / tunable.
-
-### fm4op (4-operator FM)
-
-| Slot | Play page | Edit page |
-| --- | --- | --- |
-| TUNE | Pitch | Envelope on/off |
-| MOD 1 | FM param A* | **Attack** |
-| MOD 2 | FM param B* | **Release** |
-| MOD 3 | FM param C* | **Volume** |
-| Short press | cycle Algorithm (Parallel / Serial / Feedback) | — |
-
-\*MOD 1–3 remap per algorithm (mod indices / ratios / feedback depth); the screen
-labels them for the active algorithm. `TRIG` (Gate In 1) = envelope trigger.
-`GATE 2` reserved for hard sync. Edit map matches existing firmware behaviour.
-
-### interval_osc (dual oscillator)
-
-| Slot | Play page | Edit page |
-| --- | --- | --- |
-| TUNE | Base freq | Envelope on/off |
-| MOD 1 | Interval (quantized offset) | **Mode** (Interval / Rational) |
-| MOD 2 | Detune | **Attack** |
-| MOD 3 | Pulse width | **Release** |
-| Short press | cycle Waveform | — |
-
-- `MOD 1` CV (CV_6) = offset CV; `MOD 3` CV (CV_8) = PWM CV (already wired).
-- `OUT L / OUT R` = osc 1 / osc 2.
-
-### WAVES (plain waveforms)
-
-| Slot | Play page | Edit page |
-| --- | --- | --- |
-| TUNE | Pitch | Envelope on/off |
-| MOD 1 | Pulse width (Sqr only; anticlockwise = square, clockwise = 5% pulse) | — |
-| MOD 2 | — (free) | — |
-| MOD 3 | — (free) | — |
-| Short press | cycle Shape (Sin / Tri / Saw / Sqr) | — |
-
-- `MOD 1` CV (CV_6) adds to the pulse width.
-- `OUT L / OUT R` = mono (same signal). Every shape peaks at the same level.
-- Env **off** (default) = continuous VCO; env **on** = gated by `TRIG`.
-
-## Screen legend (every app)
-
-The OLED always shows: firmware name, current page (Play / Edit), the live
-meaning of `MOD 1–3`, and the current short-press selection (model / algorithm /
-waveform). This is the per-firmware control reminder the panel intentionally
-omits.
-
-At 64 px and a 5×7 font, a line is **ten characters** — the hard budget every
-name on screen has to live inside. The title is `NAME:SEL` where that fits
-(`FM4OP:SwTr`); where it does not, the firmware name keeps the title line and
-the selection drops to its own line under the knob grid, truncated to ten. An
-engine whose Edit page has its own selection worth naming can return it from
-`Engine::EditSelection()`, and that line reads `EDIT:<sel>` rather than `EDIT`. Keep
-engine names short enough to leave room for a selection, and check any selection
-string that reads as words rather than an abbreviation.
+At 64 px and a 5×7 font, a line is **ten characters**, the hard budget every name on screen has to
+live inside: five for pot 1's choice and a space, four for the label beside it. The title is
+`NAME:SEL` where the tap selects something and that fits (`INTVL:SwTr`); where it does not, the
+selection drops to its own line under the grid. [`../common/tools/panel_check.cpp`](../common/tools/)
+(`make check`) renders every engine's title and every cell through the real driver and fails on
+anything that clips; the cells it checks are copied from the engines, so keep them in step.

@@ -12,7 +12,7 @@
 //   - DrawString returns the pixels it drew. If that differs from the pixels
 //     the string wanted, it clipped -- no counting characters by hand.
 //   - A row whose glyphs land outside the framebuffer draws nothing at all,
-//     which is exactly what happened to the fifth engine in the boot menu.
+//     which is exactly what happened to the fifth engine in the old boot menu.
 //
 //   make check
 //
@@ -89,65 +89,72 @@ void CheckTitle(const char* name, const char* sel, const char* esel, bool edit)
 
 void CheckAllTitles()
 {
-    std::printf("Titles: every engine, both pages, every selection\n");
-    for(auto s : {"PARA", "SERI", "FDBK"})
-        CheckTitle("FM4OP", s, nullptr, false);
-    CheckTitle("FM4OP", nullptr, nullptr, true);
-
+    std::printf("Titles: every engine, main page and hold layer, every tap selection\n");
+    // Only INTVL's tap selects something; the others' titles are the name alone.
+    for(auto n : {"FM4OP", "SCAN", "WAVES"})
+    {
+        CheckTitle(n, nullptr, nullptr, false);
+        CheckTitle(n, nullptr, nullptr, true);
+    }
     for(auto s : {"Sin", "Tri", "Saw", "Sqr", "SwSi", "SwTr", "SwSq", "SqSi",
                   "SqTr", "SqSw"})
-        CheckTitle("INTVL", s, nullptr, false);
-    CheckTitle("INTVL", nullptr, nullptr, true);
-
-    for(auto s : {"Pulse", "Bump", "Two", "Noise"})
-        CheckTitle("SCAN", s, nullptr, false);
-    CheckTitle("SCAN", nullptr, nullptr, true);
-
-    // WAVES:Sin is ten columns: every shape must stay on the title line.
-    for(auto s : {"Sin", "Tri", "Saw", "Sqr"})
     {
-        CheckTitle("WAVES", s, nullptr, false);
-        const LegendText lt = ComposeLegend("WAVES", s, nullptr, false);
+        CheckTitle("INTVL", s, nullptr, false);
+        const LegendText lt = ComposeLegend("INTVL", s, nullptr, false);
         if(lt.has_selection())
-            Fail("WAVES:%s dropped to the selection line", s);
+            Fail("INTVL:%s dropped to the selection line", s);
     }
-    CheckTitle("WAVES", nullptr, nullptr, true);
+    CheckTitle("INTVL", "SwTr", nullptr, true);
 }
 
 //--------------------------------------------------------------------------
-// 2. The boot menu. Mirrors Host::DrawMenu's geometry; the point is that every
-//    entry lands inside the framebuffer for any plausible engine count.
+// 2. The knob grid: every cell each engine can show, in both rows, main page
+//    and hold layer. ComposeGridRow truncates a cell that is too long, so the
+//    cells' own lengths are checked too: a truncated label fits and is wrong.
 //--------------------------------------------------------------------------
-void CheckBootMenu()
+void CheckCell(const char* engine, const char* s, size_t max)
 {
-    std::printf("Boot menu: every entry on screen, 1..10 engines\n");
-    using multiosc::kMenuRows;
-    using multiosc::MenuRowY;
-    using multiosc::MenuWindowStart;
+    if(std::strlen(s) > max)
+        Fail("%s: \"%s\" is longer than its cell (%zu)", engine, s, max);
+}
 
-    for(int count = 1; count <= 10; count++)
-    {
-        for(int sel = 0; sel < count; sel++)
-        {
-            const int first = MenuWindowStart(sel, count);
-            // The highlighted engine must be inside the visible window.
-            if(sel < first || sel >= first + kMenuRows)
-            {
-                Fail("%d engines, sel %d: scrolled out of view", count, sel);
-                continue;
-            }
-            // ...and its row must actually put pixels in the buffer. The probe
-            // is the widest row the menu can draw: "> " plus an eight-letter
-            // name, which is what BYTEBEAT needed when it was in the menu.
-            const uint8_t y = (uint8_t)MenuRowY(sel - first);
-            d.Clear();
-            d.DrawString(2, y, "> ABCDEFGH", false);
-            if(!AnyPixels())
-                Fail("%d engines, sel %d: row at y=%u drew nothing", count, sel, y);
-            if(!Fits(2, y, "> ABCDEFGH"))
-                Fail("%d engines, sel %d: \"> ABCDEFGH\" clips at y=%u", count, sel, y);
-        }
-    }
+void CheckRow(const char* engine, const char* left, const char* right, int y)
+{
+    CheckCell(engine, left, multiosc::kGridLeftCols - 1);
+    CheckCell(engine, right, multiosc::kGridRightCols);
+    char row[24];
+    multiosc::ComposeGridRow(row, sizeof(row), left, right);
+    if(!Fits(0, (uint8_t)y, row))
+        Fail("%s: row \"%s\" clips at y=%d", engine, row, y);
+    d.Clear();
+    d.DrawString(0, (uint8_t)y, row, false);
+    if(!AnyPixels())
+        Fail("%s: row at y=%d drew nothing", engine, y);
+}
+
+void CheckGrid()
+{
+    std::printf("Grid: every engine's cells, main page and hold layer\n");
+    using multiosc::kGridRow1Y;
+    using multiosc::kGridRow2Y;
+    // pot 1's choices against pot 2's labels; pots 3 and 4 below. These copy the engines' labels, which
+    // need DaisySP to build: keep them in step with Choice() and PotLabel().
+    for(auto c : {"Alg1", "Alg8"})
+        CheckRow("FM4OP", c, "Rat", kGridRow1Y);
+    CheckRow("FM4OP", "Idx", "Fbk", kGridRow2Y);
+    CheckRow("INTVL", "Intv", "Intv", kGridRow1Y);
+    CheckRow("INTVL", "Ratl", "Rat", kGridRow1Y);
+    CheckRow("INTVL", "Det", "PW", kGridRow2Y);
+    for(auto c : {"Pulse", "Bump", "Two", "Noise"})
+        CheckRow("SCAN", c, "Tens", kGridRow1Y);
+    CheckRow("SCAN", "Hamr", "Cntr", kGridRow2Y);
+    for(auto c : {"Sin", "Tri", "Saw", "Sqr"})
+        CheckRow("WAVES", c, "PW", kGridRow1Y);
+    CheckRow("WAVES", "-", "-", kGridRow2Y);
+    // the hold layer
+    CheckRow("hold", "Vol", "-", kGridRow1Y);
+    CheckRow("hold", "Atk", "Dec", kGridRow2Y);
+    CheckRow("hold", "-", "Damp", kGridRow2Y);
 }
 
 //--------------------------------------------------------------------------
@@ -185,7 +192,7 @@ int main()
 {
     std::printf("panel_check — real SSD1306 driver, real legend layout\n\n");
     CheckAllTitles();
-    CheckBootMenu();
+    CheckGrid();
     CheckDriverEdges();
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "All panel checks passed",
                 failures, failures == 1 ? "" : "s");

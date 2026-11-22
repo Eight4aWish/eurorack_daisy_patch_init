@@ -4,12 +4,12 @@
 // of the rack is too clever for: a clean sine to tune against, a saw or square
 // into a filter, a triangle to fold.
 //
-// Universal panel (docs/PANEL.md):
-//   TUNE = pitch (+V/Oct)            short press = shape (Sin / Tri / Saw / Sqr)
-//   Play : MOD1 = pulse width (Sqr only; + MOD1 CV)   MOD2, MOD3 unused
-//   Edit : nothing beyond the host's env on/off on TUNE
-//   OUT L = OUT R (mono)
-//   Env off = continuous VCO (default); env on = gated by TRIG
+// The panel (docs/PANEL.md, agreed with David on 2026-11-22):
+//   pot 1  Shape: Sin, Tri, Saw, Sqr
+//   pot 2  Pulse width, square only: anticlockwise a square, clockwise a 5% pulse   (+ the MOD 1 jack)
+//   pots 3, 4  free
+// Pitch is V/OCT alone; the envelope (a drone until the first gate) and volume are the host's.
+// OUT L = OUT R.
 //
 // Saw and square are polyBLEP. The triangle is the naive one: DaisySP's polyBLEP
 // triangle is a leaky integrator whose shape bends with pitch, and a triangle's
@@ -26,68 +26,43 @@ namespace multiosc {
 
 class WavesEngine : public Engine {
   public:
-    void Init(DaisyPatchSM& hw, float sample_rate) override
+    void Init(float sample_rate) override
     {
-        (void)hw;
         osc_.Init(sample_rate);
         osc_.SetAmp(1.0f);
         SetShape(0);
     }
 
-    void Process(DaisyPatchSM&             hw,
-                 const EngineContext&      ctx,
-                 AudioHandle::InputBuffer  in,
-                 AudioHandle::OutputBuffer out,
-                 size_t                    size) override
+    void Process(const Controls& c, AudioHandle::OutputBuffer out, size_t size) override
     {
-        (void)in;
+        const int shape = shape_pot_.Process(c.pot[0]);
+        if(shape != shape_)
+            SetShape(static_cast<uint8_t>(shape));
 
-        if(ctx.short_press)
-            SetShape((shape_ + 1) % kShapes);
+        float freq = daisysp::mtof(c.note);
+        if(freq < 20.0f)
+            freq = 20.0f; // no sub-audio rumble
+        if(freq > 8000.0f)
+            freq = 8000.0f;
+        osc_.SetFreq(freq);
+        // Fully anticlockwise = square, clockwise narrows to a 5% pulse.
+        osc_.SetPw(0.5f - 0.45f * c.pot[1]);
 
-        // Pitch and width held on the Edit page, where TUNE is the env toggle.
-        if(!ctx.edit_page)
-        {
-            const float midi = daisysp::fmap(hw.GetAdcValue(KNOB_TUNE), 28.f, 88.f)
-                               + VoctSemitones(hw);
-            float freq = daisysp::mtof(midi);
-            if(freq < 20.0f)
-                freq = 20.0f; // no sub-audio rumble
-            if(freq > 8000.0f)
-                freq = 8000.0f;
-            osc_.SetFreq(freq);
-
-            // Fully anticlockwise = square, clockwise narrows to a 5% pulse.
-            const float w = daisysp::fclamp(
-                hw.GetAdcValue(KNOB_MOD1) + hw.GetAdcValue(CV_MOD1), 0.f, 1.f);
-            osc_.SetPw(0.5f - 0.45f * w);
-        }
-
-        // env on: gated (silent at rest); env off: continuous.
-        // Slewed amplitude so note on/off never clicks.
-        const bool  gate   = hw.gate_in_1.State() || hw.gate_in_1.Trig();
-        const float target = ctx.env_on ? (gate ? 0.5f : 0.0f) : 0.5f;
         for(size_t i = 0; i < size; i++)
         {
-            amp_ += (target - amp_) * 0.004f; // ~5 ms slew
-            const float s = osc_.Process() * level_ * amp_;
+            const float s = osc_.Process() * level_;
             out[0][i]     = s;
             out[1][i]     = s;
         }
     }
 
     const char* Name() const override { return "WAVES"; }
-    const char* ModLabel(int idx, bool edit) const override
-    {
-        return (!edit && idx == 0 && shape_ == 3) ? "PW" : "-";
-    }
-    const char* ShortLabel() const override { return "WAVE"; }
-    const char* Selection() const override
+    const char* Choice() const override
     {
         static const char* kTag[kShapes] = {"Sin", "Tri", "Saw", "Sqr"};
         return kTag[shape_];
     }
-    bool DefaultEnvOn() const override { return false; } // VCO
+    const char* PotLabel(int pot) const override { return (pot == 1 && shape_ == 3) ? "PW" : "-"; }
 
   private:
     static constexpr int kShapes = 4;
@@ -107,9 +82,9 @@ class WavesEngine : public Engine {
     }
 
     daisysp::Oscillator osc_;
+    Stepper             shape_pot_{kShapes};
     uint8_t             shape_ = 0;
     float               level_ = 1.0f;
-    float               amp_   = 0.0f;
 };
 
 } // namespace multiosc
