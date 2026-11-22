@@ -127,11 +127,11 @@ Implemented in [`daisy_multiosc/`](../daisy_multiosc/) (the Joy family is not
 part of that image). The app chooser is not a runtime gesture, so it never
 competes with B7:
 
-- **At power-on:** OLED lists the firmwares. The `TUNE` knob scrolls; a B7
-  short press selects. There is no timeout and no last-used memory — the menu
-  waits for the press, and the image is `BOOT_QSPI`, where libDaisy refuses
-  QSPI writes (`QSPIHandle::Impl::CheckProgramMemory`). With one engine
-  registered it boots straight into it.
+- **At power-on:** B7 held through power-on runs the module's V/OCT
+  calibration first ([`daisy_multiosc/README.md`](../daisy_multiosc/README.md)).
+  Then the OLED lists the firmwares. The `TUNE` knob scrolls; a B7 short press
+  selects. There is no timeout and no last-used memory — the menu waits for the
+  press. With one engine registered it boots straight into it.
 - **During an app:** B7 is the app's, except a 3 s hold, which stops the app and
   returns to the chooser (added 2026-11-01: David found power-cycling to change
   engine a pain, and the panel already said "hold = menu"). The chooser waits
@@ -139,15 +139,20 @@ competes with B7:
   own state, which is what lets one run again in the same session.
 
 Implementation note: combined, these firmwares exceed the 128 KB internal flash,
-so the unified image must build `BOOT_QSPI` (8 MB QSPI), like
-`daisy_braids_oled`/`daisy_multifx_oled`. Switching apps re-initialises the audio
+so the unified image runs through the Daisy bootloader, like
+`daisy_braids_oled`/`daisy_multifx_oled`: `BOOT_SRAM` since 2026-11-21 (it was
+`BOOT_QSPI`, where libDaisy refuses QSPI writes), so it can save the module's
+V/OCT calibration. Switching apps re-initialises the audio
 engine (sample rate / block size / buffers) per firmware so each keeps its native
 DSP config; large buffers belong in SDRAM.
 
 ## Per-firmware maps
 
 `TUNE` = pitch (+V/OCT) in all contract-following apps. `MOD n` CV jacks
-modulate the matching MOD knob's parameter.
+modulate the matching MOD knob's parameter. On every Edit page, `TUNE` switches
+the amplitude envelope (`common/multiosc_core/host.cpp`): clockwise of noon on,
+so `TRIG` gates the voice; anticlockwise off, a drone or plain VCO. The screen's
+top-left cell reads `EnvOn` or `EnvOf`. FM4OP starts with it on, the others off.
 
 ### Joy / Joy Lite (macro oscillator) — does not follow the contract
 
@@ -177,7 +182,7 @@ Documented here because it is what the module runs, not as a model to copy.
 
 | Slot | Play page | Edit page |
 | --- | --- | --- |
-| TUNE | Pitch (scan rate) | — |
+| TUNE | Pitch (scan rate) | Envelope on/off |
 | MOD 1 | Tension | **Centering** |
 | MOD 2 | Damping | — |
 | MOD 3 | Hammer | — |
@@ -194,7 +199,7 @@ Documented here because it is what the module runs, not as a model to copy.
 
 | Slot | Play page | Edit page |
 | --- | --- | --- |
-| TUNE | Pitch | — |
+| TUNE | Pitch | Envelope on/off |
 | MOD 1 | FM param A* | **Attack** |
 | MOD 2 | FM param B* | **Release** |
 | MOD 3 | FM param C* | **Volume** |
@@ -208,7 +213,7 @@ labels them for the active algorithm. `TRIG` (Gate In 1) = envelope trigger.
 
 | Slot | Play page | Edit page |
 | --- | --- | --- |
-| TUNE | Base freq | — |
+| TUNE | Base freq | Envelope on/off |
 | MOD 1 | Interval (quantized offset) | **Mode** (Interval / Rational) |
 | MOD 2 | Detune | — (free) |
 | MOD 3 | Pulse width | — (free) |
@@ -221,7 +226,7 @@ labels them for the active algorithm. `TRIG` (Gate In 1) = envelope trigger.
 
 | Slot | Play page | Edit page |
 | --- | --- | --- |
-| TUNE | Pitch | — |
+| TUNE | Pitch | Envelope on/off |
 | MOD 1 | Pulse width (Sqr only; anticlockwise = square, clockwise = 5% pulse) | — |
 | MOD 2 | — (free) | — |
 | MOD 3 | — (free) | — |
