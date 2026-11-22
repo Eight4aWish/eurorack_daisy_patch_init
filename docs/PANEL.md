@@ -22,6 +22,44 @@ contract.
 >   no `TUNE` knob and no Play/Edit page. Their actual map is under
 >   [Per-firmware maps](#per-firmware-maps).
 
+## The next contract (agreed with David, 2026-11-22; not built yet)
+
+A redesign of MultiOsc's interface to work as David's other patch.Init apps do (Joy, Mirth, Wish,
+Sorrow). Everything below this section describes the firmware as it is today.
+
+- **No TUNE knob, and no transpose.** Pitch is V/OCT alone, through the module's calibration. All
+  four knobs go to the voice.
+- **Pot 1 picks, pots 2–4 shape.** Pot 1 sits over the V/OCT jack, so it is the one knob without
+  CV: it holds each engine's selector. Pots 2–4 take the MOD 1–3 jacks below them.
+- **B7:**
+  - **tap:** per engine (INTVL's waveform pair; free in the others);
+  - **hold and turn:** a second bank of four, with catch: pot 1 **Volume** in every engine, pot 2
+    per engine, pot 3 **Attack**, pot 4 **Decay**, the bottom row as on Joy;
+  - **hold without turning:** the next engine. No chooser: MultiOsc starts in the last engine,
+    saved to QSPI (it runs `BOOT_SRAM`);
+  - **held at power-up:** the module's V/OCT calibration, as now.
+
+| Engine | Pot 1 (no CV) | Pot 2 | Pot 3 | Pot 4 | Tap | Hold + pot 2 | Hold + pot 3 / 4 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| FM4OP | **Algorithm**, eight | Ratio | Index | Feedback | — | — | Attack / Decay (release) |
+| INTVL | **Mode**: Interval, Rational | Interval | Detune | Pulse width | Waveform pair | — | Attack / Decay (release) |
+| SCAN | **Excitation**: Pulse, Bump, Two, Noise | Tension | Hammer | Centring | — | — | inactive / Decay = Damping |
+| WAVES | **Shape**: Sin, Tri, Saw, Sqr | Pulse width (Sqr) | — | — | — | — | Attack / Decay |
+
+- **FM4OP** gets new DSP: eight algorithms, and pots 2–4 meaning the same in every one, where today
+  they are depths in Parallel, ratios in Serial and feedback plus depths in Feedback, and Serial has
+  no depth at all. Ratio steps through sets of modulator ratios, harmonic first; Index is how much
+  modulation; Feedback is operator feedback. Keep the original frequency-scaled modulation (`mod *=
+  carrier increment`): a raw phase-mod rewrite aliased badly once and was reverted.
+- **SCAN's Damping is its decay**, so it moves to hold + pot 4. A struck ring has no attack, so
+  hold + pot 3 does nothing there (David). With no gates, Damping sets how the drone settles
+  against Hammer's constant feed rather than a decay.
+- **WAVES** needs an attack/decay envelope added: today a gate only fades it in and out over 5 ms.
+
+Still open: whether the envelope follows TRIG (Joy's way: a drone until the first gate, gated from
+then on); the idle jacks (CV OUT and the LED as the envelope, GATE 2 as hard sync for INTVL and
+WAVES, audio IN later); the note at 0 V (Joy's is C3); FM4OP's eight algorithms and its ratio table.
+
 ## Hardware surface (from `patch_init_schematic.pdf`)
 
 | Control | Wiring | ADC / pin |
