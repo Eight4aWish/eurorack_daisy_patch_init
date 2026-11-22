@@ -56,9 +56,12 @@ Sorrow). Everything below this section describes the firmware as it is today.
   against Hammer's constant feed rather than a decay.
 - **WAVES** needs an attack/decay envelope added: today a gate only fades it in and out over 5 ms.
 
-Still open: whether the envelope follows TRIG (Joy's way: a drone until the first gate, gated from
-then on); the idle jacks (CV OUT and the LED as the envelope, GATE 2 as hard sync for INTVL and
-WAVES, audio IN later); the note at 0 V (Joy's is C3); FM4OP's eight algorithms and its ratio table.
+- **The envelope follows TRIG**, as on Joy: a drone until the first gate, gated from then on, until
+  the engine changes. No envelope switch.
+- **0 V is C3** (MIDI 48), as on Joy.
+- **The idle jacks stay idle:** GATE 2, both gate outs, CV OUT, audio IN and the LED (David: no).
+
+Still open: FM4OP's eight algorithms and its ratio table.
 
 ## Hardware surface (from `patch_init_schematic.pdf`)
 
