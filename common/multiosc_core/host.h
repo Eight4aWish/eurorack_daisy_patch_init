@@ -16,6 +16,7 @@
 #include "daisy_patch_sm.h"
 #include "oled_soft_i2c.h"
 #include "engine.h"
+#include "gestures.h"
 #include "joy_dsp.h"
 #include "legend_layout.h"
 #include "unit_cal.h"
@@ -86,12 +87,8 @@ class Host {
     float        volume_ = 0.8f, attack_ = 0.05f, decay_ = 0.25f;
     float        gain_   = 0.0f; // volume_ squared, smoothed per sample so turning it doesn't zipper
 
-    // B7, decoded in the audio callback
-    bool          pressed_        = false; // a press that began with the engine running
-    bool          ignore_press_   = false; // still down from power-up or the last switch
-    bool          turned_         = false; // a pot moved during this press: the second bank
-    bool          switched_       = false; // this press already asked for the next engine
-    float         press_knob_[4]  = {0, 0, 0, 0};
+    // B7, decoded in the audio callback (gestures.h)
+    Gestures      gestures_;
     volatile bool tap_pending_    = false;
     volatile bool next_requested_ = false;
     volatile bool layer_shown_    = false; // for the legend
@@ -100,10 +97,7 @@ class Host {
     bool          gated_          = false; // the first gate has ended the drone
     bool          prev_gate_      = false;
 
-    static constexpr float    kTurnThresh   = 0.04f; // how far a pot moves to count as turned
-    static constexpr uint32_t kNextMs       = 2000;  // hold without turning, as Wish's SETTINGS
-    static constexpr uint32_t kShowLayerMs  = 300;   // a held B7 shows the second bank
-    static constexpr uint32_t kSaveDelayMs  = 3000;
+    static constexpr uint32_t kSaveDelayMs = 3000;
 
     // Redraw the OLED only when the legend changes, so soft-I2C isn't bit-banged
     // continuously (that switching couples into the codec as audible noise).

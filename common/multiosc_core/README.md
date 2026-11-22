@@ -14,6 +14,9 @@ Shared host/framework for [`daisy_multiosc`](../../daisy_multiosc/) — mirrors 
   hold 2 s without turning = the next engine); applies Joy's envelope
   (`joy::AdEnvelope`) and the volume; saves the engine and each engine's tap and
   second bank to QSPI; draws the legend.
+- [`gestures.h`](gestures.h) — B7's tap, hold-and-turn and hold for the next engine,
+  decoded from the switch's edges; pure, so [`../tools/gesture_check.cpp`](../tools/)
+  runs it against libDaisy's debounce.
 - [`legend_layout.h`](legend_layout.h) — how the title and the knob grid are
   composed, shared with [`../tools/panel_check.cpp`](../tools/) (`make check`).
 

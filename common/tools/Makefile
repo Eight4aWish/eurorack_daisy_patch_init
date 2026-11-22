@@ -5,15 +5,19 @@ CXX      ?= c++
 CXXFLAGS ?= -O2 -std=gnu++17 -Wall -Wextra
 INCS      = -Istub -I.. -I../..
 
-all: panel_check
+all: panel_check gesture_check
 
 panel_check: panel_check.cpp ../oled_soft_i2c.cpp ../multiosc_core/legend_layout.h
 	$(CXX) $(CXXFLAGS) $(INCS) -o $@ panel_check.cpp ../oled_soft_i2c.cpp
 
-check: panel_check
+gesture_check: gesture_check.cpp ../multiosc_core/gestures.h
+	$(CXX) $(CXXFLAGS) $(INCS) -o $@ gesture_check.cpp
+
+check: panel_check gesture_check
 	./panel_check
+	./gesture_check
 
 clean:
-	rm -f panel_check
+	rm -f panel_check gesture_check
 
 .PHONY: all check clean

@@ -64,9 +64,14 @@ Or drag `build/daisy_multiosc.bin` onto the SD card root and power-cycle. See
 
 ## Status
 
-**v2.0, the 2026-11-22 interface, is built, not yet flashed or played.** The
-splash shows MULTI OSC with v2.0 under it; the build before had no version and went
-to a SELECT list. FM4OP's new
+**v2.1, the 2026-11-22 interface.** The splash shows MULTI OSC with the version
+under it; the build before the redesign had no version and went to a SELECT list.
+v2.0 was flashed on 2026-11-22 and its calibration and tracking were good, but B7
+did nothing: libDaisy's switch reports a press a millisecond before it reports the
+button held, and the host took that millisecond for a release, so every press was
+an instant tap. v2.1 reads the button from its edges (`common/multiosc_core/gestures.h`),
+and `make check` in `common/tools` now drives every gesture against libDaisy's
+debounce on the Mac. v2.1 is built, not yet flashed. FM4OP's new
 DSP ran on the Mac over every algorithm, ratio set, Index and Feedback at their
 ends and notes from C1 to C8: every sample finite and inside full scale. The panel
 check passes. To try on the module: load it by SD card; a module already

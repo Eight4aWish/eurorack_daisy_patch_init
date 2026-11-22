@@ -196,10 +196,7 @@ void Host::StartEngine(int index, bool button_down)
     for(int p = 0; p < 4; p++)
         main_[p].Set(hw_.GetAdcValue(POT1 + p));
 
-    pressed_        = false;
-    ignore_press_   = button_down; // the hold that switched engine is still down
-    turned_         = false;
-    switched_       = false;
+    gestures_.Reset(button_down); // the hold that switched engine is still down
     tap_pending_    = false;
     next_requested_ = false;
     layer_shown_    = false;
@@ -209,59 +206,24 @@ void Host::StartEngine(int index, bool button_down)
 void Host::UpdateButton(const float* knobs)
 {
     button_.Debounce();
-    const bool down = button_.Pressed();
-
-    if(ignore_press_)
+    const uint32_t      now = System::GetNow();
+    const Gestures::Out o   = gestures_.Update(button_.RisingEdge(), button_.FallingEdge(), now, knobs);
+    if(o.layer_start)
     {
-        if(!down)
-            ignore_press_ = false;
-        layer_shown_ = false;
-        return;
+        // the second bank, each knob catching its value before it moves it
+        layer_[0].Reset(volume_);
+        layer_[1].Reset(0.5f);
+        layer_[2].Reset(attack_);
+        layer_[3].Reset(decay_);
     }
-
-    if(button_.RisingEdge())
-    {
-        pressed_  = true;
-        turned_   = false;
-        switched_ = false;
+    if(o.layer_end)
         for(int p = 0; p < 4; p++)
-            press_knob_[p] = knobs[p];
-    }
-
-    if(pressed_ && down)
-    {
-        if(!turned_ && !switched_)
-        {
-            for(int p = 0; p < 4; p++)
-                if(std::fabs(knobs[p] - press_knob_[p]) > kTurnThresh)
-                    turned_ = true;
-            if(turned_)
-            {
-                // the second bank, each knob catching its value before it moves it
-                layer_[0].Reset(volume_);
-                layer_[1].Reset(0.5f);
-                layer_[2].Reset(attack_);
-                layer_[3].Reset(decay_);
-            }
-            else if(button_.TimeHeldMs() >= kNextMs)
-            {
-                switched_       = true;
-                next_requested_ = true;
-            }
-        }
-        layer_shown_ = !switched_ && (turned_ || button_.TimeHeldMs() >= kShowLayerMs);
-    }
-    else if(pressed_ && !down)
-    {
-        if(turned_)
-            for(int p = 0; p < 4; p++)
-                main_[p].Reset(main_[p].value()); // back on the main page, the knobs catch again
-        else if(!switched_)
-            tap_pending_ = true;
-        pressed_     = false;
-        turned_      = false;
-        layer_shown_ = false;
-    }
+            main_[p].Reset(main_[p].value()); // back on the main page, the knobs catch again
+    if(o.tap)
+        tap_pending_ = true;
+    if(o.next)
+        next_requested_ = true;
+    layer_shown_ = gestures_.shown(now);
 }
 
 void Host::ProcessAudio(AudioHandle::InputBuffer  in,
@@ -282,7 +244,7 @@ void Host::ProcessAudio(AudioHandle::InputBuffer  in,
         return;
     }
 
-    if(pressed_ && turned_)
+    if(gestures_.layer())
     {
         // the second bank: pot 1 Volume, pot 2 free, pot 3 Attack, pot 4 Decay
         const float v = layer_[0].Process(knobs[0]);
@@ -298,7 +260,7 @@ void Host::ProcessAudio(AudioHandle::InputBuffer  in,
             dirty_since_    = System::GetNow();
         }
     }
-    else if(!pressed_)
+    else if(!gestures_.pressed())
         for(int p = 0; p < 4; p++)
             main_[p].Process(knobs[p]); // held while B7 is down, so a tap or a hold moves nothing
 
@@ -424,7 +386,7 @@ void Host::Run()
             System::Delay(10);
             hw_.StopAudio();
             StoreCurrent();
-            StartEngine((active_index_ + 1) % engine_count_, true);
+            StartEngine((active_index_ + 1) % engine_count_, gestures_.held());
             settings_dirty_ = true;
             dirty_since_    = System::GetNow();
             DrawSplash();
